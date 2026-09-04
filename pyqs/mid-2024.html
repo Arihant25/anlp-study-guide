@@ -42,14 +42,11 @@
       <div class="kicker">PYQ · Mid Semester · Sep 23, 2024</div>
       <h1>Mid Semester 2024 — <em>the paper, worked through</em>.</h1>
       <p class="lead">
-        This is the official mid-semester paper from the 2024 offering of
-        M24CS7.501. Four questions, thirty marks, ninety minutes. Two short
-        five-markers on classical sequence models, then two ten-markers on
-        the transformer encoder and on parameter-efficient fine-tuning. No
-        official answer key exists for this paper — only the 2023 sitting
-        had one — so what follows is a worked solution for each question,
-        aimed at showing the marker exactly the structure a full-marks
-        answer needs.
+        This is the 2024 mid-semester paper for M24CS7.501: four questions,
+        30 marks, and 90 minutes. It moves from classical sequence models to
+        transformer encoders and parameter-efficient fine-tuning. There is no
+        official key for this paper, so the worked answers show a clear,
+        well-structured way to respond.
       </p>
       <div class="meta">
         <span class="pill heat">Mid Sem 2024</span>
@@ -62,10 +59,9 @@
     <section id="paper">
       <h2><span class="num">§1</span>The paper</h2>
       <p class="section-intro">
-        Four questions. Two are five-markers on the pre-transformer era —
-        RNNs and seq2seq attention. Two are ten-markers on the transformer
-        itself and on how you fine-tune it cheaply. The mark split tells
-        you exactly where the invigilator wants you to spend your time.
+        The two five-mark questions cover RNNs and seq2seq attention. The two
+        ten-mark questions cover the transformer encoder and efficient
+        fine-tuning. Use the marks to decide how much detail each answer needs.
       </p>
 
       <div class="slide" id="paper-img">
@@ -75,14 +71,14 @@
           <div class="slide-caption">the exam paper — all four questions on one page</div>
         </div>
         <div class="explain">
-          <h4>What to notice before you read it</h4>
-          <p>Same shape as 2023 — every question is an open-ended "explain / describe / compare" prompt with no numerical work. But the balance has shifted. In 2023 the whole paper was pre-transformer; here, <strong>two thirds of the marks (20 out of 30) are on transformer-era material</strong>: the encoder block itself, and PEFT methods that only make sense once you have a large pretrained transformer to fine-tune. The 2024 syllabus has caught up with the field.</p>
+          <h4>Before you start</h4>
+          <p>Same shape as 2023: every question is an open-ended "explain / describe / compare" prompt with no numerical work. But the balance has shifted. In 2023 the whole paper was pre-transformer; here, <strong>two thirds of the marks (20 out of 30) are on transformer-era material</strong>: the encoder block itself, and PEFT methods that only make sense once you have a large pretrained transformer to fine-tune. The 2024 syllabus has caught up with the field.</p>
           <ol>
-            <li>The two 5-mark questions want <em class="term">tight</em> answers — think five distinct correct claims per question, one for each mark. Overwriting them steals time from Q3 and Q4.</li>
-            <li>The two 10-mark questions want <em class="term">structured</em> answers — a diagram, the defining equations, a walk through each sub-component, and a "why does it look this way" paragraph. A wall of prose without equations will not clear a 10-marker.</li>
+            <li>The two 5-mark questions want <em class="term">tight</em> answers, so think five distinct correct claims per question, one for each mark. Overwriting them steals time from Q3 and Q4.</li>
+            <li>The two 10-mark questions want <em class="term">structured</em> answers: a diagram, the defining equations, a walk through each sub-component, and a "why does it look this way" paragraph. A wall of prose without equations will not clear a 10-marker.</li>
           </ol>
           <div class="callout gotcha">
-            <div class="callout-label">⚠ common trap</div>
+            <div class="callout-label">⚠ Watch out</div>
             <p>Q4 asks for architectures, plural. Answering only "LoRA is low-rank, Adapters are bottlenecks" without sketching where each of them <em>lives</em> in the transformer block loses half the mark. The word "architectures" in the question is not decoration.</p>
           </div>
         </div>
@@ -112,7 +108,7 @@
         <h3>How to approach it</h3>
         <p>Only five marks, so keep it tight. Start with the failure mode a vanilla RNN has — the vanishing / exploding gradient in <em class="term">back-propagation through time</em> — because "enable handling" only makes sense once you have named what stops it. Then give the fix: <em class="term">gating</em>, in the LSTM's cell-state form and the GRU's update-gate form, both of which turn the multiplicative gradient path into a nearly additive one. Close with the more radical answer — attention removes recurrence altogether. Five marks, five distinct claims.</p>
 
-        <h3>Full worked solution</h3>
+        <h3>Worked answer</h3>
 
         <h4>Where the problem comes from</h4>
 
@@ -172,8 +168,8 @@
 
         <p>When <math><msub><mi>z</mi><mi>t</mi></msub></math> is near 0, the past is preserved verbatim and the gradient across that step is again close to the identity. Fewer parameters than LSTM, same additive-highway trick.</p>
 
-        <div class="callout mechanism">
-          <div class="callout-label">mechanism · one line</div>
+        <div class="callout How it works">
+          <div class="callout-label">How it works · one line</div>
           <p>Gates turn the recurrence's <em>multiplicative</em> gradient path into a nearly <em>additive</em> one on any step the gate says "keep". That is the single reason gated RNNs learn long dependencies where vanilla RNNs cannot.</p>
         </div>
 
@@ -182,7 +178,7 @@
         <p>The other answer is more radical: if recurrence is the reason long-range signal is fragile, remove it. <em class="term">Self-attention</em> lets any position look directly at any other position with a single matrix multiply — the distance-1 shortcut a plain RNN never had. Every token has an <math><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></math> path length to every other token, so long-range dependencies stop being a training problem at all. This is the escape hatch the transformer takes, and it is what makes the rest of this paper (Q3, Q4) possible.</p>
 
         <div class="callout aha">
-          <div class="callout-label">✦ the aha</div>
+          <div class="callout-label">✦ Key takeaway</div>
           <p>Notice the two answers point in opposite directions. Gates <em>keep</em> the recurrence and patch its gradient path. Attention <em>throws out</em> the recurrence and gives every position a direct edge to every other. Both work — but only the second scales, which is why the field moved on.</p>
         </div>
       </div>
@@ -211,7 +207,7 @@
         <h3>How to approach it</h3>
         <p>The question is two halves. First, <em>why</em>: name the bottleneck in vanilla seq2seq and argue that different target words need different source content, so the decoder needs a fresh source view at each step. Second, <em>the function</em>: write the three-line attention block — score, softmax, weighted sum — and name at least one concrete score function (additive Bahdanau or multiplicative Luong). Five marks, so keep it to one crisp diagram-in-words plus the equations.</p>
 
-        <h3>Full worked solution</h3>
+        <h3>Worked answer</h3>
 
         <h4>Why attention is needed</h4>
 
@@ -272,7 +268,7 @@
         <p>Once <math><msub><mi>c</mi><mi>t</mi></msub></math> is computed, the decoder produces the next word from a combination of its own state and the context vector: <math><mi>p</mi><mo>(</mo><msub><mi>y</mi><mi>t</mi></msub><mo>&#124;</mo><msub><mi>y</mi><mrow><mo>&lt;</mo><mi>t</mi></mrow></msub><mo>,</mo><mi>x</mi><mo>)</mo> <mo>=</mo> <mi>softmax</mi><mo>(</mo><mi>W</mi><mo>[</mo><msub><mi>s</mi><mi>t</mi></msub><mo>;</mo><msub><mi>c</mi><mi>t</mi></msub><mo>]</mo><mo>)</mo></math>.</p>
 
         <div class="callout aha">
-          <div class="callout-label">✦ the aha</div>
+          <div class="callout-label">✦ Key takeaway</div>
           <p>Attention is not just an accuracy fix for long sentences. It is the realisation that <em>"which piece of input do I need right now?"</em> is itself something the model can learn. Once you can learn a soft lookup over encoder states, you no longer need a recurrence to carry information across positions — you can just attend. That observation is what leads to the transformer.</p>
         </div>
       </div>
@@ -302,7 +298,7 @@
         <h3>How to approach it</h3>
         <p>A ten-mark structural question. Walk from input to output, naming each sub-component and giving its defining equation. The full checklist: <em>input embedding + positional encoding</em>, <em>multi-head self-attention</em> (with the scaled dot-product formula and how heads are computed and combined), <em>residual connection and LayerNorm</em>, <em>position-wise feedforward network</em>, <em>residual and LayerNorm again</em>. Close with the complexity <math><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>&#183;</mo><mi>d</mi><mo>)</mo></math> and one line on why the block looks this way. Aim for one equation-plus-paragraph per sub-component — that is roughly two marks each, which lines up with the ten.</p>
 
-        <h3>Full worked solution</h3>
+        <h3>Worked answer</h3>
 
         <h4>Setup — the block's input and output</h4>
 
@@ -363,8 +359,8 @@
 
         <p>Different heads learn to attend to different kinds of structure — one may track syntactic dependencies, another may track co-reference. Splitting into heads is essentially free (the total parameter count is roughly the same as a single-head attention of dimension <math><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math>) but is strictly more expressive.</p>
 
-        <div class="callout mechanism">
-          <div class="callout-label">mechanism · why the √d<sub>k</sub></div>
+        <div class="callout How it works">
+          <div class="callout-label">How it works · why the √d<sub>k</sub></div>
           <p>Dot products of two random <math><msub><mi>d</mi><mi>k</mi></msub></math>-dim vectors have variance proportional to <math><msub><mi>d</mi><mi>k</mi></msub></math>. Without the <math><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></math> denominator, softmax inputs grow with <math><msub><mi>d</mi><mi>k</mi></msub></math>, saturating the softmax and killing gradients. Dividing by <math><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></math> keeps the scale roughly unit variance regardless of dimension.</p>
         </div>
 
@@ -440,7 +436,7 @@
         <p>Self-attention forms an <math><mi>n</mi><mo>&#215;</mo><mi>n</mi></math> attention matrix, so the block is <math><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>&#183;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub><mo>)</mo></math> in time and <math><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math> in memory. Quadratic in the sequence length. This is the cost the field has spent the last five years trying to reduce — Flash Attention, sparse attention, linear attention, state-space models. But inside <em>one</em> encoder block, this cost is what buys you an <math><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></math> path length between any two tokens, which is the whole point.</p>
 
         <div class="callout aha">
-          <div class="callout-label">✦ the aha</div>
+          <div class="callout-label">✦ Key takeaway</div>
           <p>Read the block as two sub-layers with the same shape — each is <em>(mix, then residual + norm)</em>. Self-attention mixes information <em>across tokens</em>; the FFN mixes information <em>across feature dimensions</em>. Every subsequent architecture in this course either changes how the across-tokens mixer works (Mamba, Flash Attention, sparse variants) or how the across-features mixer scales (Mixture-of-Experts). The template is the same.</p>
         </div>
       </div>
@@ -469,7 +465,7 @@
         <h3>How to approach it</h3>
         <p>Frame both as <em class="term">parameter-efficient fine-tuning</em> (PEFT) — same problem (fine-tune a large pretrained model cheaply by touching only a small number of new parameters, keeping the original weights frozen), two different architectural answers. Sketch each one: where it plugs into the transformer block, what its forward equation looks like, how many parameters it adds. Then give the differences on axes that actually matter: serial vs parallel placement, inference latency, mergeability, expressiveness. The word "architectures" in the question is a rubric signal — you need diagrams-in-words or pictures, not just prose.</p>
 
-        <h3>Full worked solution</h3>
+        <h3>Worked answer</h3>
 
         <h4>The shared problem</h4>
 
@@ -595,8 +591,8 @@
           </tbody>
         </table>
 
-        <div class="callout mechanism">
-          <div class="callout-label">mechanism · why LoRA has zero inference cost</div>
+        <div class="callout How it works">
+          <div class="callout-label">How it works · why LoRA has zero inference cost</div>
           <p>Because <math><mi>B</mi><mi>A</mi></math> and <math><mi>W</mi></math> have the same shape, they can be summed once, after training, into a single <math><msup><mi>W</mi><mo>&#8242;</mo></msup></math>. Inference then runs exactly the same matmul the original model did — one matrix multiply, no extra layers. Adapters cannot do this because the non-linearity <math><mi>&#963;</mi></math> between the down- and up-projections is not a linear operation, so there is nothing to fold back into the frozen weights.</p>
         </div>
 
@@ -607,7 +603,7 @@
         <p><strong>LoRA</strong> takes a specific bet: the update <math><mi>&#916;</mi><mi>W</mi></math> that fine-tuning would learn is approximately low-rank, so it can be represented as <math><mi>B</mi><mi>A</mi></math> with very small <math><mi>r</mi></math>. In exchange for that assumption, LoRA gets three practical wins — fewer trained parameters, no inference latency (thanks to mergeability), and effortless multi-task serving (keep <math><mi>W</mi></math>, keep a stack of small <math><mo>(</mo><mi>A</mi><mo>,</mo><mi>B</mi><mo>)</mo></math> pairs on disk, load the pair for the task you want).</p>
 
         <div class="callout aha">
-          <div class="callout-label">✦ the aha</div>
+          <div class="callout-label">✦ Key takeaway</div>
           <p>The single sentence that captures the difference: <em>adapters make the network deeper, LoRA makes selected weight matrices richer</em>. Because "deeper" costs inference latency and "richer via a low-rank update" does not, LoRA has become the default parameter-efficient method for large models — every serving stack from Hugging Face PEFT to vLLM has first-class LoRA support, and multi-tenant LoRA serving is a real production pattern.</p>
         </div>
       </div>

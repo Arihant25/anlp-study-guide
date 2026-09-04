@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Lecture 2 · Transformers — ANLP Study Guide</title>
+<title>Lecture 2 · Transformers · ANLP Study Guide</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Lecture 2 of Advanced NLP, Monsoon 2026 IIIT-H: from word representations and backprop to the full transformer — attention, positional encoding, normalisation, and the training loop.">
+<meta name="description" content="Lecture 2 of Advanced NLP, Monsoon 2026 IIIT-H: from word representations and backprop to the full transformer: attention, positional encoding, normalisation, and the training loop.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
@@ -23,16 +23,13 @@
   <main>
     <section class="hero">
       <div class="kicker">Lecture 02 · 90 slides · August 3 &amp; 6, 2026</div>
-      <h1>Transformers — <em>the architecture the field lives on</em>.</h1>
+      <h1>Transformers: <em>the architecture the field lives on</em>.</h1>
       <p class="lead">
-        Ninety slides. This deck starts almost from scratch — one-hot vectors,
-        the definition of a derivative — and ends with the full transformer
-        block: multi-head attention, positional encoding, residual connections,
-        layer norm, and the training loop that stitches them together. Every
-        piece is motivated by a problem the previous piece could not solve.
-        The goal for the day is not to memorise the diagram from
-        <em>Attention Is All You Need</em>. It is to be able to redraw it, from
-        memory, and say why each line is where it is.
+        This deck builds up to the full transformer from the basics: word
+        representations, derivatives, backpropagation, RNN limitations,
+        attention, position, residual paths, normalization, and training.
+        By the end, the goal is not to recognise the <em>Attention Is All You
+        Need</em> diagram, but to understand why each part is there.
       </p>
       <div class="meta">
         <span class="pill heat">Lecture 02</span>
@@ -44,16 +41,11 @@
     <section id="deck">
       <h2><span class="num">§0</span>The deck at a glance</h2>
       <p class="section-intro">
-        The ninety slides cluster into eight moves. A tiny admin recap
-        (slides 1&ndash;3), then a fast tour of word representations up to
-        modern embeddings. From there the lecture rebuilds the engine
-        from the ground up: gradients and backprop, the neural-network
-        vocabulary, the RNN family and what broke for them, the attention
-        mechanism as the fix, the full self-attention/multi-head machinery,
-        positional encodings, the encoder&ndash;decoder pair, and finally
-        the training-time details — losses, optimisers, normalisation.
-        By the last slide you should be able to sketch the transformer
-        block from memory and explain why every arrow is drawn where it is.
+        The lecture moves from embeddings and gradients to RNNs, attention,
+        multi-head attention, positional encodings, encoder-decoder models,
+        and training details such as losses, optimizers, and normalization.
+        Treat it as a connected argument for the transformer, not a list of
+        components to memorize.
       </p>
     </section>
 
@@ -62,7 +54,7 @@
     <section id="admin">
       <h2><span class="num">§1</span>Admin recap</h2>
       <p class="section-intro">
-        Three quick slides that repeat what Lecture 1 covered — the title
+        Three quick slides that repeat what Lecture 1 covered: the title
         card, the seminar rule, the project rule. Nothing new; the
         instructor wants a stray reminder for anyone who missed day one.
       </p>
@@ -74,10 +66,10 @@
           <div class="slide-caption">slide 01 · title</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>Lecture 2 title card — <strong>Transformers &mdash; Intro</strong> — delivered across two class days, 3 and 6 August 2026, by Aparajitha Allamraju and Manish Shrivastava.</p>
-          <h4>The idea</h4>
-          <p>"Intro" is misleading. This is a 90-slide crash course covering everything from the definition of a derivative to a full encoder&ndash;decoder transformer. The reason it is labelled "intro" is that the <em>rest</em> of the course &mdash; nine lectures of transformer internals plus everything after &mdash; assumes you carry this deck in your head.</p>
+          <h4>On the slide</h4>
+          <p>Lecture 2 title card, <strong>Transformers, Intro</strong>, delivered across two class days, 3 and 6 August 2026, by Aparajitha Allamraju and Manish Shrivastava.</p>
+          <h4>What it means</h4>
+          <p>"Intro" is misleading. This is a 90-slide crash course covering everything from the definition of a derivative to a full encoder-decoder transformer. The reason it is labelled "intro" is that the <em>rest</em> of the course, nine lectures of transformer internals plus everything after, assumes you carry this deck in your head.</p>
         </div>
       </div>
 
@@ -97,12 +89,12 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
-          <p>Two administrative reruns from Lecture 1 &mdash; the seminar option (worth 10%, up to 16 students, replaces one exam) and the project rules (50% of the grade, teams of 3 or 4, no institute compute). See <a class="xref" href="1-logistics.html#exams">§4</a> and <a class="xref" href="1-logistics.html#projects">§5</a> of Lecture 1 for the full breakdown.</p>
-          <h4>Why they appear again</h4>
+          <h4>On these slides</h4>
+          <p>Two administrative reruns from Lecture 1, the seminar option (worth 10%, up to 16 students, replaces one exam) and the project rules (50% of the grade, teams of 3 or 4, no institute compute). See <a class="xref" href="1-logistics.html#exams">§4</a> and <a class="xref" href="1-logistics.html#projects">§5</a> of Lecture 1 for the full breakdown.</p>
+          <h4>Why it is here again</h4>
           <p>The instructor knows some students only turn up from Lecture 2 onwards. Anything that costs marks gets repeated in the second lecture as a courtesy.</p>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>Cross-reference: full logistics in <a class="xref" href="1-logistics.html">Lecture 1</a>.</p>
           </div>
         </div>
@@ -138,21 +130,21 @@
           <div class="slide-caption">slide 05 · evolution of embeddings</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Five ways to represent a word, ordered oldest to newest, with four axes on the right that shift as you descend the list.</p>
           <ul>
             <li><em class="term">One-hot vector.</em> A vector as long as the vocabulary, all zeros except a single 1 at the word's index. No context, maximum sparsity, maximum ambiguity (every sense of "bank" gets the same vector).</li>
             <li><em class="term">tf-idf.</em> Term frequency scaled by how rare the word is in the corpus. Still sparse, still context-free, but at least common words like "the" carry less weight.</li>
-            <li><em class="term">Word2Vec, GloVe, fastText.</em> Dense vectors (typically 100 to 300 dimensions) learned so that words in similar contexts get similar vectors. Still one vector per word type &mdash; "bank" (river) and "bank" (finance) collapse.</li>
+            <li><em class="term">Word2Vec, GloVe, fastText.</em> Dense vectors (typically 100 to 300 dimensions) learned so that words in similar contexts get similar vectors. Still one vector per word type, "bank" (river) and "bank" (finance) collapse.</li>
             <li><em class="term">BERT.</em> The vector for a word depends on its sentence. Two different uses of "bank" now get two different vectors.</li>
             <li><em class="term">LLM embeddings.</em> Same idea, bigger models, and the vectors are learned end-to-end on next-token prediction over web-scale text.</li>
           </ul>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Read the four arrows on the right of the slide together. As we move down the list, representations get more <strong>contextual</strong>, less <strong>ambiguous</strong>, more <strong>dense</strong>, and more <strong>complex</strong> to train. Every step of the evolution buys context by paying complexity. That trade is the through-line of the whole course.</p>
           </div>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>Lecture 3 on <a class="xref" href="3-tokenization.html">Tokenization</a> zooms into the "what is a word" question this slide silently assumes. The <a class="xref" href="4-embeddings.html">Embeddings</a> lecture zooms into Word2Vec / GloVe / fastText themselves.</p>
           </div>
         </div>
@@ -165,8 +157,8 @@
       <h2><span class="num">§3</span>Gradients &amp; backprop, from scratch</h2>
       <p class="section-intro">
         Ten slides of calculus. The lecturer is not being nostalgic. Everything
-        in the rest of the deck &mdash; every architectural choice, every
-        normalisation trick &mdash; is motivated by <em>how gradients flow</em>
+        in the rest of the deck, every architectural choice, every
+        normalisation trick, is motivated by <em>how gradients flow</em>
         through the network. If you cannot picture a gradient moving backwards
         through a matrix multiply, the transformer diagram will feel arbitrary.
         Read this section as the answer to the question "why does anything
@@ -191,12 +183,12 @@
           <div class="slide-caption">slide 07 · derivative</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>A one-line definition: the <em class="term">gradient</em> is the derivative of a function &mdash; the change in its output per unit change in its input.</p>
-          <h4>The idea</h4>
+          <h4>On the slide</h4>
+          <p>A one-line definition: the <em class="term">gradient</em> is the derivative of a function, the change in its output per unit change in its input.</p>
+          <h4>What it means</h4>
           <p>For a scalar function like <em>f(x) = x<sup>n</sup></em>, the derivative <em>f'(x) = n&thinsp;x<sup>n-1</sup></em> tells you the slope at any point. In a neural network the "function" is the loss and the "input" is a parameter. So the gradient answers: if I nudge this weight by a tiny amount, does the loss go up or down, and by how much?</p>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
             <p>Every training step is: (1) evaluate the loss, (2) compute the gradient of the loss with respect to every parameter, (3) move each parameter a small step downhill. The rest of this section is the machinery for step 2.</p>
           </div>
         </div>
@@ -209,9 +201,9 @@
           <div class="slide-caption">slide 08 · gradient vector</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Same idea, but for functions of many variables. If <em>f</em> takes <em>n</em> inputs and returns one number, its gradient <em>&nabla;f(<b>x</b>)</em> is the vector of all <em>n</em> partial derivatives.</p>
-          <h4>The idea</h4>
+          <h4>What it means</h4>
           <p>A neural network's loss depends on millions of parameters. The gradient is a vector of the same shape as your parameters: one number per weight, saying which way to push that weight. Gradient descent is literally "subtract a small multiple of this vector from your parameters".</p>
         </div>
       </div>
@@ -223,10 +215,10 @@
           <div class="slide-caption">slide 09 · Jacobian</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Now the function has many inputs <em>and</em> many outputs. The <em class="term">Jacobian</em> <em>J<sub>f</sub>(<b>x</b>)</em> is the <em>m</em>&times;<em>n</em> matrix whose <em>(i,j)</em> entry is the partial derivative of the <em>i</em>-th output with respect to the <em>j</em>-th input.</p>
-          <h4>Why it matters</h4>
-          <p>Every layer of a neural network is a function from vectors to vectors. So its "gradient" is a Jacobian. Backpropagation is nothing more than repeatedly multiplying these Jacobians together via the chain rule &mdash; only, because the final output is a single scalar (the loss), the whole chain collapses back into a gradient vector at the end.</p>
+          <h4>Why keep this in mind</h4>
+          <p>Every layer of a neural network is a function from vectors to vectors. So its "gradient" is a Jacobian. Backpropagation is nothing more than repeatedly multiplying these Jacobians together via the chain rule, only, because the final output is a single scalar (the loss), the whole chain collapses back into a gradient vector at the end.</p>
         </div>
       </div>
 
@@ -237,10 +229,10 @@
           <div class="slide-caption">slide 10 · Hessian</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The <em class="term">Hessian</em> is the matrix of second partial derivatives. It tells you not just the slope but the curvature of the loss surface.</p>
-          <h4>Why it matters &mdash; and why we mostly ignore it</h4>
-          <p>Newton's method uses the Hessian to pick step sizes automatically. Modern deep learning almost never does this: a Hessian for a billion-parameter model is a billion-by-billion matrix, and just storing it is impossible. What optimisers like Adam do instead is estimate a cheap proxy for curvature from the running mean and variance of the gradient itself. But the Hessian is worth knowing exists &mdash; it is what "second-order optimisation" refers to and what algorithms like L-BFGS approximate.</p>
+          <h4>Why it matters in practice</h4>
+          <p>Newton's method uses the Hessian to pick step sizes automatically. Modern deep learning almost never does this: a Hessian for a billion-parameter model is a billion-by-billion matrix, and just storing it is impossible. What optimisers like Adam do instead is estimate a cheap proxy for curvature from the running mean and variance of the gradient itself. But the Hessian is worth knowing exists, it is what "second-order optimisation" refers to and what algorithms like L-BFGS approximate.</p>
         </div>
       </div>
 
@@ -251,15 +243,15 @@
           <div class="slide-caption">slide 11 · gradient descent</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The training loop in one equation: <em>&theta; &larr; &theta; &minus; &eta;&nbsp;&nabla;<sub>&theta;</sub>&thinsp;J(&theta;)</em>. Initialise parameters randomly, compute the gradient of the loss, take a small step in the opposite direction, repeat.</p>
           <div class="eq boxed">
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
               <mi>&theta;</mi><mo>&larr;</mo><mi>&theta;</mi><mo>&minus;</mo><mi>&eta;</mi><mspace width="0.15em"/><mo>&nabla;</mo><mi>J</mi><mo>(</mo><mi>&theta;</mi><mo>)</mo>
             </math>
           </div>
-          <h4>The idea</h4>
-          <p>The letter <em>&eta;</em> ("eta") is the <em class="term">learning rate</em> &mdash; how big a step to take. The letter <em>J</em> is a common name for the loss (older literature used it for the "cost function"; you will more often see <em>L</em> in modern papers). This is the entire recipe for training any model in the course.</p>
+          <h4>What it means</h4>
+          <p>The letter <em>&eta;</em> ("eta") is the <em class="term">learning rate</em>, how big a step to take. The letter <em>J</em> is a common name for the loss (older literature used it for the "cost function"; you will more often see <em>L</em> in modern papers). This is the entire recipe for training any model in the course.</p>
         </div>
       </div>
 
@@ -270,10 +262,10 @@
           <div class="slide-caption">slide 12 · SGD</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The practical version: instead of computing the gradient over the entire dataset (impossible when the dataset is bigger than memory), estimate it from one sample or one <em class="term">mini-batch</em> at a time.</p>
-          <h4>The idea</h4>
-          <p>Full-batch gradient descent is precise but glacial. <em class="term">Stochastic gradient descent</em> (SGD) trades precision for speed: each step is noisy, but you get many, many steps per unit of compute. Every optimiser in the rest of the course &mdash; SGD, Adam, AdamW, Lion &mdash; is a variant of this idea with a smarter learning rate.</p>
+          <h4>What it means</h4>
+          <p>Full-batch gradient descent is precise but glacial. <em class="term">Stochastic gradient descent</em> (SGD) trades precision for speed: each step is noisy, but you get many, many steps per unit of compute. Every optimiser in the rest of the course, SGD, Adam, AdamW, Lion, is a variant of this idea with a smarter learning rate.</p>
         </div>
       </div>
 
@@ -284,10 +276,10 @@
           <div class="slide-caption">slide 13 · GD vs SGD</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Two loss contour plots. On the left, SGD's path zig-zags towards the centre because each step is based on a noisy gradient estimate. On the right, full-batch GD walks smoothly to the minimum.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>The noise in SGD is not just a bug we tolerate for speed. It is a feature: the jitter helps the optimiser escape shallow local minima and saddle points that would trap a smoother trajectory. Deep-learning loss surfaces are full of saddle points; SGD's noise is what lets it keep moving.</p>
           </div>
         </div>
@@ -300,9 +292,9 @@
           <div class="slide-caption">slide 14 · learning rate</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The learning-rate trade-off. Too small and the loss barely moves per step; too large and each step overshoots the minimum and can diverge.</p>
-          <h4>The idea</h4>
+          <h4>What it means</h4>
           <p>Picking <em>&eta;</em> is one of the single most important knobs in deep learning. For transformers, the standard practice is a <em class="term">warmup + decay</em> schedule: ramp up from zero over a few thousand steps, then decay. We will meet the schedule again in <a class="xref" href="#train">§9</a>.</p>
         </div>
       </div>
@@ -314,15 +306,15 @@
           <div class="slide-caption">slide 15 · training fixes</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three tricks that let you use a larger, more aggressive learning rate without blowing up.</p>
           <ul>
             <li><em class="term">Gradient clipping</em> caps the norm of the gradient vector, so one anomalous batch cannot send weights to infinity.</li>
             <li><em class="term">Weight regularisation</em> (L1, L2, weight decay) penalises large weights, which keeps the loss surface flatter and better conditioned.</li>
-            <li><em class="term">Batch normalisation</em> rescales activations so successive layers see inputs of similar magnitude &mdash; a stabiliser we will revisit as <em class="term">layer norm</em> in the transformer.</li>
+            <li><em class="term">Batch normalisation</em> rescales activations so successive layers see inputs of similar magnitude, a stabiliser we will revisit as <em class="term">layer norm</em> in the transformer.</li>
           </ul>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>Layer norm and RMSNorm both live inside every transformer block. See <a class="xref" href="#block">§8</a> for how they wire in.</p>
           </div>
         </div>
@@ -337,7 +329,7 @@
         Six slides on the mechanic that actually computes those gradients:
         forward pass, backward pass, then a hand-drawn chain of hidden states
         that walks the loss gradient right back to the first layer. The last
-        slide in this run &mdash; the product of Jacobians &mdash; is the
+        slide in this run, the product of Jacobians, is the
         seed of the vanishing-gradient problem that will motivate attention
         two sections later.
       </p>
@@ -349,10 +341,10 @@
           <div class="slide-caption">slide 16 · backprop overview</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Training a network alternates between a <em class="term">forward pass</em> (feed the input through, compute the loss) and a <em class="term">backward pass</em> (propagate the gradient of the loss back to every parameter).</p>
-          <h4>The idea</h4>
-          <p>Backpropagation is not a new algorithm on top of the chain rule &mdash; it <em>is</em> the chain rule, applied to a computation graph in reverse. The name is 40 years old (Rumelhart, Hinton, Williams, 1986); everything since has been engineering.</p>
+          <h4>What it means</h4>
+          <p>Backpropagation is not a new algorithm on top of the chain rule, it <em>is</em> the chain rule, applied to a computation graph in reverse. The name is 40 years old (Rumelhart, Hinton, Williams, 1986); everything since has been engineering.</p>
         </div>
       </div>
 
@@ -372,10 +364,10 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The two halves of a training step. Forward: multiply the input by the weights layer by layer to produce a prediction. Backward: compute the error (prediction minus target), then propagate that error backwards through the same weights, accumulating a gradient for each parameter along the way.</p>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
             <p>In PyTorch: the forward pass builds a graph, <code>loss.backward()</code> walks it in reverse and fills in <code>.grad</code> on every tensor. That is literally the API the two slides describe.</p>
           </div>
         </div>
@@ -388,10 +380,10 @@
           <div class="slide-caption">slide 19 · loss reaches the first layer</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>A chain of hidden states <em>h<sub>1</sub></em>, <em>h<sub>2</sub></em>, <em>h<sub>3</sub></em>, <em>h<sub>4</sub></em> with the same weight matrix <em>W<sub>h</sub></em> between each pair. The loss <em>L</em> sits at the end. The red arrows show the gradient of the loss flowing backwards to <em>h<sub>1</sub></em>.</p>
           <h4>Why the shared weights matter</h4>
-          <p>Reusing the same <em>W<sub>h</sub></em> across time steps is the picture of a Recurrent Neural Network unrolled. It is also why RNNs have so few parameters compared to their depth &mdash; and, as the next slide makes explicit, why they struggle to train.</p>
+          <p>Reusing the same <em>W<sub>h</sub></em> across time steps is the picture of a Recurrent Neural Network unrolled. It is also why RNNs have so few parameters compared to their depth, and, as the next slide makes explicit, why they struggle to train.</p>
         </div>
       </div>
 
@@ -411,7 +403,7 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Slide 20 labels every intermediate gradient in the chain. Slide 21 writes out the reason: the gradient at the first layer is the product of all the intermediate Jacobians times the gradient at the loss.</p>
           <div class="eq boxed">
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
@@ -427,8 +419,8 @@
             </math>
           </div>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>Read that formula and ask: what happens if each of those Jacobians has entries smaller than 1? The product shrinks exponentially. If they are larger than 1, it explodes. This is the <em class="term">vanishing / exploding gradient</em> problem &mdash; the single reason plain RNNs cannot learn long-range dependencies, and the reason the transformer's shortcut connections were invented. Hold this picture in your head; the entire next section is a reaction to it.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Read that formula and ask: what happens if each of those Jacobians has entries smaller than 1? The product shrinks exponentially. If they are larger than 1, it explodes. This is the <em class="term">vanishing / exploding gradient</em> problem, the single reason plain RNNs cannot learn long-range dependencies, and the reason the transformer's shortcut connections were invented. Hold this picture in your head; the entire next section is a reaction to it.</p>
           </div>
         </div>
       </div>
@@ -437,7 +429,7 @@
     <hr class="soft">
 
     <section id="nn">
-      <h2><span class="num">§5</span>Neural nets in NLP &mdash; and what broke</h2>
+      <h2><span class="num">§5</span>Neural nets in NLP, and what broke</h2>
       <p class="section-intro">
         Fifteen slides on the pre-transformer world. The lecture uses the RNN
         as a foil: it walks you through the RNN language model, names the
@@ -455,7 +447,7 @@
           <div class="slide-caption">slide 22 · section divider</div>
         </div>
         <div class="explain">
-          <p>Section divider &mdash; from here the lecture stops teaching calculus and starts building the actual neural architectures NLP used before transformers.</p>
+          <p>Section divider. From here the lecture stops teaching calculus and starts building the actual neural architectures NLP used before transformers.</p>
         </div>
       </div>
 
@@ -466,10 +458,10 @@
           <div class="slide-caption">slide 23 · RNN language model</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The classic <em class="term">Recurrent Neural Network</em> language model, unrolled over the sentence "The student opened their ___". Each token <em>x<sub>i</sub></em> becomes an embedding via matrix <em>E</em>, is projected by <em>W<sub>e</sub></em> into a hidden state, and combined with the previous hidden state via <em>W<sub>h</sub></em>. The final hidden state produces a distribution <em>y</em> over the next word.</p>
-          <h4>The idea</h4>
-          <p>The whole sentence's context is compressed into one fixed-size hidden vector before you ever predict a word. The same <em>W<sub>h</sub></em> is reused at every step &mdash; that is what "recurrent" means. This is elegant and it works, but the next four slides list what it cannot do.</p>
+          <h4>What it means</h4>
+          <p>The whole sentence's context is compressed into one fixed-size hidden vector before you ever predict a word. The same <em>W<sub>h</sub></em> is reused at every step; that is what "recurrent" means. This is elegant and it works, but the next four slides list what it cannot do.</p>
         </div>
       </div>
 
@@ -480,16 +472,16 @@
           <div class="slide-caption">slide 24 · RNN limitations</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three fatal weaknesses of the RNN, and every one of them is a headline problem the transformer will need to solve.</p>
           <ul>
             <li><em class="term">Finite context.</em> Everything the model knows about the past is squeezed into one fixed-size vector.</li>
             <li><em class="term">Long-distance dependency.</em> Words far back in the sentence have almost no influence on the current prediction (this is the vanishing gradient again).</li>
-            <li><em class="term">Lack of parallelisability.</em> To compute <em>h<sub>t</sub></em> you must first compute <em>h<sub>t-1</sub></em>. A GPU cannot help you here &mdash; the recurrence is inherently sequential.</li>
+            <li><em class="term">Lack of parallelisability.</em> To compute <em>h<sub>t</sub></em> you must first compute <em>h<sub>t-1</sub></em>. A GPU cannot help you here, the recurrence is inherently sequential.</li>
           </ul>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>Item 3 is the one that ends up mattering most. The transformer will accept a bigger parameter count and more FLOPs per token &mdash; but it can do them all in parallel. In the GPU era, "trainable in a week" beats "elegant but sequential" every time.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Item 3 is the one that ends up mattering most. The transformer will accept a bigger parameter count and more FLOPs per token, but it can do them all in parallel. In the GPU era, "trainable in a week" beats "elegant but sequential" every time.</p>
           </div>
         </div>
       </div>
@@ -510,10 +502,10 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Two sides of the same coin. The product of Jacobians we wrote in <a class="xref" href="#backprop">§4</a> is a game of exponents: if factors are smaller than 1 the gradient <em class="term">vanishes</em> to zero, if they are larger than 1 it <em class="term">explodes</em> to infinity.</p>
           <h4>Consequences</h4>
-          <p>A vanishing gradient means the model can only learn from words a few tokens back &mdash; the very long-distance dependencies (slides 33 and 34, coming up) never train. An exploding gradient sends the update step to infinity and blows the loss up. The vanishing case has no cheap fix; the exploding case does &mdash; clip the gradient norm at every step.</p>
+          <p>A vanishing gradient means the model can only learn from words a few tokens back, the very long-distance dependencies (slides 33 and 34, coming up) never train. An exploding gradient sends the update step to infinity and blows the loss up. The vanishing case has no cheap fix; the exploding case does, clip the gradient norm at every step.</p>
         </div>
       </div>
 
@@ -524,7 +516,7 @@
           <div class="slide-caption">slide 27 · section divider</div>
         </div>
         <div class="explain">
-          <p>A brief interlude &mdash; five slides on why long-distance dependencies actually matter for language, not just as an abstract complaint about RNNs.</p>
+          <p>A brief interlude, five slides on why long-distance dependencies actually matter for language, not just as an abstract complaint about RNNs.</p>
         </div>
       </div>
 
@@ -535,14 +527,14 @@
           <div class="slide-caption">slide 28 · relationships in language</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Five kinds of long-range structure that a language model must handle to be any good.</p>
           <ul>
-            <li><em class="term">Anaphora</em> &mdash; a pronoun refers back to something already said.</li>
-            <li><em class="term">Co-reference</em> &mdash; two mentions in a text refer to the same entity.</li>
-            <li><em class="term">Causal</em> &mdash; one event caused another.</li>
-            <li><em class="term">Temporal</em> &mdash; one event happens because of, or after, another.</li>
-            <li><em class="term">Discourse structures</em> &mdash; larger organisational patterns (topic, contrast, elaboration).</li>
+            <li><em class="term">Anaphora</em>: a pronoun refers back to something already said.</li>
+            <li><em class="term">Co-reference</em>: two mentions in a text refer to the same entity.</li>
+            <li><em class="term">Causal</em>: one event caused another.</li>
+            <li><em class="term">Temporal</em>: one event happens because of, or after, another.</li>
+            <li><em class="term">Discourse structures</em>: larger organisational patterns (topic, contrast, elaboration).</li>
           </ul>
           <p>The next four slides give one worked example of each of the first four.</p>
         </div>
@@ -564,11 +556,11 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Anaphora: the pronoun "it" points back at "the latest bestseller". Co-reference: the pronoun "she" refers to "Sally"; and in the more tangled second sentence, the "I" and "my" inside the quote both refer back to "Y" outside it.</p>
           <div class="callout gotcha">
-            <div class="callout-label">⚠ common trap</div>
-            <p>The second example on slide 30 is a warning shot: the referent can sit <em>outside</em> the quoted span, and any model that scans linearly (an RNN) will find that hard. It is easy for self-attention, which can jump directly to "Y" from inside the quote &mdash; hold that in mind when we meet attention in <a class="xref" href="#attn">§6</a>.</p>
+            <div class="callout-label">⚠ Watch out</div>
+            <p>The second example on slide 30 is a warning shot: the referent can sit <em>outside</em> the quoted span, and any model that scans linearly (an RNN) will find that hard. It is easy for self-attention, which can jump directly to "Y" from inside the quote. Hold that in mind when we meet attention in <a class="xref" href="#attn">§6</a>.</p>
           </div>
         </div>
       </div>
@@ -589,10 +581,10 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The same conjunction "since" doing two completely different jobs: on slide 31 it introduces a <em>cause</em> ("because you suggested it&hellip;"); on slide 32 it introduces a <em>time</em> ("from the moment you suggested it&hellip;").</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Same surface form, different meaning. The only way to tell them apart is to read the whole clause after "since" and pattern-match against causal versus temporal cues. A model that can only summarise the past into one fixed vector will miss the distinction; a model that can reach back and attend to the specific words that follow can catch it.</p>
           </div>
         </div>
@@ -614,11 +606,11 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Two fill-in-the-blank paragraphs where the answer sits far back in the text.</p>
           <ul>
-            <li>Slide 33: the missing word is <strong>tickets</strong> &mdash; introduced in the very first clause, and never repeated. Every sentence in between is about ink.</li>
-            <li>Slide 34: the missing word is <strong>Spanish</strong> &mdash; you need to remember "grew up in Spain" from the first sentence, even though the paragraph then wanders through the UK, Patagonia and Peru.</li>
+            <li>Slide 33: the missing word is <strong>tickets</strong>, introduced in the very first clause, and never repeated. Every sentence in between is about ink.</li>
+            <li>Slide 34: the missing word is <strong>Spanish</strong>, you need to remember "grew up in Spain" from the first sentence, even though the paragraph then wanders through the UK, Patagonia and Peru.</li>
           </ul>
           <p>Both examples are trivial for a fluent reader. Both are hard for an RNN whose gradient signal from that opening clause has already vanished by the end.</p>
         </div>
@@ -640,11 +632,11 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The famous Chris Olah <em class="term">LSTM</em> diagram, and the honest scorecard. The LSTM adds a <em class="term">cell state</em> <em>c<sub>t</sub></em> that flows through the sequence almost untouched, plus three sigmoid <em class="term">gates</em>: a <em>forget gate</em> that decides how much of the old cell state to keep, an <em>input gate</em> that decides how much of the newly-computed candidate to add, and an <em>output gate</em> that decides how much of the cell state to expose as the hidden state.</p>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
-            <p>Why does this fix vanishing gradients? Because the cell state is passed forward via <em>addition</em>, not repeated multiplication. Additive updates give the gradient a straight path back to the beginning of the sequence &mdash; no more exponential decay.</p>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
+            <p>Why does this fix vanishing gradients? Because the cell state is passed forward via <em>addition</em>, not repeated multiplication. Additive updates give the gradient a straight path back to the beginning of the sequence. No more exponential decay.</p>
           </div>
           <h4>Why it isn't the end of the story</h4>
           <p>Slide 36 is honest: LSTMs <em>partially</em> solve long-distance dependency. They still process one token at a time, so the parallelism problem remains, and for really long documents (a hundred sentences apart) their memory still degrades. This is the door the transformer walks through.</p>
@@ -672,11 +664,11 @@
           <div class="slide-caption">slide 37 · LSTM's residual sins</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>Four remaining problems the LSTM cannot fix. It is computationally complex (four gates means four matrix multiplies per token), it is slow (still sequential in time), long dependencies degrade past a few dozen tokens, and there is no clean recipe for <em class="term">transfer learning</em> &mdash; you cannot easily pretrain a giant LSTM on the web and then fine-tune it on your task.</p>
+          <h4>On the slide</h4>
+          <p>Four remaining problems the LSTM cannot fix. It is computationally complex (four gates means four matrix multiplies per token), it is slow (still sequential in time), long dependencies degrade past a few dozen tokens, and there is no clean recipe for <em class="term">transfer learning</em>: you cannot easily pretrain a giant LSTM on the web and then fine-tune it on your task.</p>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
-            <p>The transfer-learning point is what BERT and GPT eventually solved &mdash; and they could only do it because the architecture underneath (the transformer) is parallelisable at pretraining scale.</p>
+            <div class="callout-label">→ Keep reading</div>
+            <p>The transfer-learning point is what BERT and GPT eventually solved, and they could only do it because the architecture underneath (the transformer) is parallelisable at pretraining scale.</p>
           </div>
         </div>
       </div>
@@ -708,11 +700,11 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The pre-attention <em class="term">seq2seq</em> model for machine translation (Sutskever, Vinyals &amp; Le, 2014): an encoder RNN reads the source sentence "I like coffee" and squeezes it into a single fixed-size <em>encoder vector</em>; a decoder RNN then generates the target "Me gusta el café" from that vector.</p>
           <div class="callout gotcha">
             <div class="callout-label">⚠ the bottleneck</div>
-            <p>Every last drop of information about the source has to fit into that one vector. A 20-word sentence, a 200-word sentence, a whole paragraph &mdash; all the same size. This is the "information bottleneck" the arrow on slide 40 is pointing at, and it is exactly what Bahdanau, Cho and Bengio (ICLR 2015) proposed to fix.</p>
+            <p>Every last drop of information about the source has to fit into that one vector. A 20-word sentence, a 200-word sentence, a whole paragraph, all the same size. This is the "information bottleneck" the arrow on slide 40 is pointing at, and it is exactly what Bahdanau, Cho and Bengio (ICLR 2015) proposed to fix.</p>
           </div>
         </div>
       </div>
@@ -724,9 +716,9 @@
           <div class="slide-caption">slide 41 · what attention buys</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The pitch. At every decoder step, instead of relying only on the summary vector, the decoder looks back at <em>all</em> the encoder hidden states and takes a weighted combination of them, with the weights (the <em class="term">attention distribution</em>) computed on the fly.</p>
-          <h4>The idea</h4>
+          <h4>What it means</h4>
           <p>The decoder gets to <em>choose</em>, at each output word, which source words to focus on. Producing "café" attends heavily to "coffee"; producing "Me" attends to "I". No single vector has to remember the whole sentence, because the whole sentence is still there for the decoder to look at.</p>
         </div>
       </div>
@@ -754,7 +746,7 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Three snapshots of the same decoding, at different output positions. At each step:</p>
           <ol>
             <li>The decoder state is compared against every encoder state to produce <em class="term">attention scores</em>.</li>
@@ -762,13 +754,13 @@
             <li>The distribution is used to weight-sum the encoder states, producing an <em class="term">attention output</em>.</li>
             <li>The attention output is concatenated with the decoder state and used to predict the next word.</li>
           </ol>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
-            <p>The attention distribution changes at every output token &mdash; that is why we see three different peaked bar charts in three consecutive slides. Same encoder, same decoder, different soft look-ups.</p>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
+            <p>The attention distribution changes at every output token; that is why we see three different peaked bar charts in three consecutive slides. Same encoder, same decoder, different soft look-ups.</p>
           </div>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>Watch what the attention distribution is doing on slide 44. It peaks on "coffee" when producing "café". Nobody told it to. It learned it from data. This is where the "attention as soft alignment" intuition comes from &mdash; and why classical machine-translation alignment tables became obsolete overnight.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Watch what the attention distribution is doing on slide 44. It peaks on "coffee" when producing "café". Nobody told it to. It learned it from data. This is where the "attention as soft alignment" intuition comes from, and why classical machine-translation alignment tables became obsolete overnight.</p>
           </div>
         </div>
       </div>
@@ -780,8 +772,8 @@
           <div class="slide-caption">slide 45 · attention scorecard</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>Five wins over plain seq2seq. The first two are the mechanical fix (no bottleneck, direct source access). The third is the intuition ("humans do not read a whole sentence into a single vector before translating either"). The fourth is a big deal in practice &mdash; attention weights can be plotted as a heatmap and give you a rough visualisation of what the model is looking at. The fifth is the surprise: statistical machine translation before this had a whole subfield on learning explicit word alignments; attention gets alignment for free as a byproduct.</p>
+          <h4>On the slide</h4>
+          <p>Five wins over plain seq2seq. The first two are the mechanical fix (no bottleneck, direct source access). The third is the intuition ("humans do not read a whole sentence into a single vector before translating either"). The fourth is a big deal in practice, attention weights can be plotted as a heatmap and give you a rough visualisation of what the model is looking at. The fifth is the surprise: statistical machine translation before this had a whole subfield on learning explicit word alignments; attention gets alignment for free as a byproduct.</p>
         </div>
       </div>
     </section>
@@ -794,7 +786,7 @@
         Twenty slides. The lecture takes the attention gadget from the last
         section, throws away the RNN it was wrapped around, and asks: what if
         we let a sequence attend to itself? What follows is the entire
-        transformer machinery, one operation at a time &mdash; embeddings, then
+        transformer machinery, one operation at a time, embeddings, then
         queries/keys/values, then the attention matrix, then multi-head, then
         the scorecard against RNN. By slide 65 you have the "Attention is All
         You Need" paper's centrepiece.
@@ -807,7 +799,7 @@
           <div class="slide-caption">slide 46 · leftover RNN issues</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>A summary of what attention <em>could not</em> fix when it was still bolted onto an RNN. The RNN underneath still runs sequentially and still degrades on very long dependencies. To get rid of both we need to get rid of the RNN.</p>
         </div>
       </div>
@@ -819,11 +811,11 @@
           <div class="slide-caption">slide 47 · the paper</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The title page of Vaswani et al., <em>Attention Is All You Need</em> (NeurIPS 2017). Eight authors, all at Google.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>Read the title as a claim. It says: given attention, you do not need a recurrence at all. Every part of the RNN that attention was patching over &mdash; the encoder, the decoder, the recurrence in between &mdash; can be replaced by more attention. The rest of the deck spells out how.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Read the title as a claim. It says: given attention, you do not need a recurrence at all. Every part of the RNN that attention was patching over, the encoder, the decoder, the recurrence in between, can be replaced by more attention. The rest of the deck spells out how.</p>
           </div>
         </div>
       </div>
@@ -835,7 +827,7 @@
           <div class="slide-caption">slide 48 · section divider</div>
         </div>
         <div class="explain">
-          <p>Sub-divider &mdash; from here through slide 65 we build self-attention step by step.</p>
+          <p>Sub-divider. From here through slide 65 we build self-attention step by step.</p>
         </div>
       </div>
 
@@ -855,10 +847,10 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
-          <p>The core idea of <em class="term">self-attention</em>: within a single sentence, let every position attend to every other position. Slide 49 draws the arcs; slide 50 shows what a trained transformer actually does on the sentence "The animal didn't cross the street because it was too tired". The token "it" learns to attend heavily to "the animal" &mdash; the model has silently resolved an anaphora with no explicit supervision.</p>
+          <h4>On these slides</h4>
+          <p>The core idea of <em class="term">self-attention</em>: within a single sentence, let every position attend to every other position. Slide 49 draws the arcs; slide 50 shows what a trained transformer actually does on the sentence "The animal didn't cross the street because it was too tired". The token "it" learns to attend heavily to "the animal", the model has silently resolved an anaphora with no explicit supervision.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Compare this to the arcs on <a class="xref" href="#s29">slide 29</a>. What was called "anaphora" back there and demanded a special linguistic algorithm is here just what one of the attention heads at layer 5 does for free.</p>
           </div>
         </div>
@@ -871,10 +863,10 @@
           <div class="slide-caption">slide 51 · context-aware embeddings</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The intuitive job description for self-attention. The word "cat" starts life as a plain type-level embedding; after one self-attention layer, its representation has soaked up "cute", "fluffy" and "brown" (the adjectives that modify it). Meanwhile "shelf" absorbs "bright" and "corner".</p>
           <h4>Why this matters</h4>
-          <p>This is exactly the "contextual embedding" property that Word2Vec did not have and BERT did. Self-attention <em>is</em> the mechanism that turns a static word embedding into a sentence-dependent one.</p>
+          <p>This is exactly the "contextual embedding" property that Word2Vec did not have and BERT did. Self-attention <em>is</em> the How it works that turns a static word embedding into a sentence-dependent one.</p>
         </div>
       </div>
 
@@ -894,7 +886,7 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The bookkeeping. Slide 52 sets up an <em>n</em>&times;<em>n</em> matrix where each cell says "how much should the row-token attend to the column-token?" Slide 53 gives the one equation that fills it in:</p>
           <div class="eq boxed">
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
@@ -907,9 +899,9 @@
               <mi>V</mi>
             </math>
           </div>
-          <p>Three inputs &mdash; queries <em>Q</em>, keys <em>K</em>, values <em>V</em> &mdash; and one scalar hyperparameter <em>d<sub>k</sub></em>, the key dimension. Compute pairwise dot products between queries and keys, scale down by &radic;<em>d<sub>k</sub></em>, softmax across the row, then use those weights to average the values.</p>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
+          <p>Three inputs, queries <em>Q</em>, keys <em>K</em>, values <em>V</em>, and one scalar hyperparameter <em>d<sub>k</sub></em>, the key dimension. Compute pairwise dot products between queries and keys, scale down by &radic;<em>d<sub>k</sub></em>, softmax across the row, then use those weights to average the values.</p>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
             <p>The scale factor &radic;<em>d<sub>k</sub></em> is not cosmetic. Without it, large key dimensions give dot products with huge variance, which push softmax into saturated regions where its gradient is tiny. Dividing by &radic;<em>d<sub>k</sub></em> keeps the pre-softmax scores at unit variance and gradients healthy.</p>
           </div>
         </div>
@@ -938,14 +930,14 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
-          <p>Three snapshots of the same construction. Each token starts as an embedding <em>E<sub>i</sub></em>. Three learned linear projections &mdash; <em>W<sub>Q</sub></em>, <em>W<sub>K</sub></em>, <em>W<sub>V</sub></em> &mdash; turn that one embedding into three role-specific vectors:</p>
+          <h4>On these slides</h4>
+          <p>Three snapshots of the same construction. Each token starts as an embedding <em>E<sub>i</sub></em>. Three learned linear projections, <em>W<sub>Q</sub></em>, <em>W<sub>K</sub></em>, <em>W<sub>V</sub></em>, turn that one embedding into three role-specific vectors:</p>
           <ul>
             <li><em class="term">Query</em> <em>q<sub>i</sub></em>: "here is what I am looking for."</li>
             <li><em class="term">Key</em> <em>k<sub>i</sub></em>: "here is what I contain."</li>
             <li><em class="term">Value</em> <em>v<sub>i</sub></em>: "here is what I will hand over if I get picked."</li>
           </ul>
-          <p>The database analogy is exact: a query is compared against every key, the resulting scores decide who wins, and the winner's value is returned. Only softer &mdash; instead of one winner we take a weighted average of all values.</p>
+          <p>The database analogy is exact: a query is compared against every key, the resulting scores decide who wins, and the winner's value is returned. Only softer, instead of one winner we take a weighted average of all values.</p>
         </div>
       </div>
 
@@ -972,10 +964,10 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The formula on slide 53, worked column by column for the query <em>q<sub>3</sub></em> (the word "cat"). Slide 57 fills the column with scaled dot products. Slide 58 softmaxes them into a distribution (numerical example: 0.38 on "brown", 0.48 on "cat" itself, 0.08 on "lazes", small mass elsewhere). Slide 59 uses that distribution to weight-average the value vectors.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Read the numbers on slide 58 carefully. The output representation for "cat" ends up as roughly 0.48 &times; <em>v</em>(cat) + 0.38 &times; <em>v</em>(brown) + a smaller piece of <em>v</em>(lazes). That is precisely what "the embedding of <em>cat</em> should absorb the adjectives that modify it" looks like in code.</p>
           </div>
         </div>
@@ -997,10 +989,10 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
-          <p>The same operation as a matrix multiply. <em>X</em> is an <em>n</em>&times;<em>d</em><sub>embed</sub> input (all tokens stacked as rows). Three projection matrices <em>W<sub>Q</sub></em>, <em>W<sub>K</sub></em>, <em>W<sub>V</sub></em> take <em>X</em> to <em>Q</em>, <em>K</em>, <em>V</em>. The whole self-attention layer is now three matrix multiplies, one softmax, and one more matrix multiply &mdash; every step is a single GPU kernel and every position is computed at the same time.</p>
+          <h4>On these slides</h4>
+          <p>The same operation as a matrix multiply. <em>X</em> is an <em>n</em>&times;<em>d</em><sub>embed</sub> input (all tokens stacked as rows). Three projection matrices <em>W<sub>Q</sub></em>, <em>W<sub>K</sub></em>, <em>W<sub>V</sub></em> take <em>X</em> to <em>Q</em>, <em>K</em>, <em>V</em>. The whole self-attention layer is now three matrix multiplies, one softmax, and one more matrix multiply. Every step is a single GPU kernel, and every position is computed at the same time.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>This is why the transformer is fast. Compare with an RNN: <em>n</em> sequential steps, each depending on the previous one. Self-attention: two matrix multiplies, no sequence. The trade is that the attention matrix has <em>n</em>&times;<em>n</em> entries, so cost is <em>O(n<sup>2</sup></em>&times;<em>d)</em>. For short-to-medium sequences that is a win; for very long ones it is the pain point the "More Attention" lecture will address.</p>
           </div>
         </div>
@@ -1013,8 +1005,8 @@
           <div class="slide-caption">slide 62 · eight parallel heads</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>The transformer runs attention <em>h</em> times in parallel (the paper picked <em>h</em>=8) &mdash; each head has its own <em>W<sub>Q</sub></em>, <em>W<sub>K</sub></em>, <em>W<sub>V</sub></em> triple. Every head produces its own output matrix <em>Z<sub>i</sub></em>. Those matrices are concatenated along the feature axis and passed through a final output projection <em>W<sup>O</sup></em>.</p>
+          <h4>On the slide</h4>
+          <p>The transformer runs attention <em>h</em> times in parallel (the paper picked <em>h</em>=8); each head has its own <em>W<sub>Q</sub></em>, <em>W<sub>K</sub></em>, <em>W<sub>V</sub></em> triple. Every head produces its own output matrix <em>Z<sub>i</sub></em>. Those matrices are concatenated along the feature axis and passed through a final output projection <em>W<sup>O</sup></em>.</p>
           <h4>Why multiple heads</h4>
           <p>One attention distribution can only pay attention to one kind of relationship at a time. If it is busy resolving "it → animal", it cannot also be tracking "cross → street". Multiple heads let the layer represent many relationship types <em>simultaneously</em> at the same layer, each in its own low-dimensional subspace.</p>
         </div>
@@ -1036,11 +1028,11 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
-          <p>The two figures from the paper. Slide 63 zooms in on one head &mdash; note the optional <em class="term">attention mask</em> added before the softmax, which is how the decoder gets to hide future tokens from itself during training. Slide 64 stacks <em>h</em> of those heads, concatenates, and applies the output projection <em>W<sup>O</sup></em>.</p>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
-            <p>The mask is just a matrix of the same <em>n</em>&times;<em>n</em> shape as <em>QK<sup>T</sup></em>, with a value of &minus;&infin; wherever you want to hide a position and 0 elsewhere. Adding &minus;&infin; before the softmax makes that cell exactly zero afterwards. In a causal (decoder-side) transformer, the mask is upper-triangular &mdash; every position is blocked from looking at future positions.</p>
+          <h4>On these slides</h4>
+          <p>The two figures from the paper. Slide 63 zooms in on one head; note the optional <em class="term">attention mask</em> added before the softmax, which is how the decoder gets to hide future tokens from itself during training. Slide 64 stacks <em>h</em> of those heads, concatenates, and applies the output projection <em>W<sup>O</sup></em>.</p>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
+            <p>The mask is just a matrix of the same <em>n</em>&times;<em>n</em> shape as <em>QK<sup>T</sup></em>, with a value of &minus;&infin; wherever you want to hide a position and 0 elsewhere. Adding &minus;&infin; before the softmax makes that cell exactly zero afterwards. In a causal (decoder-side) transformer, the mask is upper-triangular: every position is blocked from looking at future positions.</p>
           </div>
         </div>
       </div>
@@ -1052,15 +1044,15 @@
           <div class="slide-caption">slide 65 · why we switched</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The scorecard. Self-attention wins on all three axes that killed the RNN.</p>
           <ol>
-            <li><strong>Computational complexity per layer.</strong> <em>O(n<sup>2</sup>&thinsp;d)</em> for self-attention vs. <em>O(n&thinsp;d<sup>2</sup>)</em> for an RNN. Self-attention is faster whenever <em>n</em> &lt; <em>d</em> &mdash; which is the regime almost every serious deep model runs in.</li>
+            <li><strong>Computational complexity per layer.</strong> <em>O(n<sup>2</sup>&thinsp;d)</em> for self-attention vs. <em>O(n&thinsp;d<sup>2</sup>)</em> for an RNN. Self-attention is faster whenever <em>n</em> &lt; <em>d</em>, which is the regime almost every serious deep model runs in.</li>
             <li><strong>Parallelisation.</strong> Every position is a matrix-multiply row, computable in parallel. No unrolled loop.</li>
             <li><strong>Long-distance dependency.</strong> Any two positions are one attention hop apart. No gradient product to vanish.</li>
           </ol>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>The one thing self-attention does <em>not</em> do out of the box is know about order. The next section fixes that.</p>
           </div>
         </div>
@@ -1087,10 +1079,10 @@
           <div class="slide-caption">slide 66 · what's missing</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three problems with raw self-attention.</p>
           <ul>
-            <li><em class="term">No word position.</em> Swap "dog bites man" for "man bites dog" and every attention score stays the same &mdash; the model is permutation-invariant.</li>
+            <li><em class="term">No word position.</em> Swap "dog bites man" for "man bites dog" and every attention score stays the same, the model is permutation-invariant.</li>
             <li><em class="term">No non-linearity.</em> Self-attention is a weighted sum of linear projections. Stacking pure attention layers still gives you a linear function.</li>
             <li><em class="term">Looks at future words.</em> A language-model decoder must not see word <em>t+1</em> when predicting word <em>t</em>. Vanilla self-attention peeks freely.</li>
           </ul>
@@ -1121,7 +1113,7 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The <em class="term">sinusoidal positional encoding</em> from the paper.</p>
           <div class="eq boxed">
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
@@ -1139,13 +1131,13 @@
           </div>
           <p>Each position <em>pos</em> gets a vector the same size as the token embedding, made of sines and cosines at geometrically decreasing frequencies. That vector is <em>added</em> to the token embedding before it enters the first attention layer.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>Why sinusoids? Because <em>sin(a+b)</em> and <em>cos(a+b)</em> can be written as linear combinations of <em>sin(a)</em>, <em>cos(a)</em>, <em>sin(b)</em>, <em>cos(b)</em>. So the model can learn a linear operator that says "shift by <em>k</em> positions" &mdash; and that operator will work for any <em>k</em>, including <em>k</em>'s longer than any position seen during training. That is the "extrapolate to longer sequences" claim on slide 68.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Why sinusoids? Because <em>sin(a+b)</em> and <em>cos(a+b)</em> can be written as linear combinations of <em>sin(a)</em>, <em>cos(a)</em>, <em>sin(b)</em>, <em>cos(b)</em>. So the model can learn a linear operator that says "shift by <em>k</em> positions", and that operator will work for any <em>k</em>, including <em>k</em>'s longer than any position seen during training. That is the "extrapolate to longer sequences" claim on slide 68.</p>
           </div>
           <p>Slide 69 is the visualisation everyone remembers: 20 positions on the vertical, 512 embedding dims on the horizontal, sines on the left half of the vector, cosines on the right, frequencies falling as you go right. Each row is a unique fingerprint for that position.</p>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
-            <p>Modern transformers usually replace sinusoidal PE with <em class="term">RoPE</em> (rotary position embeddings) or <em class="term">ALiBi</em> &mdash; see the "positional encoding" lecture later in the course. But sinusoids remain the textbook default and are still what LLaMA-style diagrams draw.</p>
+            <div class="callout-label">→ Keep reading</div>
+            <p>Modern transformers usually replace sinusoidal PE with <em class="term">RoPE</em> (rotary position embeddings) or <em class="term">ALiBi</em>. See the "positional encoding" lecture later in the course. But sinusoids remain the textbook default and are still what LLaMA-style diagrams draw.</p>
           </div>
         </div>
       </div>
@@ -1157,8 +1149,8 @@
           <div class="slide-caption">slide 70 · FFN for non-linearity</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>The fix for "no non-linearity": after every attention layer, add a small <em class="term">position-wise feed-forward network</em> &mdash; a two-layer MLP applied independently to every token, with a ReLU (or GeLU) in the middle.</p>
+          <h4>On the slide</h4>
+          <p>The fix for "no non-linearity": after every attention layer, add a small <em class="term">position-wise feed-forward network</em>, a two-layer MLP applied independently to every token, with a ReLU (or GeLU) in the middle.</p>
           <div class="eq boxed">
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
               <mtext>FFN</mtext><mo>(</mo><mi>x</mi><mo>)</mo>
@@ -1170,7 +1162,7 @@
               <mo>+</mo><msub><mi>b</mi><mn>2</mn></msub>
             </math>
           </div>
-          <p>This is where most of the parameter count of a modern transformer actually lives &mdash; the FFN's hidden dimension is typically 4&times; the model dimension.</p>
+          <p>This is where most of the parameter count of a modern transformer actually lives, the FFN's hidden dimension is typically 4&times; the model dimension.</p>
         </div>
       </div>
 
@@ -1181,11 +1173,11 @@
           <div class="slide-caption">slide 71 · causal mask</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The fix for "looks at future words". In the decoder, before the softmax, we add a matrix that is 0 on the lower triangle and &minus;&infin; on the upper triangle. After softmax those &minus;&infin; entries become zero, so no position can attend to a later one.</p>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
-            <p>This is called <em class="term">causal masking</em>. It is the one architectural difference between an <em class="term">encoder-only</em> model (BERT, no mask &mdash; every position sees every other position) and a <em class="term">decoder-only</em> model (GPT, causal mask &mdash; each position sees only its predecessors).</p>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
+            <p>This is called <em class="term">causal masking</em>. It is the one architectural difference between an <em class="term">encoder-only</em> model (BERT, no mask, every position sees every other position) and a <em class="term">decoder-only</em> model (GPT, causal mask, each position sees only its predecessors).</p>
           </div>
         </div>
       </div>
@@ -1206,12 +1198,12 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Everything from the last five slides, wired into a single block. The <em class="term">encoder block</em>: input embedding + positional encoding, then <em>N</em> repetitions of (multi-head self-attention &rarr; Add &amp; Norm &rarr; feed-forward &rarr; Add &amp; Norm).</p>
-          <p>The <em class="term">decoder block</em> adds two things: (a) the first attention sublayer is <em>masked</em>, and (b) a second attention sublayer sits on top, which is <em>cross-attention</em> &mdash; its queries come from the decoder, but its keys and values come from the encoder output. That is how the decoder actually reads the source sentence.</p>
+          <p>The <em class="term">decoder block</em> adds two things: (a) the first attention sublayer is <em>masked</em>, and (b) a second attention sublayer sits on top, which is <em>cross-attention</em>: its queries come from the decoder, but its keys and values come from the encoder output. That is how the decoder actually reads the source sentence.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>The Bahdanau attention from slides 41-44 is exactly the cross-attention sublayer on slide 73. What was a bolt-on to the RNN in 2015 is now one of three attention sublayers per decoder block. The transformer did not invent attention &mdash; it noticed you could use it everywhere.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>The Bahdanau attention from slides 41-44 is exactly the cross-attention sublayer on slide 73. What was a bolt-on to the RNN in 2015 is now one of three attention sublayers per decoder block. The transformer did not invent attention, it noticed you could use it everywhere.</p>
           </div>
         </div>
       </div>
@@ -1232,16 +1224,16 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Slide 74 is Figure 1 of <em>Attention Is All You Need</em>: encoder on the left, decoder on the right, cross-attention arrows in the middle. This is <strong>the</strong> diagram of the field. Being able to redraw it from memory is one of the things this whole deck is training you to do.</p>
           <p>Slide 75 zooms in on the two yellow "Add &amp; Norm" boxes that appear all over the diagram.</p>
           <ul>
-            <li><em class="term">Residual (skip) connection</em>: the sublayer's output is <em>added</em> to its input. This gives the gradient a shortcut path all the way back to the first layer &mdash; without residuals, transformers deeper than a few layers do not train at all.</li>
+            <li><em class="term">Residual (skip) connection</em>: the sublayer's output is <em>added</em> to its input. This gives the gradient a shortcut path all the way back to the first layer. Without residuals, transformers deeper than a few layers do not train at all.</li>
             <li><em class="term">Layer normalisation</em>: inside each token vector, rescale to zero mean and unit variance, then multiply by learned gain and add learned bias. This keeps activations in a well-behaved range as they pass through many layers.</li>
           </ul>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
-            <p>Layer norm normalises <em>across the feature dimension of one token</em>, not across the batch (that is batch norm) or across positions (that is instance norm). Because it never mixes information between positions, it plays cleanly with variable sequence lengths &mdash; which is precisely what sequence models need.</p>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
+            <p>Layer norm normalises <em>across the feature dimension of one token</em>, not across the batch (that is batch norm) or across positions (that is instance norm). Because it never mixes information between positions, it plays cleanly with variable sequence lengths, which is precisely what sequence models need.</p>
           </div>
         </div>
       </div>
@@ -1255,7 +1247,7 @@
         Nine slides. The lecture zooms out and asks: given the block we just
         built, what actually flows through it, what does each parameter cost
         us, and where does the architecture still hurt? This is the section
-        where you get a feel for the <em>shape</em> of a modern transformer &mdash;
+        where you get a feel for the <em>shape</em> of a modern transformer:
         the tensors, the parameter counts, the trade-offs the next nine
         lectures will attack.
       </p>
@@ -1267,11 +1259,11 @@
           <div class="slide-caption">slide 76 · why residuals</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Two loss landscapes for ResNet-56, from Li et al. 2018. Without skip connections the loss surface is a chaotic mountain range full of sharp peaks and saddles; with them it is a smooth bowl with a single global minimum.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>This picture is why the "Add" in "Add &amp; Norm" is not decorative. Residual connections do not just help gradients flow &mdash; they geometrically reshape the loss surface into something an optimiser can actually walk down. Take them out and a 100-layer transformer would not train.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>This picture is why the "Add" in "Add &amp; Norm" is not decorative. Residual connections do not just help gradients flow, they geometrically reshape the loss surface into something an optimiser can actually walk down. Take them out and a 100-layer transformer would not train.</p>
           </div>
         </div>
       </div>
@@ -1283,12 +1275,12 @@
           <div class="slide-caption">slide 77 · three flavours of attention</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>The three places attention appears in a full encoder&ndash;decoder transformer.</p>
+          <h4>On the slide</h4>
+          <p>The three places attention appears in a full encoder-decoder transformer.</p>
           <ul>
-            <li><em class="term">Encoder self-attention</em> &mdash; every source token attends to every source token.</li>
-            <li><em class="term">Encoder&ndash;decoder (cross) attention</em> &mdash; each decoder token attends to every encoder token.</li>
-            <li><em class="term">Masked decoder self-attention</em> &mdash; each decoder token attends to prior decoder tokens only.</li>
+            <li><em class="term">Encoder self-attention</em>: every source token attends to every source token.</li>
+            <li><em class="term">Encoder-decoder (cross) attention</em>: each decoder token attends to every encoder token.</li>
+            <li><em class="term">Masked decoder self-attention</em>: each decoder token attends to prior decoder tokens only.</li>
           </ul>
           <p>Same equation, different Q/K/V sources and different mask.</p>
         </div>
@@ -1301,11 +1293,11 @@
           <div class="slide-caption">slide 78 · cross attention</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The exact wiring of <em class="term">cross-attention</em>: queries come from the decoder, keys and values come from the encoder's output. This is what lets the decoder "read" the source.</p>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
-            <p>Cross-attention is not just for translation. It is the mechanism behind any two-tower model: an image encoder feeding a text decoder (image captioning), an audio encoder feeding a text decoder (speech-to-text, Whisper), a retrieved-document encoder feeding a generator (Fusion-in-Decoder). Learn the pattern once, use it everywhere.</p>
+            <div class="callout-label">→ Keep reading</div>
+            <p>Cross-attention is not just for translation. It is the How it works behind any two-tower model: an image encoder feeding a text decoder (image captioning), an audio encoder feeding a text decoder (speech-to-text, Whisper), a retrieved-document encoder feeding a generator (Fusion-in-Decoder). Learn the pattern once, use it everywhere.</p>
           </div>
         </div>
       </div>
@@ -1326,13 +1318,13 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Five wins, two pain points. Slide 79 lists the wins:</p>
           <ul>
             <li><strong>Parallel processing</strong> at training time (the reason "train on the whole internet" ever became feasible).</li>
-            <li><strong>Semi-supervised learning</strong> and <strong>transfer learning</strong> &mdash; pretrain on next-token prediction, fine-tune on anything.</li>
-            <li><strong>Knowledge stores</strong> &mdash; the FFN layers act as key-value memory, storing facts.</li>
-            <li><strong>Reasoning</strong> &mdash; chain-of-thought and its descendants exploit the depth of attention layers.</li>
+            <li><strong>Semi-supervised learning</strong> and <strong>transfer learning</strong>: pretrain on next-token prediction, fine-tune on anything.</li>
+            <li><strong>Knowledge stores</strong>: the FFN layers act as key-value memory, storing facts.</li>
+            <li><strong>Reasoning</strong>: chain-of-thought and its descendants exploit the depth of attention layers.</li>
           </ul>
           <p>Slide 80 names the two open wounds: (1) the attention matrix is <em>O(n<sup>2</sup>)</em> in sequence length, and (2) positional encoding is a bolt-on that never quite settles.</p>
         </div>
@@ -1354,14 +1346,14 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The two open problems in slide 80, each with a shopping list of research responses.</p>
           <ul>
-            <li>Position: <em class="term">learned</em>, <em class="term">relative</em>, <em class="term">absolute</em>, <em class="term">RoPE</em> (rotary position embeddings &mdash; the LLaMA default), and even <em class="term">NoPE</em> (no positional encoding at all, letting causal masking do the work).</li>
-            <li>Attention efficiency: <em class="term">sparse</em> attention (only compute a subset of the matrix), <em class="term">grouped-query attention</em> (share K/V across heads &mdash; LLaMA-2, Mistral), <em class="term">multi-head latent attention</em> (DeepSeek-V2's trick), <em class="term">log-linear</em> and <em class="term">linear</em> attention (algorithmic escapes from the <em>n<sup>2</sup></em> cost).</li>
+            <li>Position: <em class="term">learned</em>, <em class="term">relative</em>, <em class="term">absolute</em>, <em class="term">RoPE</em> (rotary position embeddings, the LLaMA default), and even <em class="term">NoPE</em> (no positional encoding at all, letting causal masking do the work).</li>
+            <li>Attention efficiency: <em class="term">sparse</em> attention (only compute a subset of the matrix), <em class="term">grouped-query attention</em> (share K/V across heads, LLaMA-2, Mistral), <em class="term">multi-head latent attention</em> (DeepSeek-V2's trick), <em class="term">log-linear</em> and <em class="term">linear</em> attention (algorithmic escapes from the <em>n<sup>2</sup></em> cost).</li>
           </ul>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>Every one of these gets its own lecture later: <a class="xref" href="6-more-attention.html">More Attention</a> covers sparse, grouped-query, and Flash Attention; the positional-encoding lecture covers RoPE and NoPE; the alternate-architectures block covers state-space models as the more radical version of "linear attention".</p>
           </div>
         </div>
@@ -1383,14 +1375,14 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Slide 83 is a bookkeeping picture: given hidden dimension <em>d</em>, key dim <em>d<sub>q</sub></em>, <em>h</em> heads and vocabulary size <em>V</em>, every weight matrix has a specific shape. Slide 84 plugs in numbers (a 1B-parameter model with <em>V</em>=32k, <em>d</em>=2048, 16 layers, 16 heads) and reads off the budget.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Two numbers jump out. <strong>The FFN is 57% of the parameters</strong>. Attention (all four projections summed over all heads and layers) is 29%. Everything else is a rounding error. When people say "the transformer is mostly a stack of MLPs with a small amount of routing", this is what they mean.</p>
           </div>
-          <div class="callout mechanism">
-            <div class="callout-label">mechanism</div>
+          <div class="callout How it works">
+            <div class="callout-label">How it works</div>
             <p>You can also read the FFN's <em>d</em>&times;4<em>d</em> weight matrices as "one key-value memory per row". Two facts: (1) most of the model's factual knowledge sits in these matrices, (2) mixture-of-experts (MoE) works because you can shard <em>them</em> across experts without touching attention. Both are the "knowledge-stores" bullet on slide 79.</p>
           </div>
         </div>
@@ -1405,7 +1397,7 @@
         Six slides. The lecture closes with a survey: how have transformer
         configurations drifted from 2017 to 2026, does "long context" actually
         work, and if it doesn't, where does it break? These slides do not
-        teach a new mechanism &mdash; they orient you for the rest of the
+        teach a new How it works; they orient you for the rest of the
         semester by naming names.
       </p>
 
@@ -1425,7 +1417,7 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Two tables that map every headline model of the last nine years against the choices this deck has just introduced: tokenizer, positional encoding, attention variant, normalisation, activation, optimiser. Read them side by side and you can see the drift:</p>
           <ul>
             <li>Positional encoding: <strong>sine &rarr; absolute &rarr; RoPE &rarr; NoPE</strong>.</li>
@@ -1435,11 +1427,11 @@
             <li>Layer type: <strong>plain FFN &rarr; Mixture of Experts</strong> (MoE) once you cross ~30B parameters.</li>
           </ul>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Notice what has <em>not</em> changed: the block. It is still Add &amp; Norm around attention, Add &amp; Norm around a feed-forward, repeat <em>N</em> times. Every improvement in nine years is a swap-out of a single component, not a redesign. That is what "the architecture the field lives on" means.</p>
           </div>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>Each column of these tables corresponds to one later lecture. Tokenizer &rarr; <a class="xref" href="3-tokenization.html">Lecture 3</a>. PE &rarr; positional-encoding lecture. Attention &rarr; <a class="xref" href="6-more-attention.html">More Attention</a>. Norm/Activation &rarr; the normalisation lecture. MoE &rarr; the MoE lecture. Come back to this slide at the end of the semester and every acronym will be a lecture you have taken.</p>
           </div>
         </div>
@@ -1452,8 +1444,8 @@
           <div class="slide-caption">slide 87 · did we solve long context?</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>A leading question. The 1M-token context lengths in slide 86 look like the long-context problem is solved. The lecturer is about to argue it is not &mdash; classical benchmarks say yes, but the harder tasks say otherwise.</p>
+          <h4>On the slide</h4>
+          <p>A leading question. The 1M-token context lengths in slide 86 look like the long-context problem is solved. The lecturer is about to argue it is not. Classical benchmarks say yes, but the harder tasks say otherwise.</p>
         </div>
       </div>
 
@@ -1473,9 +1465,9 @@
           </div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>The real-world workloads that stress a model's context window. Inputs are legal contracts, whole books, transcripts, entire codebases, and multi-thousand-token system prompts. Tasks are long-document QA, multi-document QA / retrieval-augmented QA, long multi-turn dialogue history, and code understanding.</p>
-          <p>None of these are what the transformer was originally designed for &mdash; a machine-translation encoder eats a sentence, not a novel. Every one of them is where modern LLMs are asked to work today.</p>
+          <p>None of these are what the transformer was originally designed for. A machine-translation encoder eats a sentence, not a novel. Every one of them is where modern LLMs are asked to work today.</p>
         </div>
       </div>
 
@@ -1486,18 +1478,18 @@
           <div class="slide-caption">slide 90 · lost in the middle</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>The closing punch. Liu et al. (TACL 2024) fed transformer LMs long documents with a single relevant fact hidden in them and measured accuracy as a function of <em>where</em> that fact sat. The curve is U-shaped: models find the fact well at the beginning, well at the end, and <strong>badly in the middle</strong> &mdash; even when the model's advertised context window comfortably fits the whole document.</p>
+          <h4>On the slide</h4>
+          <p>The closing punch. Liu et al. (TACL 2024) fed transformer LMs long documents with a single relevant fact hidden in them and measured accuracy as a function of <em>where</em> that fact sat. The curve is U-shaped: models find the fact well at the beginning, well at the end, and <strong>badly in the middle</strong>, even when the model's advertised context window comfortably fits the whole document.</p>
           <div class="callout gotcha">
             <div class="callout-label">⚠ the takeaway</div>
             <p>A 128k-token context window is not the same as 128k tokens of attention. Positional encoding, attention dilution, and training-data recency all conspire to make the middle of a long input a blind spot. This one paper is why "long context" is still an open research area, not a solved engineering problem.</p>
           </div>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>You will meet "Lost in the Middle" again in the retrieval / RAG discussion and in the long-context lecture. It is the reason many production systems chunk and re-rank rather than dump a whole document into context.</p>
           </div>
           <h4>End of Lecture 2</h4>
-          <p>Ninety slides in. You should now be able to (a) sketch the encoder&ndash;decoder transformer from memory, (b) name every arrow and say what problem it solves, and (c) read a modern LLM paper's architecture table and recognise every column. From here the course starts <em>inside</em> the block, piece by piece.</p>
+          <p>Ninety slides in. You should now be able to (a) sketch the encoder-decoder transformer from memory, (b) name every arrow and say what problem it solves, and (c) read a modern LLM paper's architecture table and recognise every column. From here the course starts <em>inside</em> the block, piece by piece.</p>
         </div>
       </div>
     </section>

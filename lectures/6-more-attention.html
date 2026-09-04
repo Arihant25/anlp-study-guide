@@ -42,15 +42,13 @@
   <main>
     <section class="hero">
       <div class="kicker">Lecture 06 · 21 slides · September 3, 2026</div>
-      <h1>More Attention — <em>the variants that make it fit</em>.</h1>
+      <h1>More Attention: <em>the variants that make it fit</em>.</h1>
       <p class="lead">
-        Standard scaled dot-product attention is beautiful and expensive: it lets
-        every token see every other token, and it pays for that privilege with
-        an <em>n</em>-by-<em>n</em> score matrix at every layer. Double the
-        context, quadruple the compute. This lecture is the first honest look
-        at what happens when you refuse to pay that bill — you throw entries
-        away (sliding, sparse, BigBird) or you rewrite the arithmetic so the
-        <em>n</em>-by-<em>n</em> matrix never appears (linear attention).
+        Standard attention lets every token compare itself with every other
+        token, which means building an <em>n</em>-by-<em>n</em> score matrix at
+        every layer. Doubling the context therefore quadruples the work. This
+        lecture covers two responses: compute fewer pairs with sliding, sparse,
+        or BigBird attention, or avoid materializing the matrix with linear attention.
       </p>
       <div class="meta">
         <span class="pill heat">Lecture 06</span>
@@ -62,15 +60,11 @@
     <section id="deck">
       <h2><span class="num">§0</span>The deck at a glance</h2>
       <p class="section-intro">
-        Twenty-one slides in five moves. A one-slide reminder of why standard
-        attention hurts, then three families of <em class="term">sparsity</em>
-        patterns — sliding, sparse, and BigBird's hybrid — each with its own
-        picture, memory table, and limitations slide. The final eight slides
-        do something more radical: they change the algebra of attention itself
-        so that its cost becomes linear in the sequence length. Every family
-        is presented the same way, so you can compare like-for-like: what does
-        the attention mask look like, what does the KV cache cost, and what
-        does the method give up to save that cost.
+        The lecture begins with the quadratic cost of standard attention, then
+        compares sliding, sparse, and BigBird masks. The final section changes
+        the attention computation itself to make cost linear in sequence length.
+        For each method, track the mask, KV-cache cost, and what the efficiency
+        gain gives up.
       </p>
     </section>
 
@@ -91,10 +85,10 @@
           <div class="slide-caption">slide 01 · title</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Lecture 6 of Advanced NLP, Monsoon 2026. The title <em>More Attention</em> is a promise: you already know one attention (the one from Lecture 5). Now you get four more, each one designed to fix something that scaled dot-product attention is bad at.</p>
-          <h4>The idea behind it</h4>
-          <p>The transformer's ubiquity is partly an accident of hardware. Attention was picked in 2017 because it parallelised on GPUs. But its <em class="term">quadratic</em> cost in the sequence length was tolerated then because sequences were short (128–512 tokens). The moment people wanted 32k, 128k, or 1M-token contexts, that quadratic became the bottleneck of the entire field. This lecture is the field's response.</p>
+          <h4>What to take from it</h4>
+          <p>The transformer's ubiquity is partly an accident of hardware. Attention was picked in 2017 because it parallelised on GPUs. Its <em class="term">quadratic</em> cost in the sequence length was tolerated back then because sequences were short (128 to 512 tokens). The moment people wanted 32k, 128k, or 1M-token contexts, that quadratic became the bottleneck of the entire field. This lecture is how the field responded.</p>
         </div>
       </div>
 
@@ -105,20 +99,20 @@
           <div class="slide-caption">slide 02 · why standard attention hurts</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three disadvantages of <em class="term">scaled dot-product attention</em>, the operation from Lecture 5 that computes
           <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mtext>softmax</mtext><mo>(</mo><mfrac><mrow><mi>Q</mi><msup><mi>K</mi><mo>⊤</mo></msup></mrow><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></mfrac><mo>)</mo><mi>V</mi></math>. The three complaints are linked, not independent.</p>
-          <h4>The idea behind it</h4>
-          <p>The middle bullet — <strong>every token attends to every other</strong> — is the cause; the other two are symptoms. If every one of <em>n</em> queries dot-products against every one of <em>n</em> keys, you build an <em>n</em>×<em>n</em> matrix. That matrix takes
+          <h4>What to take from it</h4>
+          <p>The middle bullet, <strong>every token attends to every other</strong>, is the cause; the other two are symptoms. If every one of <em>n</em> queries dot-products against every one of <em>n</em> keys, you build an <em>n</em>×<em>n</em> matrix. That matrix takes
           <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math>
-          arithmetic and <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math> memory. So you cannot afford long <em>n</em> — hence the "fixed context window" ceiling.</p>
+          arithmetic and <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math> memory. So you cannot afford long <em>n</em>, and that is where the "fixed context window" ceiling comes from.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>Every variant in the rest of the lecture is a way of saying <em>no, my query does not need to look at every key</em>. Sliding attention says "only my neighbours." Sparse says "only a striped subset." BigBird says "neighbours + a few globals + a bit of random." Linear says "look at all of them, but through a factorisation that never materialises the matrix." Same disease, four different medicines.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Every variant in the rest of the lecture is a way of saying <em>no, my query does not need to look at every key</em>. Sliding attention says "only my neighbours." Sparse says "only a striped subset." BigBird says "neighbours plus a few globals plus a bit of random." Linear says "look at all of them, but through a factorisation that never materialises the matrix." Same disease, four different medicines.</p>
           </div>
           <div class="callout link">
-            <div class="callout-label">→ where this comes from</div>
-            <p>The disease itself is introduced in <a class="xref" href="5-attention.html">Lecture 5</a>. If any symbol here — Q, K, V, softmax, <em class="term">KV cache</em> — is unfamiliar, go back and skim slides on scaled dot-product attention before continuing.</p>
+            <div class="callout-label">→ Background</div>
+            <p>The disease itself is introduced in <a class="xref" href="5-attention.html">Lecture 5</a>. If any symbol here (Q, K, V, softmax, <em class="term">KV cache</em>) is unfamiliar, go back and skim slides on scaled dot-product attention before continuing.</p>
           </div>
         </div>
       </div>
@@ -127,7 +121,7 @@
     <hr class="soft">
 
     <section id="sliding">
-      <h2><span class="num">§2</span>Sliding-window attention — <em>attend to your neighbours</em></h2>
+      <h2><span class="num">§2</span>Sliding-window attention: <em>attend to your neighbours</em></h2>
       <p class="section-intro">
         The simplest fix. Instead of letting a query look at all <em>n</em>
         keys, let it look only at a window of <em>w</em> keys centred on
@@ -144,23 +138,23 @@
           <div class="slide-caption">slide 03 · Longformer's four patterns</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Four attention masks from the Longformer paper. In each, the axes are query index (rows) and key index (columns), and green cells are the (query, key) pairs that are actually computed:</p>
           <ul>
-            <li><strong>(a) Full n² attention</strong> — the standard mask, a solid green square. Everyone looks at everyone.</li>
-            <li><strong>(b) Sliding window</strong> — a thin diagonal band of width <em>w</em>. Each query attends to <em>w</em>/2 tokens on either side.</li>
-            <li><strong>(c) Dilated sliding window</strong> — the same band, but with gaps: skip every other key. This widens the <em class="term">receptive field</em> without adding cost, the same trick that WaveNet uses in dilated convolutions.</li>
-            <li><strong>(d) Global + sliding</strong> — the band, plus a few full rows and columns for <em class="term">global tokens</em> (typically <code>[CLS]</code> or question tokens) that every position attends to and that attend to everything.</li>
+            <li><strong>(a) Full n² attention.</strong> The standard mask, a solid green square. Everyone looks at everyone.</li>
+            <li><strong>(b) Sliding window.</strong> A thin diagonal band of width <em>w</em>. Each query attends to <em>w</em>/2 tokens on either side.</li>
+            <li><strong>(c) Dilated sliding window.</strong> The same band, but with gaps: skip every other key. This widens the <em class="term">receptive field</em> without adding cost, the same trick that WaveNet uses in dilated convolutions.</li>
+            <li><strong>(d) Global plus sliding.</strong> The band, plus a few full rows and columns for <em class="term">global tokens</em> (typically <code>[CLS]</code> or question tokens) that every position attends to and that attend to everything.</li>
           </ul>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Instead of an <em>n</em>×<em>n</em> matrix, you keep an <em>n</em>×<em>w</em> band. Cost drops from
           <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math>
           to
           <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>n</mi><mi>w</mi><mo>)</mo></math>,
-          which is <strong>linear in <em>n</em></strong> when <em>w</em> is fixed. And the third bullet — "stacking enables distant influence" — is the honest defense of this design: a token can only reach <em>w</em>/2 neighbours in one layer, but after <em>L</em> layers its <em class="term">receptive field</em> is <em>L</em>·<em>w</em>/2, so with enough depth it can still influence a distant token indirectly, the way information flows across a CNN.</p>
-          <div class="callout mechanism">
-            <div class="callout-label">⚙ how it works</div>
-            <p>Every family in this lecture reduces to <em>which cells of the attention matrix do I actually compute</em>. Sliding attention is the case where the answer is a band of width <em>w</em>. All the arithmetic tricks are downstream of that mask.</p>
+          which is <strong>linear in <em>n</em></strong> when <em>w</em> is fixed. And the third bullet, "stacking enables distant influence", is the honest defense of this design: a token can only reach <em>w</em>/2 neighbours in one layer, but after <em>L</em> layers its <em class="term">receptive field</em> is <em>L</em>·<em>w</em>/2, so with enough depth it can still influence a distant token indirectly, the way information flows across a CNN.</p>
+          <div class="callout How it works">
+            <div class="callout-label">⚙ How it works</div>
+            <p>Every family in this lecture reduces to <em>which cells of the attention matrix do I actually compute</em>. Sliding attention is the case where the answer is a band of width <em>w</em>. All the arithmetic tricks follow from that mask.</p>
           </div>
         </div>
       </div>
@@ -173,9 +167,9 @@
             <div class="slide-caption">slide 04 · sliding limitations</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
+            <h4>On the slide</h4>
             <p>The honest downsides. Two of them.</p>
-            <h4>The idea behind it</h4>
+            <h4>What to take from it</h4>
             <p>The first is the CNN problem in disguise: to relate token 1 to token 10 000 you need
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mn>10000</mn><mo>/</mo><mo>(</mo><mi>w</mi><mo>/</mo><mn>2</mn><mo>)</mo></math>
             layers of message-passing. Depth is not free.</p>
@@ -190,12 +184,12 @@
             <div class="slide-caption">slide 05 · sliding memory table</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
+            <h4>On the slide</h4>
             <p>A worked memory table for a reference model: 2048-dim embeddings, 16 heads, 16 layers, and a window of <em>w</em> = 128 tokens. The <strong>KV cache</strong> row is the punchline: because each layer only needs to remember the last <em>w</em> keys/values, the cache is
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>w</mi><mo>·</mo><mi>l</mi><mo>·</mo><mn>2</mn><mo>·</mo><msub><mi>d</mi><mi>h</mi></msub></math>
-            per token — a fixed 4 MB, not a growing quantity.</p>
+            per token: a fixed 4 MB, not a growing quantity.</p>
             <h4>Why the KV cache row matters</h4>
-            <p>The <em class="term">KV cache</em> is what a decoder keeps in GPU memory during generation so that the next token can attend to the past without recomputing keys and values. In standard attention it grows linearly with the number of generated tokens; here it is <strong>capped</strong> at <em>w</em>. This is the practical reason people ship sliding attention: it makes inference at 100k tokens fit on one card.</p>
+            <p>The <em class="term">KV cache</em> is what a decoder keeps in GPU memory during generation so that the next token can attend to the past without recomputing keys and values. In standard attention it grows linearly with the number of generated tokens; here it is <strong>capped</strong> at <em>w</em>. That is the practical reason people ship sliding attention: it makes inference at 100k tokens fit on one card.</p>
           </div>
         </div>
       </div>
@@ -204,12 +198,12 @@
     <hr class="soft">
 
     <section id="sparse">
-      <h2><span class="num">§3</span>Sparse attention — <em>attend to a chosen few</em></h2>
+      <h2><span class="num">§3</span>Sparse attention: <em>attend to a chosen few</em></h2>
       <p class="section-intro">
-        Sliding is one way to sparsify. But it is not the only pattern that
+        Sliding is one way to sparsify, but it is not the only pattern that
         works. Slide 6 introduces the <em>Sparse Transformer</em> of Child
         <em>et al.</em> (2019), which keeps a small stride of long-range
-        connections in the mask, and slide 8 fast-forwards to DeepSeek-v3.2's
+        connections in the mask. Slide 8 fast-forwards to DeepSeek-v3.2's
         idea: rather than fix the sparsity pattern, <em>learn</em> which past
         tokens are worth keeping, per query.
       </p>
@@ -221,9 +215,9 @@
           <div class="slide-caption">slide 06 · Child et al. sparse patterns</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>Three masks from the <em>Sparse Transformers</em> paper. The full pattern (left) is compared to two structured sparsifications: <strong>strided</strong> — attend to your local window <em>and</em> every <em>k</em>-th token in the past — and <strong>fixed</strong> — attend to your window and to a fixed set of "summary" positions.</p>
-          <h4>The idea behind it</h4>
+          <h4>On the slide</h4>
+          <p>Three masks from the <em>Sparse Transformers</em> paper. The full pattern (left) is compared to two structured sparsifications. <strong>Strided</strong>: attend to your local window <em>and</em> every <em>k</em>-th token in the past. <strong>Fixed</strong>: attend to your window and to a fixed set of "summary" positions.</p>
+          <h4>What to take from it</h4>
           <p>The design intent was image generation: the paper factorises attention into two heads that between them cover the full 2D image raster in
           <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>n</mi><msqrt><mi>n</mi></msqrt><mo>)</mo></math>
           instead of
@@ -231,7 +225,7 @@
           One head handles the local neighbourhood; the other jumps a fixed stride so that after two hops any pixel can reach any other.</p>
           <div class="callout link">
             <div class="callout-label">→ where the note comes from</div>
-            <p>"Aimed mainly at image processing" is a historical note: pixel neighbourhoods have <em>strong</em> local structure and a natural stride (row width), which is exactly what strided sparse patterns exploit. For text the payoff is smaller, which is one reason BigBird added random links on top.</p>
+            <p>"Aimed mainly at image processing" is a historical note. Pixel neighbourhoods have <em>strong</em> local structure and a natural stride (row width), which is exactly what strided sparse patterns exploit. For text the payoff is smaller, and that is one reason BigBird added random links on top.</p>
           </div>
         </div>
       </div>
@@ -244,10 +238,10 @@
             <div class="slide-caption">slide 07 · sparse memory (fixed w)</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
-            <p>The same reference model as slide 5. The parameter columns don't change — <em>the projections Q, K, V are the same</em> whatever the mask does. What changes is the KV cache, still ~4 MB per position because each query only needs its window of past keys and values in fast memory.</p>
+            <h4>On the slide</h4>
+            <p>The same reference model as slide 5. The parameter columns don't change: <em>the projections Q, K, V are the same</em> whatever the mask does. What changes is the KV cache, still ~4 MB per position because each query only needs its window of past keys and values in fast memory.</p>
             <h4>Why the tables look almost identical</h4>
-            <p>These memory tables recur through the lecture on purpose. Each family costs roughly the same in <em>parameters</em>; the differences are in the <strong>cache</strong> and in the <strong>arithmetic per step</strong>. The savings live in what you don't compute, not in what you don't store as weights.</p>
+            <p>These memory tables recur through the lecture on purpose. Each family costs roughly the same in <em>parameters</em>; the differences are in the <strong>cache</strong> and in the <strong>arithmetic per step</strong>. The savings come from what you don't compute, not from what you don't store as weights.</p>
           </div>
         </div>
 
@@ -258,12 +252,12 @@
             <div class="slide-caption">slide 08 · DeepSeek top-k selection</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
-            <p>DeepSeek-v3.2's contribution to sparse attention. There is <strong>no window at all</strong>. For each query, a tiny specialised "index" head — run at very low precision to keep it cheap — scores all past tokens; only the <em class="term">top-k</em> highest scorers get promoted to full-precision attention.</p>
-            <h4>The idea behind it</h4>
-            <p>Fixed masks (windows, strides) are a guess about where attention wants to look. DeepSeek's move is to <em>ask</em>, cheaply, then look only at the winners. It's a form of <em class="term">learned sparsity</em>: the mask is dynamic, per-query, per-layer.</p>
-            <div class="callout mechanism">
-              <div class="callout-label">⚙ how it works</div>
+            <h4>On the slide</h4>
+            <p>DeepSeek-v3.2's contribution to sparse attention. There is <strong>no window at all</strong>. For each query, a tiny specialised "index" head (run at very low precision to keep it cheap) scores all past tokens; only the <em class="term">top-k</em> highest scorers get promoted to full-precision attention.</p>
+            <h4>What to take from it</h4>
+            <p>Fixed masks (windows, strides) are a guess about where attention wants to look. DeepSeek's move is to <em>ask</em>, cheaply, then look only at the winners. This is a form of <em class="term">learned sparsity</em>: the mask is dynamic, per-query, per-layer.</p>
+            <div class="callout How it works">
+              <div class="callout-label">⚙ How it works</div>
               <p>Think of it as a two-stage attention. Stage 1: a lightweight, low-precision "lightning attention" scores every past token; this is cheap because the scores are approximate and never fed to softmax. Stage 2: sort those scores, take the top <em>k</em>, and do <em>real</em> attention over just those <em>k</em>. Total cost is roughly
               <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>n</mi><mi>k</mi><mo>)</mo></math>
               plus the cheap indexing pass.</p>
@@ -279,12 +273,12 @@
           <div class="slide-caption">slide 09 · DeepSeek memory (selected k)</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Same reference model as before, with one changed row in the parameter table: <em>k</em> = 64 selected tokens per query. The KV cache is now
-          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>k</mi><mo>·</mo><mi>l</mi><mo>·</mo><mn>2</mn><mo>·</mo><msub><mi>d</mi><mi>h</mi></msub></math>
-          — <strong>2 MB per position, half of what a sliding window of 128 costs</strong>.</p>
-          <h4>Why it matters</h4>
-          <p>Fewer tokens attended to means less to keep in cache and less arithmetic. The reason DeepSeek can afford <em>k</em> = 64 while sliding needed <em>w</em> = 128 is that the 64 are chosen adaptively — you spend your budget on the tokens the query actually cares about, not on whichever tokens happen to sit next to it.</p>
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>k</mi><mo>·</mo><mi>l</mi><mo>·</mo><mn>2</mn><mo>·</mo><msub><mi>d</mi><mi>h</mi></msub></math>,
+          which is <strong>2 MB per position, half of what a sliding window of 128 costs</strong>.</p>
+          <h4>Why keep this in mind</h4>
+          <p>Fewer tokens attended to means less to keep in cache and less arithmetic. The reason DeepSeek can afford <em>k</em> = 64 while sliding needed <em>w</em> = 128 is that the 64 are chosen adaptively. You spend your budget on the tokens the query actually cares about, not on whichever tokens happen to sit next to it.</p>
         </div>
       </div>
 
@@ -295,16 +289,16 @@
           <div class="slide-caption">slide 10 · sparse limitations</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three complaints about the sparse family. Read them as three different failure modes.</p>
           <h4>The idea behind each</h4>
           <ol>
             <li><strong>Structural mismatch.</strong> Strided and block patterns assume the interesting relationships in the sequence happen at fixed offsets. In images that is (roughly) true; in prose, not always. A sparse pattern that's wrong for your task simply hides the tokens you needed.</li>
-            <li><strong>GPU-unfriendly memory access.</strong> Modern GPUs love <em class="term">coalesced</em> reads — long, contiguous stretches of memory. A mask that says "grab keys 3, 47, 512, 5013" turns every attention step into a scatter/gather pattern that is much slower than its FLOP count would suggest.</li>
+            <li><strong>GPU-unfriendly memory access.</strong> Modern GPUs love <em class="term">coalesced</em> reads: long, contiguous stretches of memory. A mask that says "grab keys 3, 47, 512, 5013" turns every attention step into a scatter/gather pattern that is much slower than its FLOP count would suggest.</li>
             <li><strong>Selection overhead.</strong> DeepSeek's dynamic mask is not free. You pay for the low-precision indexing head <em>and</em> for the top-k sort. If <em>k</em> is small enough this pays back, but the crossover point is real.</li>
           </ol>
           <div class="callout gotcha">
-            <div class="callout-label">⚠ common trap</div>
+            <div class="callout-label">⚠ Watch out</div>
             <p>People quote FLOPs for sparse attention and it looks like a huge win. Then they benchmark on an actual GPU and the wall-clock is only marginally better. The second bullet is why. On A100/H100 hardware, contiguous memory access matters as much as arithmetic count.</p>
           </div>
         </div>
@@ -314,7 +308,7 @@
     <hr class="soft">
 
     <section id="hybrid">
-      <h2><span class="num">§4</span>Hybrid attention — <em>BigBird's three-in-one mask</em></h2>
+      <h2><span class="num">§4</span>Hybrid attention: <em>BigBird's three-in-one mask</em></h2>
       <p class="section-intro">
         BigBird (Zaheer <em>et al.</em>, 2020) is the answer to a natural
         question: if sliding is good for local context and a few global
@@ -332,23 +326,23 @@
           <div class="slide-caption">slide 11 · BigBird = window + global + random</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The three building blocks and their combination:</p>
           <ul>
-            <li><strong>(a) Random attention</strong> — each query attends to <em>r</em> random past positions.</li>
-            <li><strong>(b) Window attention</strong> — the familiar sliding band.</li>
-            <li><strong>(c) Global attention</strong> — a small set of designated tokens that see everything and are seen by everything (the L-shaped green frame).</li>
-            <li><strong>(d) BigBird</strong> — all three composed into one mask.</li>
+            <li><strong>(a) Random attention.</strong> Each query attends to <em>r</em> random past positions.</li>
+            <li><strong>(b) Window attention.</strong> The familiar sliding band.</li>
+            <li><strong>(c) Global attention.</strong> A small set of designated tokens that see everything and are seen by everything (the L-shaped green frame).</li>
+            <li><strong>(d) BigBird.</strong> All three composed into one mask.</li>
           </ul>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Each pattern is
           <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>n</mi><mo>)</mo></math>
           on its own; their union is still
           <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>n</mi><mo>)</mo></math>.
-          The <strong>window</strong> gives you the local structure that words in a sentence share; the <strong>global</strong> tokens give you the CLS/question hub through which any two positions can reach each other in two hops; the <strong>random</strong> links give the graph the small-world property that makes the whole thing a good approximation to full attention. The paper proves BigBird is a <em class="term">universal approximator</em> of sequence functions and is <em>Turing complete</em> — properties full attention has too.</p>
+          The <strong>window</strong> gives you the local structure that words in a sentence share; the <strong>global</strong> tokens give you the CLS/question hub through which any two positions can reach each other in two hops; the <strong>random</strong> links give the graph the small-world property that makes the whole thing a good approximation to full attention. The paper proves BigBird is a <em class="term">universal approximator</em> of sequence functions and is <em>Turing complete</em>, both properties that full attention has too.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>The random links look wrong at first — why would you attend to a random token? The reason is graph-theoretic. In a small-world graph, a handful of long random edges collapses the diameter of the graph from "long" to O(log n). That means information can flow between any two tokens in a few hops even without a global hub.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>The random links look wrong at first. Why would you attend to a random token? The reason is graph-theoretic. In a small-world graph, a handful of long random edges collapses the diameter of the graph from "long" to O(log n). That means information can flow between any two tokens in a few hops even without a global hub.</p>
           </div>
         </div>
       </div>
@@ -361,10 +355,10 @@
             <div class="slide-caption">slide 12 · BigBird memory table</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
+            <h4>On the slide</h4>
             <p>Reference model again, with the row that identifies the three budgets: <em>g</em> = 64 globals, <em>w</em> = 128 window, <em>r</em> = 64 randoms. KV cache is now
-            <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mo>(</mo><mi>g</mi><mo>+</mo><mi>w</mi><mo>+</mo><mi>r</mi><mo>)</mo><mo>·</mo><mi>l</mi><mo>·</mo><mn>2</mn><mo>·</mo><msub><mi>d</mi><mi>h</mi></msub></math>
-            — a slightly bigger budget than plain sliding, but still constant in <em>n</em>.</p>
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mo>(</mo><mi>g</mi><mo>+</mo><mi>w</mi><mo>+</mo><mi>r</mi><mo>)</mo><mo>·</mo><mi>l</mi><mo>·</mo><mn>2</mn><mo>·</mo><msub><mi>d</mi><mi>h</mi></msub></math>,
+            a slightly bigger budget than plain sliding, but still constant in <em>n</em>.</p>
             <h4>Why the cache doesn't blow up</h4>
             <p>Because every one of <em>g</em>, <em>w</em>, <em>r</em> is a small fixed number, their sum is a small fixed number. Doubling the sequence length doesn't change any of them. That is exactly the property you buy with any of the sparse families.</p>
           </div>
@@ -377,11 +371,11 @@
             <div class="slide-caption">slide 13 · BigBird limitations</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
+            <h4>On the slide</h4>
             <p>Two honest problems with BigBird.</p>
             <h4>The idea behind each</h4>
             <p>First, <strong>global tokens are task-dependent</strong>. For a QA task the question tokens are natural globals. For a coding task, maybe the function signature. For plain generation, there's no obvious answer, and picking the wrong ones wastes the strongest slot in your mask.</p>
-            <p>Second, <strong>parallelisation is fiddly</strong>. Windowed attention on its own is a clean band-matrix operation the GPU loves. Add scattered globals and random links and you get exactly the non-contiguous memory access problem from slide 10 — mask kernels get complicated, and squeezing the last 2× out of them requires the kind of custom CUDA that few teams write.</p>
+            <p>Second, <strong>parallelisation is fiddly</strong>. Windowed attention on its own is a clean band-matrix operation the GPU loves. Add scattered globals and random links and you get exactly the non-contiguous memory access problem from slide 10: mask kernels get complicated, and squeezing the last 2× out of them requires the kind of custom CUDA that few teams write.</p>
           </div>
         </div>
       </div>
@@ -390,7 +384,7 @@
     <hr class="soft">
 
     <section id="linear">
-      <h2><span class="num">§5</span>Linear attention — <em>rewrite the algebra</em></h2>
+      <h2><span class="num">§5</span>Linear attention: <em>rewrite the algebra</em></h2>
       <p class="section-intro">
         Everything up to here has been a game with masks: skip cells,
         rearrange them, choose them, but still compute the surviving cells
@@ -409,21 +403,21 @@
           <div class="slide-caption">slide 14 · four-bullet setup</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The pitch, in four bullets:</p>
           <ol>
-            <li>Standard attention builds an <em>N</em>×<em>N</em> matrix — <em>O</em>(<em>N</em>²) time.</li>
-            <li>The exponential inside softmax is the villain — it couples every <em>q<sub>i</sub></em> to every <em>k<sub>j</sub></em> nonlinearly, so the sum cannot be factored.</li>
+            <li>Standard attention builds an <em>N</em>×<em>N</em> matrix, so it costs <em>O</em>(<em>N</em>²) time.</li>
+            <li>The exponential inside softmax is the villain: it couples every <em>q<sub>i</sub></em> to every <em>k<sub>j</sub></em> nonlinearly, so the sum cannot be factored.</li>
             <li>Replace exp with a factorable <em class="term">kernel</em> written as
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>φ</mi><mo>(</mo><mi>q</mi><mo>)</mo><mo>·</mo><mi>φ</mi><mo>(</mo><mi>k</mi><mo>)</mo></math>
             for some feature map <em>φ</em>.</li>
             <li>Then the whole thing can be reorganised as a recurrence, giving
-            <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>N</mi><msub><mi>d</mi><mi>k</mi></msub><mo>)</mo></math>
-            — linear in the sequence length.</li>
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>N</mi><msub><mi>d</mi><mi>k</mi></msub><mo>)</mo></math>,
+            linear in the sequence length.</li>
           </ol>
           <h4>Why softmax is the obstacle</h4>
           <p>Softmax attention computes
-          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>o</mi><mi>i</mi></msub><mo>=</mo><mfrac><mrow><msub><mo>∑</mo><mi>j</mi></msub><mtext>exp</mtext><mo>(</mo><msubsup><mi>q</mi><mi>i</mi><mo>⊤</mo></msubsup><msub><mi>k</mi><mi>j</mi></msub><mo>)</mo><msub><mi>v</mi><mi>j</mi></msub></mrow><mrow><msub><mo>∑</mo><mi>j</mi></msub><mtext>exp</mtext><mo>(</mo><msubsup><mi>q</mi><mi>i</mi><mo>⊤</mo></msubsup><msub><mi>k</mi><mi>j</mi></msub><mo>)</mo></mrow></mfrac></math>. The exp knots <em>q<sub>i</sub></em> and <em>k<sub>j</sub></em> together — you cannot pull <em>q<sub>i</sub></em> out of the sum. Replace exp by a bilinear form and suddenly you can.</p>
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>o</mi><mi>i</mi></msub><mo>=</mo><mfrac><mrow><msub><mo>∑</mo><mi>j</mi></msub><mtext>exp</mtext><mo>(</mo><msubsup><mi>q</mi><mi>i</mi><mo>⊤</mo></msubsup><msub><mi>k</mi><mi>j</mi></msub><mo>)</mo><msub><mi>v</mi><mi>j</mi></msub></mrow><mrow><msub><mo>∑</mo><mi>j</mi></msub><mtext>exp</mtext><mo>(</mo><msubsup><mi>q</mi><mi>i</mi><mo>⊤</mo></msubsup><msub><mi>k</mi><mi>j</mi></msub><mo>)</mo></mrow></mfrac></math>. The exp knots <em>q<sub>i</sub></em> and <em>k<sub>j</sub></em> together, so you cannot pull <em>q<sub>i</sub></em> out of the sum. Replace exp by a bilinear form and suddenly you can.</p>
         </div>
       </div>
 
@@ -435,8 +429,8 @@
             <div class="slide-caption">slide 15 · softmax attention, restated</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
-            <p>The exact softmax attention formula for a single query <em>q<sub>i</sub></em>, plus a three-bullet postmortem: exp couples q and k <em>inside</em> the nonlinearity, so the <em>n</em>×<em>n</em> score matrix
+            <h4>On the slide</h4>
+            <p>The exact softmax attention formula for a single query <em>q<sub>i</sub></em>, plus a three-bullet postmortem. exp couples q and k <em>inside</em> the nonlinearity, so the <em>n</em>×<em>n</em> score matrix
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>Q</mi><msup><mi>K</mi><mo>⊤</mo></msup></math>
             has to be materialised. Cost is
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mi>d</mi><mo>)</mo></math>
@@ -455,7 +449,7 @@
             <div class="slide-caption">slide 16 · the linearisation trick</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
+            <h4>On the slide</h4>
             <p>The one derivation you must remember from this lecture. Replace
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mtext>exp</mtext><mo>(</mo><msup><mi>q</mi><mo>⊤</mo></msup><mi>k</mi><mo>)</mo></math>
             with the factorised kernel
@@ -468,9 +462,9 @@
             &nbsp;&nbsp;
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>z</mi><mo>=</mo><msub><mo>∑</mo><mi>j</mi></msub><mi>φ</mi><mo>(</mo><msub><mi>k</mi><mi>j</mi></msub><mo>)</mo></math>.
             </p>
-            <div class="callout mechanism">
-              <div class="callout-label">⚙ how it works</div>
-              <p>Both <em>S</em> and <em>z</em> are sums over <em>j</em> that <strong>do not depend on <em>i</em></strong>. Compute them once — one pass through the sequence — then every query is an <em>O</em>(<em>d</em>′<em>d</em>) contraction with the same <em>S</em> and <em>z</em>. Total: <em>O</em>(<em>n d</em>′<em>d</em>), and — this is the killer property — memory <em>independent of n</em>. The <em>n</em>-by-<em>n</em> matrix never appears anywhere.</p>
+            <div class="callout How it works">
+              <div class="callout-label">⚙ How it works</div>
+              <p>Both <em>S</em> and <em>z</em> are sums over <em>j</em> that <strong>do not depend on <em>i</em></strong>. Compute them once, in one pass through the sequence, then every query is an <em>O</em>(<em>d</em>′<em>d</em>) contraction with the same <em>S</em> and <em>z</em>. Total: <em>O</em>(<em>n d</em>′<em>d</em>), and (this is the killer property) memory <em>independent of n</em>. The <em>n</em>-by-<em>n</em> matrix never appears anywhere.</p>
             </div>
           </div>
         </div>
@@ -484,13 +478,13 @@
             <div class="slide-caption">slide 17 · causal case is an RNN</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
-            <p>In the <em class="term">causal</em> case — where token <em>t</em> may only attend to positions ≤ <em>t</em> — the sums that make up <em>S</em> and <em>z</em> become <em>prefix sums</em>. Which means they can be maintained incrementally:</p>
+            <h4>On the slide</h4>
+            <p>In the <em class="term">causal</em> case, where token <em>t</em> may only attend to positions ≤ <em>t</em>, the sums that make up <em>S</em> and <em>z</em> become <em>prefix sums</em>. That means they can be maintained incrementally:</p>
             <p style="text-align:center"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>S</mi><mi>t</mi></msub><mo>=</mo><msub><mi>S</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>+</mo><mi>φ</mi><mo>(</mo><msub><mi>k</mi><mi>t</mi></msub><mo>)</mo><msubsup><mi>v</mi><mi>t</mi><mo>⊤</mo></msubsup></math></p>
             <h4>Why the RNN framing is deep</h4>
             <p>Look at that recurrence. It is a <strong>recurrent network</strong>: a hidden state
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>S</mi><mi>t</mi></msub><mo>∈</mo><msup><mi>ℝ</mi><mrow><msup><mi>d</mi><mo>′</mo></msup><mo>×</mo><mi>d</mi></mrow></msup></math>
-            updated at each timestep by a rank-one addition. At inference, each new token costs <em>O</em>(1) time and memory — <strong>no KV cache at all</strong>. This is why the paper is called "Transformers are RNNs". The transformer/RNN divide is smaller than you think; linear attention sits exactly on the seam.</p>
+            updated at each timestep by a rank-one addition. At inference, each new token costs <em>O</em>(1) time and memory, so <strong>no KV cache at all</strong>. That is why the paper is called "Transformers are RNNs". The transformer/RNN divide is smaller than you think; linear attention sits exactly on the seam.</p>
           </div>
         </div>
 
@@ -501,13 +495,13 @@
             <div class="slide-caption">slide 18 · picking φ</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
+            <h4>On the slide</h4>
             <p>Four common choices for the feature map <em>φ</em>, each of which trades approximation quality for cost:</p>
             <ul>
-              <li><em>elu(x) + 1</em> — the original Katharopoulos choice; guaranteed positive so the denominator never vanishes.</li>
-              <li><em>Positive random features</em> — <em class="term">Performer</em> (Choromanski <em>et al.</em>, 2021); a randomised φ whose expectation exactly equals softmax, so you get an unbiased approximation of full attention.</li>
-              <li><em>Identity, ReLU, SiLU</em> — pointwise nonlinearities used in recent models. Cheap; empirically fine when combined with output normalisation.</li>
-              <li><em>Drop the denominator</em> — skip the <em>z<sub>t</sub></em> normaliser and let a LayerNorm on the output do the stabilising instead.</li>
+              <li><em>elu(x) + 1.</em> The original Katharopoulos choice; guaranteed positive so the denominator never vanishes.</li>
+              <li><em>Positive random features.</em> <em class="term">Performer</em> (Choromanski <em>et al.</em>, 2021); a randomised φ whose expectation exactly equals softmax, so you get an unbiased approximation of full attention.</li>
+              <li><em>Identity, ReLU, SiLU.</em> Pointwise nonlinearities used in recent models. Cheap; empirically fine when combined with output normalisation.</li>
+              <li><em>Drop the denominator.</em> Skip the <em>z<sub>t</sub></em> normaliser and let a LayerNorm on the output do the stabilising instead.</li>
             </ul>
             <h4>Why the choice matters</h4>
             <p>The kernel is the whole story. It decides how faithfully your linear attention imitates softmax, whether the denominator behaves numerically, and how stable training is. Modern models tend to pick a simple <em>φ</em> and rely on normalisation, rather than chase a fancy approximation of exp.</p>
@@ -522,20 +516,20 @@
           <div class="slide-caption">slide 19 · why linear underperforms softmax</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three linked reasons that plain linear attention loses accuracy to softmax on long-context and retrieval-heavy tasks.</p>
           <h4>The idea behind each</h4>
           <ol>
             <li><strong>Bounded state.</strong> The hidden state
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>S</mi><mi>t</mi></msub></math>
-            is <em>d</em>′×<em>d</em>. That's fixed. Softmax attention with a growing KV cache can always store one more <em>exact</em> key-value pair; linear attention <em>overwrites</em>. This is exactly why RNN models are bad at <em class="term">needle-in-a-haystack</em> tests — the state can only carry so much.</li>
+            is <em>d</em>′×<em>d</em>. That's fixed. Softmax attention with a growing KV cache can always store one more <em>exact</em> key-value pair; linear attention <em>overwrites</em>. That is exactly why RNN models are bad at <em class="term">needle-in-a-haystack</em> tests: the state can only carry so much.</li>
             <li><strong>Attention dilution.</strong> Softmax is a sharpener: because of the exp, it produces near one-hot weights when one key dominates. Kernel-based similarities are much smoother, so mass spreads across many keys and the "selection" behaviour that softmax gives you for free is weakened.</li>
             <li><strong>No forgetting.</strong> The recurrence
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>S</mi><mi>t</mi></msub><mo>=</mo><msub><mi>S</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>+</mo><mi>φ</mi><mo>(</mo><msub><mi>k</mi><mi>t</mi></msub><mo>)</mo><msubsup><mi>v</mi><mi>t</mi><mo>⊤</mo></msubsup></math>
             only ever adds. Two keys with similar <em>φ</em> mash their values together in <em>S</em>, and nothing erases them. Later variants (Mamba, gated linear attention) add a forget gate to fix exactly this.</li>
           </ol>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>Every one of these limitations is the motivation for a later architecture. Bounded state and no forgetting are what <em class="term">State Space Models</em> (Mamba) try to solve with data-dependent transition matrices. Attention dilution is what <em>hybrid</em> models like Jamba address by keeping some real softmax layers alongside linear ones.</p>
           </div>
         </div>
@@ -549,15 +543,15 @@
             <div class="slide-caption">slide 20 · linear memory (no n)</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
+            <h4>On the slide</h4>
             <p>The reference table one last time. Notice what's <em>missing</em> from the parameter list at the top right: there is <strong>no <em>n</em></strong>. Context length no longer appears in the memory budget, because the state doesn't depend on it.</p>
             <p>The KV-cache row is renamed <strong>Recurrent State</strong> and computed as
-            <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mo>(</mo><msubsup><mi>d</mi><mi>h</mi><mn>2</mn></msubsup><mo>+</mo><msub><mi>d</mi><mi>h</mi></msub><mo>)</mo><mo>·</mo><mi>l</mi></math>
-            — the
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mo>(</mo><msubsup><mi>d</mi><mi>h</mi><mn>2</mn></msubsup><mo>+</mo><msub><mi>d</mi><mi>h</mi></msub><mo>)</mo><mo>·</mo><mi>l</mi></math>.
+            The
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msubsup><mi>d</mi><mi>h</mi><mn>2</mn></msubsup></math>
             comes from <em>S<sub>t</sub></em> being a <em>d<sub>h</sub></em>×<em>d<sub>h</sub></em> matrix (per layer); the extra <em>d<sub>h</sub></em> is the normalising vector <em>z<sub>t</sub></em>.</p>
             <h4>Why the row change is the whole story</h4>
-            <p>Look at slide 5 (sliding), 9 (DeepSeek sparse), 12 (BigBird), 20 (linear) side by side. The parameter tables are almost identical. What changes across the four is exactly the last row — the running state. Sliding trims it to <em>w</em>; DeepSeek to <em>k</em>; BigBird to <em>g</em>+<em>w</em>+<em>r</em>; linear replaces it entirely with a fixed matrix. That's the story of the lecture in one row.</p>
+            <p>Look at slide 5 (sliding), 9 (DeepSeek sparse), 12 (BigBird), 20 (linear) side by side. The parameter tables are almost identical. What changes across the four is exactly the last row, the running state. Sliding trims it to <em>w</em>; DeepSeek to <em>k</em>; BigBird to <em>g</em>+<em>w</em>+<em>r</em>; linear replaces it entirely with a fixed matrix. That's the story of the lecture in one row.</p>
           </div>
         </div>
 
@@ -568,12 +562,12 @@
             <div class="slide-caption">slide 21 · linear limitations</div>
           </div>
           <div class="explain">
-            <h4>What this shows</h4>
+            <h4>On the slide</h4>
             <p>The last slide of the lecture. Three honest bullets on why plain linear attention has not (yet) replaced softmax attention in production language models.</p>
             <h4>The idea behind each</h4>
-            <p>The first bullet — "performance at the altar of efficiency" — is the summary of slide 19. On benchmarks, softmax models still win at long-context retrieval and needle-in-a-haystack, though the gap is closing.</p>
+            <p>The first bullet, "performance at the altar of efficiency", is the summary of slide 19. On benchmarks, softmax models still win at long-context retrieval and needle-in-a-haystack, though the gap is closing.</p>
             <p>The second is the bounded-state problem restated: everything the model knows about the past has to fit in <em>d</em>′×<em>d</em> numbers per layer.</p>
-            <p>The third is a training-time concern. Without the softmax denominator's normalisation, the running sums <em>S<sub>t</sub></em> and <em>z<sub>t</sub></em> can grow without bound, leading to numerical issues. Modern variants patch this with LayerNorm/RMSNorm on the output (see slide 18's last row), gating, or careful <em>φ</em> choices — but you can't just drop softmax and hope for the best.</p>
+            <p>The third is a training-time concern. Without the softmax denominator's normalisation, the running sums <em>S<sub>t</sub></em> and <em>z<sub>t</sub></em> can grow without bound, leading to numerical issues. Modern variants patch this with LayerNorm/RMSNorm on the output (see slide 18's last row), gating, or careful <em>φ</em> choices. You can't just drop softmax and hope for the best.</p>
           </div>
         </div>
       </div>
@@ -583,8 +577,8 @@
         beating <em>O</em>(<em>n</em>²): <em>skip cells</em> (sliding, sparse,
         BigBird) and <em>refactor the equation</em> (linear). Both work,
         both cost you something, and both are living research. The next
-        radical step — dropping attention entirely and replacing it with
-        a state-space recurrence you can train in parallel — is the topic
+        radical step, dropping attention entirely and replacing it with
+        a state-space recurrence you can train in parallel, is the topic
         of the alternate-architectures block later in the semester.
       </p>
     </section>

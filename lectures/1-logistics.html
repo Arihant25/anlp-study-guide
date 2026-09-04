@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Lecture 1 · Logistics — ANLP Study Guide</title>
+<title>Lecture 1 · Logistics · ANLP Study Guide</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Lecture 1 of Advanced NLP, Monsoon 2026 IIIT-H: logistics, grading, topics, project rules and the course website.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -42,12 +42,11 @@
   <main>
     <section class="hero">
       <div class="kicker">Lecture 01 · 16 slides · July 30, 2026</div>
-      <h1>Logistics — <em>the shape of the semester</em>.</h1>
+      <h1>Logistics: <em>the shape of the semester</em>.</h1>
       <p class="lead">
-        This first deck is not about NLP at all. It is a map: the topics the
-        course will cover, the pieces of work you will be graded on, and the
-        timelines those pieces sit inside. Skim it once now, and come back
-        to it every time you notice a deadline drifting.
+        This is the practical map for the semester: what you will study, how
+        the marks work, and when everything is due. Read it once now, then
+        return whenever you need to check a deadline or course rule.
       </p>
       <div class="meta">
         <span class="pill heat">Lecture 01</span>
@@ -59,12 +58,9 @@
     <section id="deck">
       <h2><span class="num">§0</span>The deck at a glance</h2>
       <p class="section-intro">
-        Sixteen slides split into five moves. A title slide, one bullet list
-        of ground rules, two slides listing the course topics, then a run of
-        slides on how the marks are distributed — assignments, exams, a
-        seminar, and a 50% project — and finally a QR code to the course
-        website. There is nothing technical here yet. But everything in the
-        rest of the course lives on the scaffolding this deck sets up.
+        The deck covers the course rules, syllabus, assessment, seminar
+        option, project expectations, and website. There is no NLP theory
+        here, but these details shape the rest of the semester.
       </p>
     </section>
 
@@ -80,10 +76,10 @@
           <div class="slide-caption">slide 01 · title</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>The course is <strong>M23CS7.501 — Advanced Natural Language Processing</strong>, taught in Monsoon '26 by <strong>Manish Shrivastava</strong> and <strong>Aparajitha Allamraju</strong> at IIIT Hyderabad. First lecture: July 30, 2026.</p>
-          <h4>Why it matters</h4>
-          <p>"Advanced" here means <em class="term">post-transformer</em>. The course is not going to spend time re-teaching you what a bag-of-words or a CRF is. It assumes you can read a paper's architecture diagram, and it starts sprinting from there.</p>
+          <h4>On the slide</h4>
+          <p>The course is <strong>M23CS7.501, Advanced Natural Language Processing</strong>, taught in Monsoon '26 by <strong>Manish Shrivastava</strong> and <strong>Aparajitha Allamraju</strong> at IIIT Hyderabad. First lecture: July 30, 2026.</p>
+          <h4>Why keep this in mind</h4>
+          <p>Here, “advanced” means <em class="term">post-transformer</em>. The course assumes you already know the older NLP toolkit and can follow a paper’s architecture diagram. It moves quickly from that starting point.</p>
         </div>
       </div>
 
@@ -94,13 +90,13 @@
           <div class="slide-caption">slide 02 · logistics</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>Three ground rules: (1) the course has been <strong>revised</strong> from earlier offerings, (2) reading is <strong>papers, blogs and videos</strong> — not a textbook — and (3) deadlines are strict.</p>
-          <h4>The idea behind it</h4>
-          <p>NLP moves too fast for a textbook to keep up. What was state-of-the-art two years ago is now a baseline in someone's ablation table. So the "reading list" is a moving target of arXiv papers, the transformer-circuits blog, Andrej Karpathy on YouTube, and so on. You are being taught to <em class="term">follow the field</em>, not memorise a chapter.</p>
+          <h4>On the slide</h4>
+          <p>Three ground rules: (1) the course has been <strong>revised</strong> from earlier offerings, (2) reading is <strong>papers, blogs and videos</strong>, not a textbook, and (3) deadlines are strict.</p>
+          <h4>What to take from it</h4>
+          <p>NLP changes faster than most textbooks can. The reading list therefore mixes papers, blogs, and videos. The useful skill is learning how to follow a fast-moving field, not memorising one fixed source.</p>
           <div class="callout gotcha">
-            <div class="callout-label">⚠ common trap</div>
-            <p>"No exceptions for deadline extension" is not lecturer-flavour. It is administrative reality — the mid-sem, end-sem and project deadlines cascade into the institute calendar. Slipping one slips the next.</p>
+            <div class="callout-label">⚠ Watch out</div>
+            <p>Take the deadline policy literally. Exam and project dates are tied to the institute calendar, so an extension can affect everything that follows.</p>
           </div>
         </div>
       </div>
@@ -111,9 +107,9 @@
     <section id="topics">
       <h2><span class="num">§2</span>What you'll learn</h2>
       <p class="section-intro">
-        Slides 3 and 4 are the syllabus. Twenty-two lectures grouped into six
-        buckets. This is worth reading properly — you can use it later to
-        situate whatever paper you are reading against the semester map.
+        Slides 3 and 4 outline roughly 22 lectures in six themes. Keep this
+        map handy: it makes it easier to place a new paper or idea in the
+        wider course.
       </p>
 
       <div class="slide" id="s3">
@@ -123,14 +119,14 @@
           <div class="slide-caption">slide 03 · topics I</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>The first half of the syllabus — 17 of the ~22 lectures.</p>
-          <h4>The idea behind it</h4>
-          <p>The course spends nearly half the semester (9 lectures) on the <em class="term">transformer</em>: tokenization, positional encoding, attention, normalisation, the shape of a layer, activations, optimisers, mixture-of-experts, and scaling laws. This is because every idea in the rest of the course either lives inside a transformer or was built to replace one.</p>
-          <p>The other buckets are its ecosystem: <strong>Evaluation</strong> (how you know your model isn't cheating on the metric), <strong>Decoding &amp; Generation</strong> (beam search all the way through speculative and parallel decoding), and one lecture on <strong>Quantization</strong> (running these models on a smaller wallet).</p>
+          <h4>On the slide</h4>
+          <p>The first half of the syllabus: 17 of the ~22 lectures.</p>
+          <h4>What to take from it</h4>
+          <p>Nine lectures focus on the <em class="term">transformer</em>: tokenization, position, attention, normalization, layer design, activations, optimizers, mixture-of-experts, and scaling laws. That focus makes sense because later topics either build on transformers or challenge them.</p>
+          <p>The remaining units cover the surrounding toolkit: <strong>evaluation</strong>, <strong>decoding and generation</strong>, and <strong>quantization</strong>. Together, they answer how to assess, use, and run large models efficiently.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>Notice the ratio. Nine transformer lectures, one quantization lecture. If you want to know what the field cares about right now, that's your answer.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>The weighting is a useful signal: transformers are the course’s foundation, while quantization is introduced as an important practical extension.</p>
           </div>
         </div>
       </div>
@@ -142,12 +138,12 @@
           <div class="slide-caption">slide 04 · topics II</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The last third of the semester. Four lectures on <strong>alternate architectures</strong> (RNN-family revival, State Space Models like Mamba, and diffusion language models), four on <strong>reasoning in LLMs</strong> (reinforcement learning for NLP; DPO, PPO, GRPO; and reasoning strategies like chain-of-thought), plus a "what's next" wrap-up.</p>
-          <h4>The idea behind it</h4>
-          <p>The mainstream story is: transformer beats RNN, everyone uses transformers, then two things happen — people discover the O(n²) attention cost is painful at long context, and RLHF-style preference optimisation becomes the standard finishing move on any big model. This half of the course is the response to both.</p>
+          <h4>What to take from it</h4>
+          <p>Once transformers became the default, two questions became unavoidable: how can attention handle long contexts affordably, and how do we align large models with human preferences? This part of the course explores both, along with alternatives such as state-space and diffusion models.</p>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>Lecture 6, <a class="xref" href="6-more-attention.html">More Attention</a>, is the first hint of the O(n²) fix. The State Space Models lecture is the second, more radical, one.</p>
           </div>
         </div>
@@ -166,20 +162,20 @@
           <div class="slide-caption">slide 05 · grade split</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The mark distribution across the semester.</p>
           <table class="tbl">
             <thead><tr><th>Component</th><th>Weight</th><th>Note</th></tr></thead>
             <tbody>
               <tr><td>Project</td><td>50</td><td>The single biggest thing you will do.</td></tr>
-              <tr><td>4 Assignments</td><td>30 (6 + 7 + 7 + 10)</td><td>Escalating weight — the last one matters most.</td></tr>
+              <tr><td>4 Assignments</td><td>30 (6 + 7 + 7 + 10)</td><td>Escalating weight; the last one matters most.</td></tr>
               <tr><td>Mid Exam</td><td>10</td><td>Per institute calendar.</td></tr>
               <tr><td>Final Exam</td><td>10</td><td>Per institute calendar.</td></tr>
               <tr><td>Seminar (opt.)</td><td>10</td><td>Replaces one exam if you take it (see slide 08).</td></tr>
             </tbody>
           </table>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Half of your grade is the project. Another 30% is homework. Only 20% is memory-under-time. If you like doing research more than you like sitting exams, this course is built for you.</p>
           </div>
         </div>
@@ -192,10 +188,10 @@
           <div class="slide-caption">slide 06 · assignment calendar</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The four assignments and their calendar. A1 released 10 Aug (due 2 Sep, graded by 10 Sep). A2 released 6 Sep (due 4 Oct, graded 14 Oct). A3 released 8 Oct (due 13 Nov, graded 19 Nov). A4 to be announced.</p>
-          <h4>The idea behind it</h4>
-          <p>Note the rhythm: each assignment is out for roughly a month, and the next one drops within a week of the previous one being due. There is no comfortable gap. If you sit on A1 until the last week, A2 will be released before you have finished.</p>
+          <h4>What to take from it</h4>
+          <p>The assignments overlap. Each is open for about a month, and the next one arrives soon after the previous deadline. Plan for that overlap instead of treating each assignment as a separate sprint.</p>
         </div>
       </div>
     </section>
@@ -212,10 +208,10 @@
           <div class="slide-caption">slide 07 · exams</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Two exams, each worth 10%. Both are scheduled by the institute rather than the instructor.</p>
-          <h4>Why it matters</h4>
-          <p>The mid-sem exam is <strong>the same one whose past-year papers appear in the</strong> <a class="xref" href="../pyqs/mid-2023.html">2023</a> and <a class="xref" href="../pyqs/mid-2024.html">2024 PYQ pages</a>. Looking at those tells you the exam is short (1.5 hours, 30 marks, 3–4 conceptual questions) and rewards clean explanations of RNN/LSTM/attention/transformer machinery — not memorised formulae.</p>
+          <h4>Why keep this in mind</h4>
+          <p>The past papers from <a class="xref" href="../pyqs/mid-2023.html">2023</a> and <a class="xref" href="../pyqs/mid-2024.html">2024</a> show what to expect: a short, conceptual exam that rewards clear explanations of RNNs, LSTMs, attention, and transformers more than memorised formulas.</p>
         </div>
       </div>
 
@@ -226,13 +222,13 @@
           <div class="slide-caption">slide 08 · seminar</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>A seminar option. Up to 16 students can pick this; if you do, you present a topic in class and it replaces one of the two exams (worth the same 10%).</p>
-          <h4>The idea behind it</h4>
-          <p>Notice the wording — <strong>"NOT present one research paper but thorough presentation on a topic"</strong>. The lecturer does not want you to reproduce a single paper's abstract. They want you to synthesise a small area: read three or four papers, see where they disagree, and explain to the room what a newcomer needs to know.</p>
-          <p>You are judged on four axes: <strong>understanding</strong>, <strong>coverage</strong>, <strong>presentation</strong>, and <strong>ability to answer questions</strong>. The last one is the trap — you can memorise a script for the first three, but not for questions from the room.</p>
+          <h4>What to take from it</h4>
+          <p>The seminar should explain a topic, not retell one paper. Read across a small set of papers, identify the important differences, and present the field to someone new to it.</p>
+          <p>Assessment covers understanding, coverage, presentation, and your answers during discussion. A polished script helps, but it cannot replace knowing the material well enough to handle questions.</p>
           <div class="callout link">
-            <div class="callout-label">→ practical note</div>
+            <div class="callout-label">→ Practical note</div>
             <p>The form opens after add/drop closes. Watch the course website (slide 16) for it.</p>
           </div>
         </div>
@@ -242,10 +238,10 @@
     <hr class="soft">
 
     <section id="projects">
-      <h2><span class="num">§5</span>The project — <em>half your grade</em></h2>
+      <h2><span class="num">§5</span>The project: <em>half your grade</em></h2>
       <p class="section-intro">
-        Seven slides on the project. If you skim any part of this deck, don't
-        skim this part. It is 50% of your mark and it starts on day one.
+        The project accounts for half the course grade, and its early deadlines
+        arrive quickly. This is the part of the deck worth returning to.
       </p>
 
       <div class="slide" id="s9">
@@ -255,7 +251,7 @@
           <div class="slide-caption">slide 09 · section divider</div>
         </div>
         <div class="explain">
-          <p>A section divider. Everything from here to slide 15 is about the project.</p>
+          <p>Slides 9 through 15 cover the project requirements, timeline, and assessment.</p>
         </div>
       </div>
 
@@ -266,13 +262,13 @@
           <div class="slide-caption">slide 10 · project mechanics</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>The rules of engagement. You propose the topic yourself. Teams are <strong>3 or 4</strong>. If you can't find a team, the course will allot you one at random. Rejected proposals get one resubmit. And a small parenthetical: <strong>the course cannot give you GPU time</strong>.</p>
+          <h4>On the slide</h4>
+          <p>You choose the topic and work in teams of <strong>three or four</strong>. Students without a team can be assigned one, and a rejected proposal may be resubmitted once. The course does not provide GPU compute.</p>
           <h4>Why the "no compute" line matters</h4>
-          <p>It rules out a whole class of projects. You cannot pretrain from scratch, you cannot fine-tune a 70B parameter model, you cannot ablate a big architecture at scale. What you <em>can</em> do is work with pretrained checkpoints, use LoRA/QLoRA on a small model, run controlled experiments on synthetic data, or do a clever evaluation study that only needs API calls. Pick a project that fits inside a Colab or a small university GPU allotment.</p>
+          <p>Choose a project that fits the resources you actually have. Pretrained checkpoints, LoRA or QLoRA on small models, synthetic experiments, and careful evaluation studies are all realistic. Pretraining or large-scale ablations are not.</p>
           <div class="callout gotcha">
-            <div class="callout-label">⚠ common trap</div>
-            <p>Every year at least one team pitches "we'll pretrain a small language model on Sanskrit". They then discover that a "small" LM still wants several thousand GPU-hours. Scope down early.</p>
+            <div class="callout-label">⚠ Watch out</div>
+            <p>A “small” language model can still need thousands of GPU-hours to pretrain. Check the compute budget before committing to a scope.</p>
           </div>
         </div>
       </div>
@@ -284,10 +280,10 @@
           <div class="slide-caption">slide 11 · what is NOT a project</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The bar is <em>publishable</em>. The lecturer explicitly encourages you to submit good work to A* conferences or workshops. And two things are called out as <strong>not suitable</strong>: <em class="term">plain finetuning / instruction finetuning</em>, and <em class="term">RAG</em>.</p>
           <h4>Why those two are out</h4>
-          <p>Both are engineering exercises, not research. A finetuning project can be finished in a weekend by copying a Hugging Face notebook; a RAG project is mostly plumbing a vector database to an LLM. Neither teaches you something new about NLP, and neither will get you a paper. The lecturer wants you to touch the model, the algorithm or the evaluation itself — not the connectors around it.</p>
+          <p>On their own, fine-tuning and RAG usually demonstrate implementation rather than a research contribution. The expectation is that you investigate the model, algorithm, data, or evaluation itself, rather than only wiring existing components together.</p>
         </div>
       </div>
 
@@ -298,15 +294,15 @@
           <div class="slide-caption">slide 12 · what IS a project</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three kinds of project the course explicitly welcomes:</p>
           <ol>
             <li><strong>Architecture optimisation &amp; changes.</strong> Modify the transformer block, propose a new attention variant, plug in a state-space layer.</li>
             <li><strong>Novel evaluation methods.</strong> Design a new benchmark, a new metric, or a controlled probe that catches something existing evaluations miss.</li>
             <li><strong>Datasets.</strong> Curate a new dataset (with the star hinting at "if it's actually novel and non-trivial").</li>
           </ol>
-          <h4>Why it matters</h4>
-          <p>These map directly onto the three legs a paper stands on: <em>model</em>, <em>metric</em>, <em>data</em>. Pick the one you find most interesting and it will be the leg you sit on for the semester.</p>
+          <h4>Why keep this in mind</h4>
+          <p>These choices correspond to the three main ways to contribute to a paper: a better <em>model</em>, a better <em>measurement</em>, or better <em>data</em>. Choose the one you genuinely want to spend a semester exploring.</p>
         </div>
       </div>
 
@@ -317,13 +313,13 @@
           <div class="slide-caption">slide 13 · shopping list of areas</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>A menu of twelve project areas. These aren't project titles — they're regions of the map you can pitch inside.</p>
+          <h4>On the slide</h4>
+          <p>A menu of twelve project areas. These aren't project titles; they're regions of the map you can pitch inside.</p>
           <h4>How to use this list</h4>
-          <p>Read it once now. It won't mean much yet: "Interpretability", "Diffusion Language Models", "Retrieval &amp; Extraction" are just names. Come back to it after Lecture 4 or 5 and it will read completely differently — you'll recognise which ones you have opinions about.</p>
+          <p>Some of these labels will be unfamiliar at first. Revisit the list after a few lectures; by then, you will have enough context to see which directions interest you.</p>
           <div class="callout link">
-            <div class="callout-label">→ crossref</div>
-            <p>Several of these areas map onto later course lectures — Efficient Methods ↔ quantization + Flash Attention (<a class="xref" href="6-more-attention.html">Lecture 6</a>), Reasoning in LLMs ↔ the late-semester block, Diffusion LMs ↔ alternate architectures.</p>
+            <div class="callout-label">→ Related material</div>
+            <p>Several of these areas map onto later course lectures. Efficient Methods ↔ quantization + Flash Attention (<a class="xref" href="6-more-attention.html">Lecture 6</a>), Reasoning in LLMs ↔ the late-semester block, Diffusion LMs ↔ alternate architectures.</p>
           </div>
         </div>
       </div>
@@ -335,20 +331,20 @@
           <div class="slide-caption">slide 14 · project timeline</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The project calendar in eight rows. The critical dates:</p>
           <ul>
-            <li><strong>6 Aug</strong> — team &amp; assignment form due (right after institute add/drop closes on 5 Aug).</li>
-            <li><strong>14 Aug</strong> — interim proposal.</li>
-            <li><strong>16 Aug</strong> — TAs return the rejection list.</li>
-            <li><strong>20 Aug</strong> — proposal finalised, mentor assigned.</li>
-            <li><strong>28 Aug</strong> — final proposal locked.</li>
-            <li><strong>30 Sep</strong> — mid submission.</li>
-            <li><strong>31 Oct</strong> — final submission.</li>
+            <li><strong>6 Aug</strong>: team &amp; assignment form due (right after institute add/drop closes on 5 Aug).</li>
+            <li><strong>14 Aug</strong>: interim proposal.</li>
+            <li><strong>16 Aug</strong>: TAs return the rejection list.</li>
+            <li><strong>20 Aug</strong>: proposal finalised, mentor assigned.</li>
+            <li><strong>28 Aug</strong>: final proposal locked.</li>
+            <li><strong>30 Sep</strong>: mid submission.</li>
+            <li><strong>31 Oct</strong>: final submission.</li>
           </ul>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
-            <p>You have only about three weeks between the add/drop closing and your final proposal being locked. If you haven't started thinking about the project on the first day of class, you are already behind.</p>
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>The final proposal is due roughly three weeks after add/drop closes. Start narrowing ideas and finding teammates from the first week.</p>
           </div>
         </div>
       </div>
@@ -360,10 +356,10 @@
           <div class="slide-caption">slide 15 · project grading</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The 50 project marks split three ways: proposal 10, mid-eval 20, final-eval 20.</p>
-          <h4>Why it matters</h4>
-          <p>The <strong>proposal is worth as much as an entire assignment</strong>. Treat it seriously — a sloppy proposal signals scope creep to your mentor and costs you both marks and momentum. And the mid-eval is worth as much as the final eval; you cannot save the project for the last week.</p>
+          <h4>Why keep this in mind</h4>
+          <p>The <strong>proposal carries the same weight as an assignment</strong>, and the mid-evaluation is worth as much as the final one. A clear early plan and steady progress matter; this is not a project to leave until the last week.</p>
         </div>
       </div>
     </section>
@@ -380,10 +376,10 @@
           <div class="slide-caption">slide 16 · course website</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>A QR code pointing at <a class="xref" href="https://ltrcnlp.github.io/M26/" target="_blank" rel="noopener">https://ltrcnlp.github.io/M26/</a> — the course website.</p>
-          <h4>Why it matters</h4>
-          <p>This is where slides, assignment PDFs, seminar forms, project proposal templates, and the final schedule will live. Bookmark it now.</p>
+          <h4>On the slide</h4>
+          <p>A QR code pointing at <a class="xref" href="https://ltrcnlp.github.io/M26/" target="_blank" rel="noopener">https://ltrcnlp.github.io/M26/</a>, the course website.</p>
+          <h4>Why keep this in mind</h4>
+          <p>This site hosts the slides, assignment PDFs, seminar forms, proposal templates, and final schedule. Keep it bookmarked.</p>
         </div>
       </div>
     </section>

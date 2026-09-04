@@ -45,14 +45,11 @@
       <div class="kicker">Lecture 04 · 29 slides · August 17, 2026</div>
       <h1>Positional Encoding — <em>telling attention where things live</em>.</h1>
       <p class="lead">
-        Self-attention has a curious blind spot. If you shuffle the tokens of a
-        sentence before feeding them in, the raw attention math produces the
-        same set of outputs, just permuted. The model literally cannot tell
-        <em>the dog bit the man</em> from <em>the man bit the dog</em>. This
-        deck is the fix — five different ways the field has tried to bolt a
-        sense of <em class="term">position</em> back onto an otherwise
-        order-blind machine, and one recent proposal that says <em>maybe we
-        don't need to bolt anything on at all</em>.
+        Raw self-attention has no built-in notion of order. Without positional
+        information, it cannot distinguish <em>the dog bit the man</em> from
+        <em>the man bit the dog</em>. This lecture compares several ways to
+        give transformers a sense of <em class="term">position</em>, including
+        the case for learning without an explicit encoding.
       </p>
       <div class="meta">
         <span class="pill heat">Lecture 04</span>
@@ -64,17 +61,10 @@
     <section id="deck">
       <h2><span class="num">§0</span>The deck at a glance</h2>
       <p class="section-intro">
-        Twenty-nine slides in six moves. Two slides frame the problem: attention
-        is a set operation, and language is not a set. Then four families of
-        answers, each presented as <em>approach → gains → drawbacks</em>:
-        <strong>absolute</strong> position embeddings (a lookup table, the BERT
-        recipe), <strong>sinusoidal</strong> encodings (fixed cosines, the
-        Vaswani recipe), <strong>relative</strong> position encodings (T5's
-        pairwise bias), and <strong>RoPE</strong> (rotate the query and key
-        vectors by an angle proportional to their position, the recipe LLaMA
-        and most modern LLMs use). The deck closes with <strong>NoPE</strong> —
-        the recent finding that a causal decoder can pick up positional
-        information from the attention mask alone, no encoding required.
+        The deck first explains why order matters, then compares absolute,
+        sinusoidal, relative, and RoPE encodings in terms of their strengths
+        and limitations. It ends with <strong>NoPE</strong>, the finding that a
+        causal decoder can sometimes infer position from its attention mask.
       </p>
     </section>
 
@@ -98,9 +88,9 @@
           <div class="slide-caption">slide 01 · title</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Title card for Lecture 4 of Advanced NLP, Monsoon '26. Delivered by <strong>Manish Shrivastava</strong> and <strong>Aparajitha</strong> on August 17, 2026.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>The title says <em class="term">positional embedding</em> rather than "positional encoding". In this course we use the two terms interchangeably. Strictly, an <em>embedding</em> is a learned vector table, and an <em>encoding</em> is a fixed function — but modern usage smears them together, and so will we.</p>
         </div>
       </div>
@@ -112,12 +102,12 @@
           <div class="slide-caption">slide 02 · where positional encoding lives</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The original Vaswani et al. (2017) transformer diagram. The lecturer has drawn a red box around the <strong>positional encoding</strong> block sitting under the input embedding, on both encoder and decoder sides. That is the whole real estate this lecture is about.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Read the diagram from the bottom up. Words become <em class="term">input embeddings</em> — vectors of size <code>d_model</code>. Those vectors are then summed with a <em class="term">positional encoding</em> vector of the same size. Only that sum enters the first attention layer. So position enters the network exactly once, at the very bottom, as an additive offset to the token embedding — and every layer above has to route that information wherever it needs it.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Attention is <em>permutation-equivariant</em>: shuffle the input rows and the output rows shuffle the same way. So without something like this red box, the model would give <em>the dog bit the man</em> and <em>man the bit dog the</em> identical hidden states. Everything in this lecture is a different answer to "what should go in that red box?"</p>
           </div>
         </div>
@@ -130,7 +120,7 @@
           <div class="slide-caption">slide 03 · why order carries meaning</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Five reasons position is not a nuisance detail but a first-class linguistic signal.</p>
           <ul>
             <li><strong>Order of the sequence.</strong> Some languages are <em>no-free-order</em> (English: <em>the dog bit the man</em> ≠ <em>the man bit the dog</em>). Others are <em>relative-free-order</em> (Hindi, Sanskrit, Latin), where words can move around but the relative positions of a noun and its modifier still matter.</li>
@@ -139,7 +129,7 @@
             <li><strong>Temporal.</strong> Narratives ("first she opened the door, then she left") encode time via order.</li>
           </ul>
           <div class="callout gotcha">
-            <div class="callout-label">⚠ common trap</div>
+            <div class="callout-label">⚠ Watch out</div>
             <p>"Hindi has free word order, so position doesn't matter there" is a myth. Hindi is <em class="term">relatively</em> free — the argument order in <em>राम ने सीता को देखा</em> vs. <em>सीता को राम ने देखा</em> can move, but the case markers and the modifier-head adjacency are still position-carried. Any transformer used for Hindi still needs positional encoding.</p>
           </div>
         </div>
@@ -204,7 +194,7 @@
           <li><strong>Cannot extrapolate.</strong> If you trained with a maximum sequence length of 512, position 513 has no vector — the lookup table simply doesn't have that row. At test time you either have to truncate or reinitialise, and both hurt.</li>
         </ol>
         <div class="callout gotcha">
-          <div class="callout-label">⚠ common trap</div>
+          <div class="callout-label">⚠ Watch out</div>
           <p>BERT was trained with max length 512 exactly because of this. That's not an accident of engineering — it is a direct consequence of using absolute embeddings.</p>
         </div>
       </div>
@@ -240,13 +230,13 @@
           <div class="slide-caption">slide 08 · approach and hypothesis</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Vaswani et al.'s design hypothesis, in one line: choose a positional encoding function such that <strong>the encoding at position <code>pos+k</code> is a linear function of the encoding at position <code>pos</code></strong>, for any fixed offset <code>k</code>.</p>
           <h4>Why that specific property</h4>
           <p>Self-attention computes a dot product of query and key. If two positions differ by a fixed amount <code>k</code>, the model should be able to compute their attention score in a way that <em>only depends on k</em>, not on where in the sentence they happen to sit. A linear-shift-invariant encoding gives you exactly that: the model can learn a linear head that fires whenever two tokens are, say, 3 apart, regardless of whether they are at positions (0, 3) or (100, 103).</p>
           <p>Sines and cosines have this property for free — this is essentially the rotation identity <math xmlns="http://www.w3.org/1998/Math/MathML"><mi>sin</mi><mo>(</mo><mi>a</mi><mo>+</mo><mi>b</mi><mo>)</mo><mo>=</mo><mi>sin</mi><mi>a</mi><mi>cos</mi><mi>b</mi><mo>+</mo><mi>cos</mi><mi>a</mi><mi>sin</mi><mi>b</mi></math>, which is a linear combination of <code>sin(a)</code> and <code>cos(a)</code> with coefficients depending only on the shift <code>b</code>.</p>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>This same "relative-shift is a linear map" idea gets recycled in RoPE (§5), except there the linear map is a genuine rotation matrix acting on the query/key vectors themselves.</p>
           </div>
         </div>
@@ -259,7 +249,7 @@
           <div class="slide-caption">slide 09 · the formula, in one picture</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The exact Vaswani formula, then an illustration of it in action on the French phrase <em>Je suis étudiant</em> (I am a student).</p>
           <div class="eq boxed">
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
@@ -286,7 +276,7 @@
           <h4>What the bottom picture shows</h4>
           <p>Each of the three input tokens <em>Je</em>, <em>suis</em>, <em>étudiant</em> at positions 0, 1, 2 gets a coloured positional vector. At position 0, sines are 0 and cosines are 1 — you can read the values off the top strip. At position 1 the values shift to (0.84, 0.0001, 0.54, 1); at position 2 they shift again to (0.91, 0.0002, −0.42, 1). The green bars below are the word embeddings <code>x1, x2, x3</code>, and the "+" says these two vectors are summed elementwise. The sum is what enters the transformer.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>Notice the second dimension barely moves (0.0001 → 0.0002). That is the dimension with a very long wavelength — it is meant to distinguish position 0 from position 1000, not position 0 from position 1. Different dimensions carry different "zoom levels" of position.</p>
           </div>
         </div>
@@ -345,11 +335,11 @@
       <div class="slide" id="s13">
         <div class="slide-frame">
           <div class="tag">Slide 13 / 29</div>
-          <img src="../assets/slides/L4-positional/slide-13.png" alt="Relative PE Approach. Instead of individual token embedding, pairwise embedding. PE calculated between two vectors. Added to self-attention mechanism instead of token vector.">
+          <img src="../assets/slides/L4-positional/slide-13.png" alt="Relative PE Approach. Instead of individual token embedding, pairwise embedding. PE calculated between two vectors. Added to self-attention How it works instead of token vector.">
           <div class="slide-caption">slide 13 · approach</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three bullets that define the shift.</p>
           <ol>
             <li><strong>Pairwise, not per-token.</strong> A relative PE is not associated with one token — it is associated with a <em>pair</em>: the query at position <code>i</code> and the key at position <code>j</code>. There is one such value for every ordered pair.</li>
@@ -397,7 +387,7 @@
         <h4>Why bucketise?</h4>
         <p>Two reasons. First, <em>parameter efficiency</em>: a 32-scalar table per head is cheap regardless of context length. Second — and this is the important one — <strong>fine-grained distance only matters when tokens are close</strong>. The model needs to distinguish "adjacent" from "2 apart" from "3 apart", because those are typical distances between a word and its head. But the difference between "500 apart" and "501 apart" is almost never linguistically meaningful; both are just "far".</p>
         <div class="callout aha">
-          <div class="callout-label">✦ the aha</div>
+          <div class="callout-label">✦ Key takeaway</div>
           <p>The last bullet on slide 15 is subtle but important. Even though a single layer is blind to distances past 128, the <em>next</em> layer sees combinations of the previous layer's outputs — and by chaining local reads, a stack of layers can effectively build up a sensitivity to arbitrarily long-range structure. This is the same principle that lets a CNN with 3×3 kernels see the whole image after enough layers.</p>
         </div>
       </div>
@@ -428,7 +418,7 @@
           <li><strong>KV-cache invalidation.</strong> This is the biggest one and the reason relative PE fell out of fashion for large autoregressive LMs. In a decoder-only LM you cache the keys and values of previous tokens so you don't recompute them at each step. But with relative PE, when a new token arrives, the bias <code>b(i − j)</code> for existing keys shifts — because <code>i</code> just changed. So you cannot simply reuse the cached keys and values as they are; you have to recompute the attention logits. This is a serious performance tax on generation.</li>
         </ol>
         <div class="callout link">
-          <div class="callout-label">→ where this goes</div>
+          <div class="callout-label">→ Keep reading</div>
           <p>RoPE (§5) was designed specifically to fix the caching problem while keeping the relative-position feel of T5. It succeeds so well that essentially every modern LLM — LLaMA, Qwen, Mistral, DeepSeek — uses it.</p>
         </div>
       </div>
@@ -468,7 +458,7 @@
           <div class="slide-caption">slide 19 · approach</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Four one-line claims that together describe what RoPE does.</p>
           <ol>
             <li>Position is not a table lookup added at the input; it is baked into the attention computation itself.</li>
@@ -478,7 +468,7 @@
           </ol>
           <p>The paper is <em>RoFormer: Enhanced Transformer with Rotary Position Embedding</em>, Su et al., first arXiv release in 2021, published in <em>Neurocomputing</em> 568 (2024).</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>RoPE is the rare design that lets you have both. Absolute position is <em>in</em> the vector (each token's rotation angle depends only on its own position). Yet when two rotated vectors are dot-producted, the answer turns out to depend only on the <em>difference</em> of their positions — the individual angles cancel out into a relative angle. Best of both worlds, and it also plays nicely with KV-caching because a cached key at position <code>j</code> keeps its rotation forever.</p>
           </div>
         </div>
@@ -491,8 +481,8 @@
           <div class="slide-caption">slide 20 · the picture</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
-          <p>The RoPE mechanism in one figure. Take the query or key vector <code>(x1, x2)</code>. Rotate it in the plane by angle <code>m · θ₁</code> — where <code>m</code> is the token's position index and <code>θ₁</code> is a fixed frequency for this pair of dimensions. Call the rotated vector <code>(x'₁, x'₂)</code>. That is your position-encoded query or key.</p>
+          <h4>On the slide</h4>
+          <p>The RoPE How it works in one figure. Take the query or key vector <code>(x1, x2)</code>. Rotate it in the plane by angle <code>m · θ₁</code> — where <code>m</code> is the token's position index and <code>θ₁</code> is a fixed frequency for this pair of dimensions. Call the rotated vector <code>(x'₁, x'₂)</code>. That is your position-encoded query or key.</p>
           <p>The bottom panel shows the same recipe applied to a full six-token sentence — <em>"Enhanced Transformer with Rotary Position Embedding"</em>, positions 1 through 6. The tinted colour on each output vector represents the accumulating rotation. Position 1 gets a small twist. Position 6 gets a large one.</p>
           <h4>How the "d dimensions" generalise the 2D picture</h4>
           <p>The query and key vectors are <code>d</code>-dimensional, not 2-dimensional. RoPE splits the <code>d</code> dimensions into <code>d/2</code> consecutive 2D pairs. Each pair gets its own frequency <code>θᵢ</code> — high frequencies for the first pairs, low frequencies for the last, in the same 10000<sup>−2i/d</sup> style as the sinusoidal formula. Each pair is rotated independently by the position-dependent angle for that frequency.</p>
@@ -544,7 +534,7 @@
           </math>
         </div>
         <div class="callout gotcha">
-          <div class="callout-label">⚠ common trap</div>
+          <div class="callout-label">⚠ Watch out</div>
           <p>The rotation matrix looks huge but you never actually build it. In code, RoPE is applied by taking pairs of adjacent dimensions <code>(x<sub>2i</sub>, x<sub>2i+1</sub>)</code> and computing <code>(x<sub>2i</sub>cos φ − x<sub>2i+1</sub>sin φ, x<sub>2i</sub>sin φ + x<sub>2i+1</sub>cos φ)</code> with <code>φ = m·θᵢ</code>. That's it — one pair of trig multiplies per pair of dimensions, no matrix ever materialised.</p>
         </div>
       </div>
@@ -553,7 +543,7 @@
         <div class="slide" id="s23">
           <div class="slide-frame">
             <div class="tag">Slide 23 / 29</div>
-            <img src="../assets/slides/L4-positional/slide-23.png" alt="RoPE Gains: flexibility of sequence length; decaying inter-token dependency with increasing relative distances; capability of equipping the linear self-attention with relative position encoding; interpretability — rotational approach offers intuitive geometric interpretation of how positional information influences the attention mechanism">
+            <img src="../assets/slides/L4-positional/slide-23.png" alt="RoPE Gains: flexibility of sequence length; decaying inter-token dependency with increasing relative distances; capability of equipping the linear self-attention with relative position encoding; interpretability — rotational approach offers intuitive geometric interpretation of how positional information influences the attention How it works">
             <div class="slide-caption">slide 23 · gains</div>
           </div>
         </div>
@@ -576,7 +566,7 @@
         </ol>
         <p>The single drawback is honest: <strong>implementation complexity</strong>. It is not free code. You need to interleave sin/cos multiplies at the right place in the attention forward pass, and getting the dimension pairing right (adjacent pairs, or the split-half convention some frameworks use) is a common source of bugs.</p>
         <div class="callout link">
-          <div class="callout-label">→ where this goes</div>
+          <div class="callout-label">→ Keep reading</div>
           <p>Practically every LLM you have heard of from 2023 onwards — LLaMA, Qwen, Mistral, DeepSeek, Gemma, Phi — uses RoPE. Later work (YaRN, NTK-aware scaling, position interpolation) extends RoPE to context lengths far beyond what it was trained on, but the core recipe is unchanged.</p>
         </div>
       </div>
@@ -620,7 +610,7 @@
           <div class="slide-frame">
             <div class="tag">Slide 27 / 29</div>
             <img src="../assets/slides/L4-positional/slide-27.png" alt="NoPE Approach: causal mask — a token at position t can only see tokens at positions ≤ t; implicit sense of direction; regular gradient-descent-based training learns to exploit it if it finds it beneficial for the optimization objective; when trained with SGD it mostly resembles T5's relative PE attention patterns.">
-            <div class="slide-caption">slide 27 · the mechanism</div>
+            <div class="slide-caption">slide 27 · the How it works</div>
           </div>
         </div>
       </div>
@@ -628,9 +618,9 @@
         <h4>What these two slides show</h4>
         <p>The NoPE claim and its justification, over two slides.</p>
         <p>Slide 26 puts it as sharply as possible. There is <strong>no positional signal in the input at all</strong> — not absolute, not sinusoidal, not relative, not RoPE. Yet the model still learns to use word order. The reason: the <em class="term">causal mask</em> in a decoder-only transformer is itself an asymmetric operator. A token at position <code>t</code> can attend only to tokens at positions <code>≤ t</code>, never in the other direction. The set of tokens visible to token 0 is a strict subset of the set visible to token 1, which is a strict subset of the set visible to token 2, and so on. Any position-sensitive computation the model wants to do — counting how many tokens are on the left, or measuring recency — can be assembled out of that asymmetry.</p>
-        <p>Slide 27 spells out the mechanism. Since gradient descent will exploit any structural asymmetry that helps the loss, and since the causal mask <em>is</em> such an asymmetry, the model organically learns to route positional information through the attention pattern. The paper's striking empirical finding is that the resulting attention patterns end up looking a lot like T5's relative-position patterns — meaning the model has essentially <em>reinvented</em> relative PE from the mask alone.</p>
+        <p>Slide 27 spells out the How it works. Since gradient descent will exploit any structural asymmetry that helps the loss, and since the causal mask <em>is</em> such an asymmetry, the model organically learns to route positional information through the attention pattern. The paper's striking empirical finding is that the resulting attention patterns end up looking a lot like T5's relative-position patterns — meaning the model has essentially <em>reinvented</em> relative PE from the mask alone.</p>
         <div class="callout aha">
-          <div class="callout-label">✦ the aha</div>
+          <div class="callout-label">✦ Key takeaway</div>
           <p>Note the "causal mask" qualifier. NoPE does <em>not</em> work for encoder-only models (BERT-style) with bidirectional attention — there the attention operation is fully symmetric, and without a positional signal the model really is order-blind. NoPE is a phenomenon of <em>decoder-only</em> LMs. Which, conveniently, is what almost all modern frontier LLMs are.</p>
         </div>
       </div>
@@ -642,7 +632,7 @@
           <div class="slide-caption">slide 28 · NoPE in the wild</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three current frontier-scale examples of NoPE being used in production, not just as an academic curiosity.</p>
           <ul>
             <li><strong>SmolLM3.</strong> HuggingFace's small-model line uses a mixed design: RoPE in three out of every four layers, NoPE in the fourth. The idea is that a handful of position-agnostic layers act as a long-range "escape hatch" while the RoPE layers still handle local structure.</li>
@@ -650,7 +640,7 @@
             <li><strong>Kimi K3.</strong> Goes all the way: no RoPE anywhere. Pure NoPE across the whole stack. This is the strongest bet on Kazemnejad et al.'s finding to date at scale.</li>
           </ul>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>The long-context scaling story is really the point. Every RoPE-based model that wants to serve 100k+ tokens has to <em>retune</em> the RoPE frequencies (YaRN, NTK-aware scaling, position interpolation), and each retuning is a small research project. NoPE sidesteps all of that: nothing to retune, because there was nothing tuned in the first place.</p>
           </div>
         </div>
@@ -663,7 +653,7 @@
           <div class="slide-caption">slide 29 · gains</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The scoreboard for NoPE. Three gains, and no explicit "drawbacks" slide — the deck ends here.</p>
           <ol>
             <li><strong>Simplicity.</strong> Zero extra computation. Zero extra parameters. No sin/cos multiplies in the attention path. Nothing to tune.</li>
@@ -671,12 +661,12 @@
             <li><strong>Theoretical expressivity.</strong> The paper proves that a NoPE transformer can, in principle, represent both absolute and relative positional encodings via its learned attention patterns — so nothing you could express with RoPE is out of reach.</li>
           </ol>
           <div class="callout gotcha">
-            <div class="callout-label">⚠ common trap</div>
+            <div class="callout-label">⚠ Watch out</div>
             <p>NoPE is not "positional encoding was a mistake". Bidirectional encoders (BERT, ViT with global attention) still need it. And even in decoder-only models, RoPE and NoPE tend to trade off differently on short-context tasks vs. long-context extrapolation — NoPE isn't uniformly better, it's better <em>at length generalisation</em>. Which is why designs like SmolLM3 mix both.</p>
           </div>
           <div class="callout aha">
             <div class="callout-label">✦ the deck's punchline</div>
-            <p>Look at where the story has gone. Slide 5: learned position lookup. Slide 9: fixed sinusoidal function. Slide 14: pairwise bias on the logit. Slide 22: rotation of query and key. Slide 26: nothing. Each step removed a piece of the mechanism and asked "did we actually need it?", and the answer, more often than the original transformer paper would have guessed, was <em>no</em>. The direction of travel in the field is toward <em>less</em> hand-designed structure, not more.</p>
+            <p>Look at where the story has gone. Slide 5: learned position lookup. Slide 9: fixed sinusoidal function. Slide 14: pairwise bias on the logit. Slide 22: rotation of query and key. Slide 26: nothing. Each step removed a piece of the How it works and asked "did we actually need it?", and the answer, more often than the original transformer paper would have guessed, was <em>no</em>. The direction of travel in the field is toward <em>less</em> hand-designed structure, not more.</p>
           </div>
         </div>
       </div>

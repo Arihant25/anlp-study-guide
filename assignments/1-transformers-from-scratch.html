@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Assignment 1 · Transformers from Scratch — ANLP Study Guide</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A walkthrough of Assignment 1 for Advanced NLP, Monsoon 2026 IIIT-H: a from-scratch Encoder–Decoder transformer, a five-way ablation (Sinusoidal/RoPE, MHA/GQA, LayerNorm/RMSNorm, subword/BLT) and a viva question bank, with cross-references to the study guide's lectures.">
+<meta name="description" content="A walkthrough of Assignment 1 for Advanced NLP, Monsoon 2026 IIIT-H: a from-scratch Encoder–Decoder transformer, a five-way ablation (Sinusoidal/RoPE, MHA/GQA, LayerNorm/RMSNorm, subword/BLT) and a viva question bank, with Related materials to the study guide's lectures.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
@@ -48,15 +48,11 @@
       <div class="kicker">Assignment 01 · released 10 Aug · due 2 Sep 2026</div>
       <h1>Transformers from scratch — <em>and one component at a time</em>.</h1>
       <p class="lead">
-        The first assignment is deceptively simple to describe and enormous to
-        do well: build a full encoder–decoder transformer from
-        <code>nn.Linear</code> and <code>nn.Embedding</code>, then run five
-        controlled experiments where you change exactly one architectural
-        choice at a time — the positional encoding, the attention variant, the
-        normalisation, or the tokenizer — and measure what each choice actually
-        buys you. This page is a walkthrough of the submitted implementation,
-        linked back to the lectures that motivate every piece, and closes with
-        a viva bank sized to survive the code-defense.
+        Build an encoder-decoder transformer using <code>nn.Linear</code> and
+        <code>nn.Embedding</code>, then run five controlled experiments that
+        change one design choice at a time. This guide explains the submitted
+        implementation, connects each component to the relevant lecture, and
+        prepares you for the viva.
       </p>
       <div class="meta">
         <span class="pill heat">Assignment 01</span>
@@ -80,21 +76,19 @@
       </p>
 
       <p>
-        The assignment splits that goal in two:
+        The work has two parts:
       </p>
 
-      <div class="callout mechanism">
+      <div class="callout How it works">
         <div class="callout-label">the two tasks</div>
         <p><strong>Task 1 · Modules.</strong> Implement, from basic PyTorch: scaled dot-product attention, MHA, GQA, sinusoidal PE, RoPE, LayerNorm, RMSNorm, position-wise FFN, and the BLT local encoder/decoder. No <code>nn.Transformer</code>, no <code>nn.MultiheadAttention</code>, no <code>F.scaled_dot_product_attention</code>.</p>
         <p><strong>Task 2 · Ablation.</strong> Build five configurations that differ from a common baseline by exactly one component (positional encoding, attention, normalisation, tokenisation) and compare them under identical hyperparameters.</p>
       </div>
 
       <p>
-        Half of the marks (50/100) are on the viva. So the point of this page
-        is not just to describe <em>what</em> the code does — the docstrings
-        already do that — but to explain <em>why</em> each design decision was
-        made, what would break if you did it differently, and how each piece
-        connects back to the lecture that motivates it.
+        The viva is worth half the marks. For that reason, these notes focus on
+        why each design was chosen, what would change under an alternative,
+        and how the implementation connects to the course material.
       </p>
 
       <div class="callout link">
@@ -108,12 +102,11 @@
     <section id="problem">
       <h2><span class="num">§1</span>The problem</h2>
       <p class="section-intro">
-        Before any modelling: understand the dataset. It has structure that
-        the model can exploit, and that structure decides every choice further
-        down.
+        Start with the data. Its structure determines what the model needs to
+        learn and which design choices make sense.
       </p>
 
-      <div class="callout mechanism">
+      <div class="callout How it works">
         <div class="callout-label">⚙ the cipher, in one line</div>
         <p>For plaintext string <em>P</em> of length <em>L</em>, the ciphertext is the concatenation of 8-bit big-endian encodings of <code>ord(P[i]) XOR KEY[i mod 8]</code> for <em>i</em> = 0…<em>L</em>−1. Ciphertext length is exactly 8L bits, alphabet is {<code>0</code>, <code>1</code>}, and <code>KEY = b"ANLP2026"</code>.</p>
       </div>
@@ -126,12 +119,12 @@
       <ul>
         <li><strong>The map is positional.</strong> The correct bit-flip pattern for a character depends only on <em>i mod 8</em>. So the model does not need to translate ideas across a sentence; it needs to align byte <em>i</em> of the target to bit range <code>[8i, 8i+8)</code> of the source and apply the right XOR mask. This is a copy-with-transformation task, not a translation task.</li>
         <li><strong>Absolute position is meaningful modulo 8.</strong> Whatever positional encoding you pick, it needs to let the model learn phase-locked behaviour with period 8. Sinusoidal encodings already have periodic components, but the ones aligned to period 8 sit at specific dimensions of the encoding; RoPE gives the model directly usable relative-phase information.</li>
-        <li><strong>Alignment is long-range but regular.</strong> A line up to 2670 plaintext characters becomes a cipher string of up to 21360 bits — quadratic attention over that is expensive. The two responses in the code are chunking (<code>CHUNK_CHARS = 256</code>) and, for C5, windowed local attention.</li>
+        <li><strong>Alignment is long-range but regular.</strong> A line up to 2670 plaintext characters becomes a cipher string of up to 21360 bits, and quadratic attention over that is expensive. The two responses in the code are chunking (<code>CHUNK_CHARS = 256</code>) and, for C5, windowed local attention.</li>
       </ul>
 
       <div class="callout aha">
-        <div class="callout-label">✦ the aha</div>
-        <p>Once you see that the task is <em>positional decryption</em>, not <em>translation</em>, every design choice becomes about giving the model the cleanest positional signal possible. That is why RoPE (C2) wins so decisively over the sinusoidal baseline (C1) — and why the BLT byte-level model (C5), which sees every bit of the source in its raw 8-bit-group form, wins hardest of all.</p>
+        <div class="callout-label">✦ Key takeaway</div>
+        <p>Once you see that the task is <em>positional decryption</em>, not <em>translation</em>, every design choice becomes about giving the model the cleanest positional signal possible. That is why RoPE (C2) beats the sinusoidal baseline (C1) by a wide margin, and why the BLT byte-level model (C5), which sees every bit of the source in its raw 8-bit-group form, wins by the most.</p>
       </div>
     </section>
 
@@ -157,7 +150,7 @@
         into the same head, it computes:
       </p>
 
-      <div class="callout mechanism">
+      <div class="callout How it works">
         <div class="callout-label">⚙ Attention(Q, K, V)</div>
         <p>Attention(Q, K, V) = softmax(Q Kᵀ / √d<sub>k</sub>) V</p>
       </div>
@@ -173,14 +166,14 @@
         return torch.matmul(attn, v)</code></pre>
 
       <p>
-        Two implementation details are worth pausing on. First, the mask fill
-        value is <code>torch.finfo(scores.dtype).min</code> — the dtype's most
-        negative finite value — not <code>-inf</code>. If every position in a
-        row is blocked (a fully-padded key row, which does happen for empty
-        BLT patches downstream), softmax over a row of <code>-inf</code>
-        produces <code>NaN</code>; with the dtype minimum it degrades to a
-        uniform distribution, which is harmless because those rows are also
-        going to be masked out of the loss.
+        A couple of implementation details. First, the mask fill value is
+        <code>torch.finfo(scores.dtype).min</code> (the dtype's most negative
+        finite value), not <code>-inf</code>. If every position in a row is
+        blocked (a fully-padded key row, which does happen for empty BLT
+        patches downstream), softmax over a row of <code>-inf</code> produces
+        <code>NaN</code>; with the dtype minimum it degrades to a uniform
+        distribution, which is harmless because those rows are also going to
+        be masked out of the loss.
       </p>
 
       <p>
@@ -189,12 +182,12 @@
         <code>(B, H, L<sub>q</sub>, L<sub>k</sub>)</code>. Key-padding masks
         arrive as <code>(B, 1, 1, L<sub>k</sub>)</code>; causal masks arrive
         as <code>(1, 1, L<sub>q</sub>, L<sub>k</sub>)</code>. Broadcasting
-        does the rest — you can OR the two together and pass the result in.
+        does the rest, so you can OR the two together and pass the result in.
       </p>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
-        <p>The √d<sub>k</sub> scaling and its role in keeping softmax gradients from vanishing are covered in <a class="xref" href="../lectures/5-attention.html#core">L5 · Attention § "Attention as it was invented"</a>. If you were asked why we divide by √d<sub>k</sub> and not just d<sub>k</sub>, the answer is: dot products of random d<sub>k</sub>-dim vectors have variance d<sub>k</sub>, so dividing by √d<sub>k</sub> makes them unit-variance again.</p>
+        <div class="callout-label">→ Related material</div>
+        <p>The √d<sub>k</sub> scaling and its role in keeping softmax gradients from vanishing are covered in <a class="xref" href="../lectures/5-attention.html#core">L5 · Attention § "Attention as it was invented"</a>. If you were asked why we divide by √d<sub>k</sub> and not just d<sub>k</sub>, the answer is that dot products of random d<sub>k</sub>-dim vectors have variance d<sub>k</sub>, so dividing by √d<sub>k</sub> makes them unit-variance again.</p>
       </div>
 
       <h3 id="mha">§2.2 · Multi-Head Attention</h3>
@@ -204,7 +197,7 @@
         representation, then concatenates the head outputs and projects them
         back to <code>d_model</code>. The intuition is that different heads
         can specialise: one head can attend to the previous token, another to
-        the subject–verb dependency, another to a specific syntactic role.
+        the subject-verb dependency, another to a specific syntactic role.
       </p>
 
       <pre class="code"><code>class MultiHeadAttention(nn.Module):
@@ -229,8 +222,8 @@
       <p>
         Three shape moves happen here. <code>_split</code> reshapes
         <code>(B, L, d_model)</code> into
-        <code>(B, n_heads, L, head_dim)</code> — the heads become an
-        independent batch dimension so the ordinary matmuls inside SDPA
+        <code>(B, n_heads, L, head_dim)</code>, so the heads become an
+        independent batch dimension and the ordinary matmuls inside SDPA
         already parallelise across heads. After attention, the reverse
         transpose-and-view stitches the heads back together, and
         <code>o_proj</code> mixes the head outputs into one vector per
@@ -242,20 +235,20 @@
         (<code>rope=None</code>, sinusoidal PE added at the embeddings) and C2
         (<code>rope=RotaryPositionalEmbedding(...)</code>, no absolute PE at
         all, rotation applied to Q and K inside every self-attention layer).
-        For cross-attention the caller passes <code>rope=None</code> because
+        For cross-attention the caller passes <code>rope=None</code>, because
         the encoder and decoder positions live on different sequences that
-        share no coordinate system — see the <code>DecoderLayer</code>
-        assembly below.
+        share no coordinate system (see the <code>DecoderLayer</code>
+        assembly below).
       </p>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
+        <div class="callout-label">→ Related material</div>
         <p>Multi-head attention as a shape trick is explained in <a class="xref" href="../lectures/2-transformers.html">L2 · Transformers</a> in the "Multi Head Attention" slides; the split into <em>h</em> heads and the concat-then-linear back is exactly the Vaswani et al. (2017) diagram reproduced there.</p>
       </div>
 
       <h3 id="gqa">§2.3 · Grouped-Query Attention (C3)</h3>
       <p>
-        GQA — Ainslie et al. (2023) — is a compromise between MHA and MQA
+        GQA (Ainslie et al. 2023) is a compromise between MHA and MQA
         (Multi-Query Attention). MQA has all heads share a single K/V, which
         makes the KV cache <em>h</em>× smaller but empirically loses quality.
         GQA groups the query heads into <em>g</em> groups and gives each
@@ -287,7 +280,7 @@
         The one design decision here is <code>repeat_interleave</code> vs
         <code>expand</code>. <code>expand</code> would use views and cost no
         memory, but the subsequent matmul inside SDPA does not accept a
-        broadcasted K/V — it requires a materialised contiguous tensor.
+        broadcasted K/V; it requires a materialised contiguous tensor.
         <code>repeat_interleave</code> materialises the tensor, which does
         cost transient memory during the forward pass, but that memory is
         smaller than what MHA would use because the K/V projections
@@ -300,13 +293,13 @@
       </p>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
-        <p>MQA/GQA are covered in depth in <a class="xref" href="../lectures/5-attention.html#mqa-gqa">L5 · Attention §5 "MQA and GQA"</a>. That section frames both variants as attacks on the KV cache — the exact concern that motivates GQA at inference time. In training-only settings (like this assignment) GQA is mostly a parameter-count reduction rather than a memory-bandwidth reduction.</p>
+        <div class="callout-label">→ Related material</div>
+        <p>MQA/GQA are covered in depth in <a class="xref" href="../lectures/5-attention.html#mqa-gqa">L5 · Attention §5 "MQA and GQA"</a>. That section frames both variants as attacks on the KV cache, which is the exact concern that motivates GQA at inference time. In training-only settings (like this assignment) GQA is mostly a parameter-count reduction rather than a memory-bandwidth reduction.</p>
       </div>
 
       <div class="callout gotcha">
-        <div class="callout-label">⚠ common trap</div>
-        <p>GQA and MQA are attacks on the <em>inference</em> KV cache, not the training-time attention matrix. During training you still materialise a full (B, H, L<sub>q</sub>, L<sub>k</sub>) score tensor, so C3 does <em>not</em> get a training-time memory win — the benchmark numbers in §6 confirm this. The win at training is only in parameter count and the K/V linear projections' FLOPs.</p>
+        <div class="callout-label">⚠ Watch out</div>
+        <p>GQA and MQA are attacks on the <em>inference</em> KV cache, not the training-time attention matrix. During training you still materialise a full (B, H, L<sub>q</sub>, L<sub>k</sub>) score tensor, so C3 does <em>not</em> get a training-time memory win. The benchmark numbers in §6 confirm this. The win at training is only in parameter count and the K/V linear projections' FLOPs.</p>
       </div>
 
       <h3 id="sinusoidal">§2.4 · Sinusoidal positional encoding (C1, C3, C4, C5)</h3>
@@ -315,18 +308,18 @@
         before the first layer, and never appears again.
       </p>
 
-      <div class="callout mechanism">
+      <div class="callout How it works">
         <div class="callout-label">⚙ sinusoidal PE</div>
         <p>PE(pos, 2i)   = sin(pos / 10000<sup>2i/d</sup>)<br>
            PE(pos, 2i+1) = cos(pos / 10000<sup>2i/d</sup>)</p>
       </div>
 
       <p>
-        The two ideas hidden in that formula are (a) different dimensions
-        oscillate at different frequencies — the low-index dimensions swing
+        The two ideas hidden in that formula are: (a) different dimensions
+        oscillate at different frequencies, so the low-index dimensions swing
         fast, the high-index dimensions swing slowly, and together they form
-        a continuous binary-like encoding of position — and (b) the sinusoids
-        make relative offsets <em>linear</em>: PE(pos + k) can be written as
+        a continuous binary-like encoding of position; and (b) the sinusoids
+        make relative offsets <em>linear</em>. PE(pos + k) can be written as
         a rotation of PE(pos) that depends only on <em>k</em>, so a linear
         attention layer can in principle learn to attend by relative offset.
       </p>
@@ -347,20 +340,20 @@
       <p>
         <code>register_buffer</code> makes <code>pe</code> travel with the
         module (moves to GPU on <code>.cuda()</code>, saves to state dict)
-        without being registered as a parameter — sinusoidal PE has no
+        without being registered as a parameter, since sinusoidal PE has no
         learnable weights. <code>persistent=False</code> keeps it out of the
-        checkpoint since we can recompute it from <code>d_model</code> and
+        checkpoint because we can recompute it from <code>d_model</code> and
         <code>max_len</code> alone.
       </p>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
+        <div class="callout-label">→ Related material</div>
         <p>The full derivation of the sin/cos schedule and the geometric argument for why relative offsets are linear is in <a class="xref" href="../lectures/4-positional-encoding.html#sinusoidal">L4 · Positional Encoding §3 "Sinusoidal PE"</a>.</p>
       </div>
 
       <h3 id="rope">§2.5 · Rotary Position Embeddings (C2)</h3>
       <p>
-        RoPE — Su et al. (2021), RoFormer — replaces the additive absolute
+        RoPE (Su et al. 2021, RoFormer) replaces the additive absolute
         encoding entirely. Instead of adding a position vector at the input,
         it rotates the Q and K vectors <em>inside every attention layer</em>
         by an angle that depends on their position. The head dimension is
@@ -368,7 +361,7 @@
         with θ<sub>i</sub> = base<sup>−2i/d</sup>.
       </p>
 
-      <div class="callout mechanism">
+      <div class="callout How it works">
         <div class="callout-label">⚙ RoPE (half-split convention)</div>
         <p>Given x = (x₁, x₂) split down the head dim, apply<br>
            rot(x, θ) = (x₁ cos θ − x₂ sin θ,  x₂ cos θ + x₁ sin θ)<br>
@@ -397,36 +390,36 @@
         return self._rotate(q, cos, sin), self._rotate(k, cos, sin)</code></pre>
 
       <p>
-        The magic is what happens to <em>Q<sup>T</sup>K</em> after both are
-        rotated. Because rotation preserves inner products of matched
+        The important part is what happens to <em>Q<sup>T</sup>K</em> after
+        both are rotated. Because rotation preserves inner products of matched
         components, the dot product between a rotated query at position
         <em>m</em> and a rotated key at position <em>n</em> depends only on
         <em>m − n</em>. That means <strong>relative offsets appear directly
-        in the attention scores</strong> — with no additional bias term, no
+        in the attention scores</strong>, with no additional bias term, no
         additional learnable parameters, and no need to add anything to the
         embeddings.
       </p>
 
       <div class="callout aha">
-        <div class="callout-label">✦ the aha</div>
-        <p>The C1 → C2 jump (bit accuracy 0.71 → 0.78, BLEU 61.7 → 84.3) is the biggest single-variable win in the whole ablation. On a positional-decryption task, giving the attention mechanism relative-offset information <em>directly in the dot product</em> — instead of relying on the model to reconstruct it from an additive encoding through a couple of layers of matmuls — pays off almost immediately.</p>
+        <div class="callout-label">✦ Key takeaway</div>
+        <p>The C1 → C2 jump (bit accuracy 0.71 → 0.78, BLEU 61.7 → 84.3) is the largest single-variable win in the ablation. On a positional-decryption task, giving the attention How it works relative-offset information <em>directly in the dot product</em>, instead of relying on the model to reconstruct it from an additive encoding through a couple of layers of matmuls, pays off almost immediately.</p>
       </div>
 
       <p>
-        Two engineering notes. First, RoPE only applies to <em>self-attention</em>
-        — <code>DecoderLayer</code> passes <code>rope=None</code> to its cross
-        attention because encoder and decoder positions live on different
-        sequences that share no coordinate system for rotation. Second,
-        <code>head_dim</code> must be even for the half-split; the assertion
-        catches this at construction.
+        Two engineering notes. First, RoPE only applies to
+        <em>self-attention</em>. <code>DecoderLayer</code> passes
+        <code>rope=None</code> to its cross attention because encoder and
+        decoder positions live on different sequences that share no coordinate
+        system for rotation. Second, <code>head_dim</code> must be even for
+        the half-split; the assertion catches this at construction.
       </p>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
+        <div class="callout-label">→ Related material</div>
         <p>Half-split RoPE, the pair-wise rotation convention (a common alternative), and the geometric proof that Q<sup>T</sup>K depends only on the relative offset are all in <a class="xref" href="../lectures/4-positional-encoding.html#rope">L4 · Positional Encoding §5 "RoPE"</a>.</p>
       </div>
 
-      <h3 id="norm">§2.6 · LayerNorm and RMSNorm (C1–C3, C5 · vs · C4)</h3>
+      <h3 id="norm">§2.6 · LayerNorm and RMSNorm (C1-C3, C5 · vs · C4)</h3>
       <p>
         Both are per-token normalisations over the last dimension. LayerNorm
         subtracts the mean and divides by the standard deviation; RMSNorm
@@ -434,7 +427,7 @@
         entirely.
       </p>
 
-      <div class="callout mechanism">
+      <div class="callout How it works">
         <div class="callout-label">⚙ LayerNorm vs RMSNorm</div>
         <p><strong>LayerNorm:</strong> y = (x − mean) / √(var + ε) · γ + β<br>
            <strong>RMSNorm:</strong> y = x / √(mean(x²) + ε) · γ</p>
@@ -464,13 +457,13 @@ class RMSNorm(nn.Module):
       </p>
 
       <div class="callout aha">
-        <div class="callout-label">✦ the aha</div>
-        <p>RMSNorm is <em>cheaper</em> — no mean, no bias — and modern models (Llama, T5, Mistral) have moved to it. On this task the C1 → C4 swap is nearly a wash on quality (bit accuracy 0.712 → 0.707) and gives a small memory win (2.998 GB → 2.853 GB) with slightly higher throughput. The takeaway isn't that RMSNorm is better here; it's that it's <em>free</em>. If two options give the same quality and one is cheaper, the cheaper one is the right default.</p>
+        <div class="callout-label">✦ Key takeaway</div>
+        <p>RMSNorm is <em>cheaper</em> (no mean, no bias) and modern models (Llama, T5, Mistral) have moved to it. On this task the C1 → C4 swap is nearly a wash on quality (bit accuracy 0.712 → 0.707) and gives a small memory win (2.998 GB → 2.853 GB) with slightly higher throughput. RMSNorm isn't better here; it's <em>free</em>. If two options give the same quality and one is cheaper, the cheaper one is the right default.</p>
       </div>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
-        <p>Add &amp; Norm's role in the transformer block, and residual connections' effect on the loss landscape, are in <a class="xref" href="../lectures/2-transformers.html">L2 · Transformers</a> under "Add and Layer Normalization" and "Residual Connection". The RMSNorm paper (Zhang &amp; Sennrich 2019) is not in the study guide's lecture set — the norm.py docstring cites it directly.</p>
+        <div class="callout-label">→ Related material</div>
+        <p>Add &amp; Norm's role in the transformer block, and residual connections' effect on the loss landscape, are in <a class="xref" href="../lectures/2-transformers.html">L2 · Transformers</a> under "Add and Layer Normalization" and "Residual Connection". The RMSNorm paper (Zhang &amp; Sennrich 2019) is not in the study guide's lecture set; the norm.py docstring cites it directly.</p>
       </div>
 
       <h3 id="ffn">§2.7 · Position-wise feed-forward network</h3>
@@ -494,7 +487,7 @@ class RMSNorm(nn.Module):
 
       <p>
         With <code>d_model=256, ffn_dim=1024</code> the FFN's parameter share
-        dominates the model — position-wise MLPs are typically 60%+ of a
+        dominates the model. Position-wise MLPs are typically 60%+ of a
         transformer's parameters, as the L5 param-count table shows. GELU is
         the modern default; the original paper used ReLU.
       </p>
@@ -507,7 +500,7 @@ class RMSNorm(nn.Module):
         the norm sits inside the residual branch, on the input to the sublayer.
       </p>
 
-      <div class="callout mechanism">
+      <div class="callout How it works">
         <div class="callout-label">⚙ Pre-LN vs Post-LN</div>
         <p><strong>Post-LN:</strong> x = LayerNorm(x + Sublayer(x))<br>
            <strong>Pre-LN:</strong>  x = x + Dropout(Sublayer(LayerNorm(x)))</p>
@@ -529,27 +522,27 @@ class DecoderLayer(nn.Module):
         return x</code></pre>
 
       <p>
-        Pre-LN is easier to train from scratch: with Post-LN the residual
+        Pre-LN is easier to train from scratch. With Post-LN the residual
         branch adds unbounded activations that immediately get normalised,
         so the residual is quickly wiped out and gradients flow poorly
         without a warm-up schedule. Pre-LN keeps a clean residual highway
-        through the network — the norm only sees the residual-branch input —
+        through the network (the norm only sees the residual-branch input),
         so gradient scale stays sane at deep depths.
       </p>
 
       <p>
         Two more assembly details. Each stack ends with a final norm
-        (<code>self.final_norm</code>) — Pre-LN's residual highway leaves the
-        top-layer output unnormalised, and one final norm fixes that.
-        Cross-attention is always MHA without RoPE regardless of the
+        (<code>self.final_norm</code>) because Pre-LN's residual highway
+        leaves the top-layer output unnormalised, and one final norm fixes
+        that. Cross-attention is always MHA without RoPE regardless of the
         configuration; the ablated components (attention type in C3, RoPE in
         C2) concern self-attention only, and cross-attention query/key
         positions belong to different sequences.
       </p>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
-        <p>The encoder–decoder architecture, cross-attention, and the residual pathways it uses are covered in <a class="xref" href="../lectures/2-transformers.html">L2 · Transformers</a> under "Transformer Architecture" and "Cross Attention". The Pre-LN vs Post-LN debate is not on those slides — Xiong et al. (2020) is the paper to cite.</p>
+        <div class="callout-label">→ Related material</div>
+        <p>The encoder-decoder architecture, cross-attention, and the residual pathways it uses are covered in <a class="xref" href="../lectures/2-transformers.html">L2 · Transformers</a> under "Transformer Architecture" and "Cross Attention". The Pre-LN vs Post-LN debate is not on those slides; Xiong et al. (2020) is the paper to cite.</p>
       </div>
     </section>
 
@@ -558,11 +551,11 @@ class DecoderLayer(nn.Module):
     <section id="task2">
       <h2><span class="num">§3</span>Task 2 · The five configurations</h2>
       <p class="section-intro">
-        Every configuration shares the same hyperparameters —
-        <code>d_model=256, n_heads=8, enc_layers=dec_layers=4,
-        ffn_dim=1024, dropout=0.1, lr=3e-4, batch token-budget=8192</code> —
+        Every configuration shares the same hyperparameters
+        (<code>d_model=256, n_heads=8, enc_layers=dec_layers=4,
+        ffn_dim=1024, dropout=0.1, lr=3e-4, batch token-budget=8192</code>),
         so any difference in results is attributable to the one component
-        that changed. This is the whole point of a controlled ablation.
+        that changed. That is the whole point of a controlled ablation.
       </p>
 
       <table class="tbl">
@@ -582,19 +575,19 @@ class DecoderLayer(nn.Module):
 
       <p>
         C1 through C4 all share the same <code>Seq2SeqTransformer</code>
-        assembly (<code>src/models/__init__.py</code>) — they differ only in
+        assembly (<code>src/models/__init__.py</code>); they differ only in
         the flags passed to <code>pos_encoding</code>, <code>attn_type</code>,
         <code>n_kv_heads</code>, and <code>norm</code>. C5 is a separate
         <code>BLTModel</code> class because token-free processing changes the
-        input pipeline shape enough to make a shared class awkward — but its
+        input pipeline shape enough to make a shared class awkward. But its
         global transformer stack is <em>literally the same</em> Encoder and
         Decoder classes as C1, only operating on patch representations instead
         of token embeddings.
       </p>
 
       <div class="callout gotcha">
-        <div class="callout-label">⚠ common trap</div>
-        <p>C5's global encoder/decoder use MHA + Sinusoidal + LayerNorm — exactly the same components as C1. Only the tokenisation boundary changed. If your BLT model quietly used RMSNorm or RoPE, you would be running a two-variable ablation and the C5-vs-C1 comparison would be uninterpretable.</p>
+        <div class="callout-label">⚠ Watch out</div>
+        <p>C5's global encoder/decoder use MHA + Sinusoidal + LayerNorm, exactly the same components as C1. Only the tokenisation boundary changed. If your BLT model quietly used RMSNorm or RoPE, you would be running a two-variable ablation and the C5-vs-C1 comparison would be uninterpretable.</p>
       </div>
     </section>
 
@@ -624,8 +617,8 @@ class DecoderLayer(nn.Module):
       </p>
 
       <div class="callout aha">
-        <div class="callout-label">✦ the aha</div>
-        <p>The C1 → C5 jump on bit accuracy (0.712 → 0.967) and sequence accuracy (0.004 → 0.364) is huge, but the price is roughly 4× slower training and 60% more peak memory. The lesson is not "byte-level always wins" — it is "when your tokeniser's inductive bias fights the data, drop the tokeniser." Cipher data is exactly that pathology.</p>
+        <div class="callout-label">✦ Key takeaway</div>
+        <p>The C1 → C5 jump on bit accuracy (0.712 → 0.967) and sequence accuracy (0.004 → 0.364) is huge, but the price is roughly 4× slower training and 60% more peak memory. The lesson is that when your tokeniser's inductive bias fights the data, drop the tokeniser. Cipher data is exactly that pathology; byte-level is not a universal win.</p>
       </div>
 
       <h3 id="blt-encoder">§4.2 · The LocalEncoder: bytes → patches</h3>
@@ -635,8 +628,8 @@ class DecoderLayer(nn.Module):
         sequence is split into non-overlapping windows of 128 positions,
         attention runs independently inside each window, and long-range
         context is carried by the global stack on top. This keeps the
-        byte-side cost O(<em>L · window</em>) instead of O(<em>L²</em>) —
-        essential for ~21 000-byte cipher inputs.
+        byte-side cost O(<em>L · window</em>) instead of O(<em>L²</em>),
+        which is essential for ~21 000-byte cipher inputs.
       </p>
 
       <pre class="code"><code>class LocalTransformerLayer(nn.Module):
@@ -654,7 +647,7 @@ class DecoderLayer(nn.Module):
         return out.view(B, nb * W, D)[:, :L]</code></pre>
 
       <p>
-        The reshape trick is the whole story: batching windows across the
+        The reshape trick does the work: batching windows across the
         <em>batch</em> dimension lets the ordinary MHA class run over each
         window in parallel, without ever computing a full-length attention
         matrix. The causal variant is used on the decoder side (§4.4).
@@ -663,12 +656,11 @@ class DecoderLayer(nn.Module):
       <h3 id="blt-patching">§4.3 · Entropy-based patch boundaries</h3>
       <p>
         After the byte-level layers, the LocalEncoder <em>pools</em> variable
-        groups of adjacent byte vectors into single patch vectors. The
-        boundaries are not a fixed stride — following the paper — they come
-        from a byte n-gram entropy model. A new patch starts wherever the
-        next byte is <em>hard to predict</em>: information-dense regions get
-        many short patches, predictable stretches collapse into a few long
-        ones.
+        groups of adjacent byte vectors into single patch vectors. Following
+        the paper, the boundaries are not a fixed stride; they come from a
+        byte n-gram entropy model. A new patch starts wherever the next byte
+        is <em>hard to predict</em>: information-dense regions get many short
+        patches, predictable stretches collapse into a few long ones.
       </p>
 
       <pre class="code"><code>class ByteEntropyModel:
@@ -686,10 +678,10 @@ class DecoderLayer(nn.Module):
         return starts</code></pre>
 
       <p>
-        Two design choices worth pausing on. First, the threshold is set at
-        the <em>75th percentile</em> of the training entropy distribution
+        Two design choices. First, the threshold is set at the <em>75th
+        percentile</em> of the training entropy distribution
         (<code>entropy_percentile=75</code> in <code>SHARED</code>), not as
-        an absolute number of bits — a fixed cutoff of "7 bits" would never
+        an absolute number of bits. A fixed cutoff of "7 bits" would never
         fire on ciphertext that tops out at ~6 bits of entropy, and every
         patch would silently hit the length cap. Second,
         <code>max_patch=12</code> caps how long a predictable run may grow;
@@ -725,13 +717,13 @@ class DecoderLayer(nn.Module):
       <p>
         Two points. First, patches are batched over
         <code>B · K</code> so a single MHA call handles the whole layer.
-        Second — and the docstring flags this as a hard-won lesson —
-        <strong>order-preserving pooling matters</strong>. An earlier version
-        used a mean of the byte vectors, which is permutation-invariant, and
-        the model could not recover a character from what amounted to a bag
-        of its bits. Cross-attention with a learned query gives the pooling
-        access to token position information carried in the byte vectors and
-        fixes this immediately.
+        Second, and the docstring flags this from a bug that took a while to
+        find, <strong>order-preserving pooling matters</strong>. An earlier
+        version used a mean of the byte vectors, which is
+        permutation-invariant, and the model could not recover a character
+        from what amounted to a bag of its bits. Cross-attention with a
+        learned query gives the pooling access to token position information
+        carried in the byte vectors and fixes this immediately.
       </p>
 
       <h3 id="blt-cross">§4.5 · Patch-causal cross-attention and the source-memory path</h3>
@@ -748,7 +740,7 @@ class DecoderLayer(nn.Module):
         bytes. Global state <em>g<sub>j</sub></em> summarises target
         positions ≤ <em>j · patch_tgt − 1</em>, so byte position <em>i</em>
         may attend states <em>j</em> ≤ (<em>i</em>+1) // <em>patch_tgt</em>
-        without ever seeing its own or any future byte.
+        without ever seeing its own byte or any future one.
       </p>
 
       <pre class="code"><code>def patch_causal_cross_mask(self, Lt, K, device):
@@ -770,12 +762,12 @@ class DecoderLayer(nn.Module):
       </p>
 
       <div class="callout gotcha">
-        <div class="callout-label">⚠ common trap</div>
-        <p>Even the paper's cross-attention through pooled patches is <em>lossy</em> on a task where the source-target alignment is at the individual-byte level. The failure mode is subtle: the model still trains, the loss still goes down, but it converges to a plain language model that never uses the source. The dual cross-attention path is the fix.</p>
+        <div class="callout-label">⚠ Watch out</div>
+        <p>Even the paper's cross-attention through pooled patches is <em>lossy</em> on a task where the source-target alignment is at the individual-byte level. The failure mode is subtle: the model still trains, the loss still goes down, but it converges to a plain language model that never uses the source. Adding a second cross-attention path is the fix.</p>
       </div>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
+        <div class="callout-label">→ Related material</div>
         <p>Byte-level tokenisation and the "skipping tokenisation altogether" question are covered in <a class="xref" href="../lectures/3-tokenization.html#notoken">L3 · Tokenization §6 "Skipping tokenization altogether"</a>. BLT specifically is Pagnoni et al. (2024), arXiv:2412.09871.</p>
       </div>
     </section>
@@ -793,9 +785,9 @@ class DecoderLayer(nn.Module):
       <h3 id="chunking">§5.1 · Chunking with a phase-aligned window</h3>
       <p>
         Lines run up to 2670 plaintext characters, or 21360 cipher bits. Full
-        lines make the cross-attention copy mechanism hard to learn — the
-        model must simultaneously discover the phase-8 XOR pattern and align
-        long sequences. Chunking with <code>CHUNK_CHARS = 256</code>
+        lines make the cross-attention copy How it works hard to learn, because
+        the model must simultaneously discover the phase-8 XOR pattern and
+        align long sequences. Chunking with <code>CHUNK_CHARS = 256</code>
         shortens the alignment range and multiplies the number of training
         pairs.
       </p>
@@ -810,7 +802,7 @@ class DecoderLayer(nn.Module):
 
       <h3 id="bpe">§5.2 · BPE from scratch, with a linked-list corpus</h3>
       <p>
-        The tokenizers for C1–C4 are learned per-side BPEs, trained with a
+        The tokenizers for C1-C4 are learned per-side BPEs, trained with a
         pure-Python implementation. Sennrich et al. (2016) describes the
         algorithm in five lines: start from the character alphabet, count
         adjacent symbol pairs, merge the most frequent, repeat until the
@@ -840,7 +832,7 @@ class DecoderLayer(nn.Module):
       </p>
 
       <div class="callout link">
-        <div class="callout-label">→ cross-reference</div>
+        <div class="callout-label">→ Related material</div>
         <p>BPE's algorithm and the workhorse status it enjoys are in <a class="xref" href="../lectures/3-tokenization.html#bpe">L3 · Tokenization §5 "Byte Pair Encoding"</a>.</p>
       </div>
 
@@ -855,8 +847,8 @@ class DecoderLayer(nn.Module):
       <p>
         The paper trains a small byte-level LM for this. Pure Markov works
         here for two reasons: bytes have a tiny state space, and the metric
-        the boundaries care about — <em>relative</em> unpredictability at a
-        position — does not need a deep model to be well-calibrated.
+        the boundaries care about, which is <em>relative</em> unpredictability
+        at a position, does not need a deep model to be well-calibrated.
       </p>
 
       <h3 id="bucket">§5.4 · Length-bucketed batching</h3>
@@ -883,17 +875,17 @@ class DecoderLayer(nn.Module):
         why this matters:
       </p>
       <blockquote>
-        PyTorch's default N(0, 1) embedding init is catastrophic here:
-        combined with the √d<sub>model</sub> embedding scale it produces
+        PyTorch's default N(0, 1) embedding init is catastrophic here.
+        Combined with the √d<sub>model</sub> embedding scale it produces
         std~16 activations that (a) drown the unit-amplitude sinusoidal
-        positional encoding — destroying the positional information this task
-        depends on — and (b) yield hugely over-confident initial logits
+        positional encoding, destroying the positional information this task
+        depends on, and (b) yield hugely over-confident initial logits
         through the tied output head.
       </blockquote>
       <p>
         Get this wrong and every configuration starts training in a hole
-        that only C2 and C5 have any chance of climbing out of — because RoPE
-        does not depend on additive positional signal, and BLT does not depend
+        that only C2 and C5 have any chance of climbing out of, because RoPE
+        does not depend on additive positional signal and BLT does not depend
         on the sinusoidal-embedding balance at all.
       </p>
     </section>
@@ -905,7 +897,7 @@ class DecoderLayer(nn.Module):
       <p class="section-intro">
         All five configurations trained under identical hyperparameters, early
         stopping on validation loss with patience 10. Below are the final test
-        metrics and per-configuration training benchmarks — everything is
+        metrics and per-configuration training benchmarks. Everything is
         greedy-decoded, as the assignment requires.
       </p>
 
@@ -942,16 +934,16 @@ class DecoderLayer(nn.Module):
       <div class="callout aha">
         <div class="callout-label">✦ what each result tells you</div>
         <ul>
-          <li><strong>C2 (RoPE):</strong> The biggest single-variable win in the ablation. Relative-offset information delivered directly in the QK dot product is exactly what a phase-periodic decryption task needs.</li>
-          <li><strong>C3 (GQA):</strong> Slightly worse quality, ~8% fewer parameters, no training-time memory or throughput win. GQA's real target is inference — the KV cache — and that is not what this benchmark measures.</li>
+          <li><strong>C2 (RoPE):</strong> The largest single-variable win in the ablation. Relative-offset information delivered directly in the QK dot product is exactly what a phase-periodic decryption task needs.</li>
+          <li><strong>C3 (GQA):</strong> Slightly worse quality, ~8% fewer parameters, no training-time memory or throughput win. GQA's real target is inference (the KV cache), and that is not what this benchmark measures.</li>
           <li><strong>C4 (RMSNorm):</strong> Essentially tied with C1 on quality, ~5% peak-memory win, tiny throughput gain. Confirms the folk wisdom that RMSNorm is a strict cost improvement on LayerNorm at this scale.</li>
-          <li><strong>C5 (BLT):</strong> Wins by a landslide on quality (96.7% bits, 36% full-line reconstruction), but costs ~4× wall-clock per epoch and ~1.6× peak memory. The token-boundary problem in BPE is exactly the wrong inductive bias for cipher data.</li>
+          <li><strong>C5 (BLT):</strong> Wins by a wide margin on quality (96.7% bits, 36% full-line reconstruction), but costs ~4× wall-clock per epoch and ~1.6× peak memory. The token-boundary problem in BPE is exactly the wrong inductive bias for cipher data.</li>
         </ul>
       </div>
 
       <div class="callout gotcha">
-        <div class="callout-label">⚠ common trap</div>
-        <p>Sequence accuracy on C1–C4 sits at 0.0–4.6% because greedy decoding of a 256-character line requires <em>every one</em> of those characters to be correct. Bit accuracy is a much smoother metric on this task; do not read low sequence-accuracy numbers on the tokenised models as "the model learned nothing" — BLEU/ROUGE tell the fuller story.</p>
+        <div class="callout-label">⚠ Watch out</div>
+        <p>Sequence accuracy on C1-C4 sits at 0.0-4.6% because greedy decoding of a 256-character line requires <em>every one</em> of those characters to be correct. Bit accuracy is a much smoother metric on this task; do not read low sequence-accuracy numbers on the tokenised models as "the model learned nothing". BLEU/ROUGE tell the fuller story.</p>
       </div>
     </section>
 
@@ -960,8 +952,8 @@ class DecoderLayer(nn.Module):
     <section id="viva">
       <h2><span class="num">§7</span>Viva question bank</h2>
       <p class="section-intro">
-        The viva is 50% of the mark. What follows is an exhaustive list of
-        questions grouped by topic — a mix of "explain your code," "explain
+        The viva is 50% of the mark. What follows is a long list of
+        questions grouped by topic: a mix of "explain your code," "explain
         the theory," "what would break if…," and "compare against the
         alternative." Answering all of these out loud, without hesitating on
         any one, is the bar to aim for.
@@ -1146,7 +1138,7 @@ class DecoderLayer(nn.Module):
           <div class="a"><p><strong>Encoder:</strong> x ← x + Dropout(SelfAttn(Norm(x))); x ← x + Dropout(FFN(Norm(x))). <strong>Decoder:</strong> x ← x + Dropout(SelfAttn(Norm(x), causal)); x ← x + Dropout(CrossAttn(Norm(x), memory)); x ← x + Dropout(FFN(Norm(x))). Three sublayers on the decoder, two on the encoder, each Pre-LN inside its own residual branch.</p></div></details></li>
 
         <li><details><summary>Why does your decoder cross-attention use MHA even when the self-attention is GQA (C3)?</summary>
-          <div class="a"><p>The ablation only substitutes the self-attention. Cross-attention is a different mechanism (queries and keys live on different sequences with no shared coordinate system) and it is kept fixed across all five configurations so that the C3 vs C1 comparison isolates the self-attention change alone.</p></div></details></li>
+          <div class="a"><p>The ablation only substitutes the self-attention. Cross-attention is a different How it works (queries and keys live on different sequences with no shared coordinate system) and it is kept fixed across all five configurations so that the C3 vs C1 comparison isolates the self-attention change alone.</p></div></details></li>
 
         <li><details><summary>Why does your model tie the output projection weights with the target embedding?</summary>
           <div class="a"><p>Weight tying (Press &amp; Wolf 2017) uses the target embedding matrix as the transpose of the output projection. Two wins: (a) it halves the parameter count of a large vocab head — meaningful when the target vocab is 8000+ pieces — and (b) it improves generalisation because the same "meaning" of a token must serve both as input embedding and as output logit direction, which is a strong regulariser.</p></div></details></li>

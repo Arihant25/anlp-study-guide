@@ -45,14 +45,10 @@
       <div class="kicker">Lecture 03 · 34 slides · August 10, 13, 2026</div>
       <h1>Tokenization — <em>from raw text to model input</em>.</h1>
       <p class="lead">
-        A transformer does not read text. It reads a sequence of integers,
-        each pointing into an embedding matrix of some fixed vocabulary. The
-        step that gets us from a string like <code>"Daenerys Targaryen"</code>
-        to that sequence of integers is <em class="term">tokenization</em>,
-        and it is stranger, more consequential, and more contested than the
-        one-line description makes it sound. This lecture is the tour: what a
-        token even is, why the obvious answers all break, and the four or
-        five algorithms every modern model actually uses.
+        Transformers work with integer IDs, not raw text. <em class="term">Tokenization</em>
+        is the process that turns a string such as <code>"Daenerys Targaryen"</code>
+        into those IDs. This lecture asks what a token should be, why obvious
+        choices fail, and how modern tokenizers make the trade-offs.
       </p>
       <div class="meta">
         <span class="pill heat">Lecture 03</span>
@@ -64,14 +60,10 @@
     <section id="deck">
       <h2><span class="num">§0</span>The deck at a glance</h2>
       <p class="section-intro">
-        Thirty-four slides. It opens by pointing at the transformer diagram
-        and circling the input slot to remind you that <em>this</em> is what
-        the whole lecture is about. Then it spends seven slides asking a
-        surprisingly hard question — what is a token? — before racing through
-        four families of algorithms: WordPiece (from BERT), Unigram LM and
-        its SentencePiece implementation (from T5, XLNet, ALBERT), Byte Pair
-        Encoding (from GPT-2 onward), and byte-level variants. It closes with
-        nine slides on the frontier: can we drop tokenization entirely?
+        After defining the problem, the lecture covers WordPiece, Unigram LM
+        and SentencePiece, Byte Pair Encoding, and byte-level variants. It
+        closes by asking whether language models could avoid tokenization
+        altogether.
       </p>
     </section>
 
@@ -94,10 +86,10 @@
           <div class="slide-caption">slide 01 · title</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Title slide. Tokenization is the third lecture of Advanced NLP Monsoon '26, delivered across two sittings on August 10 and 13, 2026 by Manish Shrivastava and Aparajitha Allamraju.</p>
           <h4>Why it takes two days</h4>
-          <p>The two-day span is a hint. Tokenization sounds like a preprocessing footnote, but the design choices here quietly determine what your model can and cannot represent — every OOV word, every fused morpheme, every emoji is decided by this stage. The lecture spends time on it because the rest of the semester will keep referring back.</p>
+          <p>The two-day span is a hint. Tokenization sounds like a preprocessing footnote, but the design choices here decide what your model can and cannot represent — every OOV word, every fused morpheme, every emoji is fixed at this stage. The lecture spends time on it because the rest of the semester will keep referring back.</p>
         </div>
       </div>
 
@@ -108,12 +100,12 @@
           <div class="slide-caption">slide 02 · where tokenization sits</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The familiar <em class="term">Attention is All You Need</em> diagram, with a red box drawn around the <strong>Inputs</strong> slot at the bottom of the encoder stack. That slot is where tokenization lives — it is the interface between raw text and the input embedding matrix.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Everything above that red box operates on vectors. But the transformer cannot ingest a string. Something has to chop the string into pieces, look each piece up in a vocabulary, and hand the model a sequence of integer ids that then index into the input embedding table. That "something" is the tokenizer, and it is <em>not</em> learned end-to-end with the rest of the network. It is trained separately, once, on a corpus of text, and then frozen.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>The tokenizer is a <em>preprocessor</em>, not a layer. Its vocabulary is fixed before pretraining begins. Every downstream tradeoff — how long your context window feels, how well the model handles code, how it counts digits — is downstream of a design decision made at this stage.</p>
           </div>
         </div>
@@ -126,11 +118,11 @@
           <div class="slide-caption">slide 03 · are words tokens?</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>A working definition — a <em class="term">token</em> is an <strong>atomic unit of text</strong> — and then the obvious first guess: tokens are words, produced by splitting on whitespace. The table below shows English prose diced up cell-by-cell into whitespace-separated words, with contractions like <em>it's</em> and <em>I've</em> highlighted in pink because they resist that clean split.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Whitespace tokenization is what you would write in your first Python script: <code>text.split()</code>. It works surprisingly well for English on carefully curated text. But even in the table, the pink cells already hint at trouble — <em>it's</em> is arguably two tokens (<em>it</em> + <em>is</em>), <em>I've</em> is <em>I</em> + <em>have</em>. And that is before we look at any other language.</p>
-          <div class="callout mechanism">
+          <div class="callout How it works">
             <div class="callout-label">◇ the working definition</div>
             <p>A token is whatever unit your model treats as indivisible — the thing that gets a single row in the embedding matrix and a single position in the input sequence.</p>
           </div>
@@ -149,9 +141,9 @@
           <div class="slide-caption">slide 05 · scripts without spaces</div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Two slides listing the ways "a token is a whitespace-separated word" breaks. Slide 4 attacks English itself: <strong>hyphenation</strong> (<em>state-of-the-art</em> — one token or four?), <strong>numbers</strong> (<em>1,000,000.50</em>), <strong>dates</strong> (<em>03/09/2026</em>), <strong>abbreviations</strong> (<em>Dr.</em>, <em>U.S.A.</em>), <strong>emojis</strong>, <strong>code-switching</strong> (a Hindi sentence with English brand names embedded), <strong>speech transcripts</strong>, and <strong>disfluencies</strong> (<em>uh</em>, <em>um</em>, restarts). Slide 5 attacks languages themselves: many of the world's writing systems don't use spaces between words at all.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>The two failure modes are quite different in kind. English's edge cases are messy — you can write a longer regex and cover most of them. The second failure mode is deeper: <strong>logographic scripts</strong> (Chinese, Japanese) don't separate words with whitespace, and <strong>abugidas</strong> (Thai, Lao, Khmer, Burmese) run words together in a continuous stream of consonant-plus-vowel glyphs. Whitespace tokenization there produces <em>one enormous "token" per sentence</em>. There is no rule you can hand-write that fixes this cleanly.</p>
           <p>The last bullet on slide 5 is the killer: <strong>are tokens finite?</strong> If tokens are words, then every proper noun, every neologism, every misspelling, every URL is a new word. Your vocabulary will grow without bound, and any word you didn't see during training becomes an <em class="term">out-of-vocabulary</em> (OOV) token — usually mapped to a single <code>&lt;UNK&gt;</code> symbol that erases whatever information it carried.</p>
           <div class="callout gotcha">
@@ -168,12 +160,12 @@
           <div class="slide-caption">slide 06 · morphemes</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>A softer version of "what is a token" from linguistics: the <em class="term">morpheme</em>, the smallest unit that still carries meaning. In Chinese each character (<em>Hanzi</em>) roughly corresponds to one morpheme; in <em class="term">agglutinative</em> languages like Telugu, a single "word" can be a stack of six or seven morphemes glued together, encoding subject, tense, aspect, mood and negation all at once.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>If you can't split on whitespace, maybe you can split on meaning. Morphemes look attractive because they are finite (there aren't that many suffixes) and semantically clean (each one has a meaning you could point at). The problem is that computing morpheme boundaries is itself a hard NLP task, and it's different for every language. This is why <em>learned</em> subword tokenizers — WordPiece, Unigram, BPE — end up winning: they don't need a linguist per language, they just need text.</p>
           <div class="callout link">
-            <div class="callout-label">→ where this goes</div>
+            <div class="callout-label">→ Keep reading</div>
             <p>Every algorithm from slide 12 onward is a machine-learnable stand-in for the morpheme idea. They don't recover linguistic morphemes exactly, but they land close enough that a large model can fill in the rest.</p>
           </div>
         </div>
@@ -186,9 +178,9 @@
           <div class="slide-caption">slide 07 · why tokenize at all</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>A blunt answer to a question you might already be asking: why chunk at all? Why not feed the raw character stream to the model?</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Two reasons, both about efficiency. First, <strong>reduced vocabulary</strong>: a subword vocabulary of ~30k–100k pieces is much smaller than the ~500k unique word-forms in an English web crawl, and much smaller <em>output</em> matrices at the softmax head mean cheaper training. Second, <strong>simpler computation</strong>: transformer attention is O(n²) in sequence length. Working with 200 subword tokens is roughly 5–6× cheaper than working with the ~1200 characters the same text expands to. Every token you avoid is a chunk of quadratic cost you don't pay.</p>
           <div class="callout aha">
             <div class="callout-label">✦ the tension</div>
@@ -204,9 +196,9 @@
           <div class="slide-caption">slide 08 · the four levels</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The four <em class="term">granularities</em> a tokenizer can operate at. From smallest to largest: <strong>character</strong>, <strong>subword</strong>, <strong>word</strong>, <strong>sentence</strong>.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Think of these as knobs on the vocabulary–sequence-length tradeoff from the last slide. <em>Character</em> level has a tiny vocab (~128 for ASCII, ~150k for Unicode) but very long sequences. <em>Word</em> level has short sequences but an unbounded vocab. <em>Sentence</em> level is short and useful for retrieval or classification but hopeless for generation. <em>Subword</em> is the compromise that everything modern uses — small-enough vocab, short-enough sequences, and (crucially) no OOV because any unseen word can be spelled out as a sequence of known pieces.</p>
         </div>
       </div>
@@ -218,11 +210,11 @@
           <div class="slide-caption">slide 09 · character encodings</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>If you go all the way down to characters, you need to know what "character" means to a computer. The slide names the three encodings you will actually encounter: <strong>ASCII</strong> (7-bit, 128 characters, English-only), <strong>Unicode</strong> (an abstract code-point registry covering every script, ~150k assigned), and <strong>UTF-8</strong>, the byte-level encoding of Unicode that uses 1 byte for ASCII characters and up to 4 bytes for other scripts.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>UTF-8 is the one that matters. It is backward-compatible with ASCII (an English text file is already valid UTF-8), it handles every writing system, and it turns any string into a stream of bytes — a fixed alphabet of 256 symbols. That fixed alphabet is what makes <em>byte-level</em> tokenization possible, and we will meet it again on slide 22 when GPT-2's byte-level BPE shows up.</p>
-          <div class="callout mechanism">
+          <div class="callout How it works">
             <div class="callout-label">◇ UTF-8 in one line</div>
             <p>The high bits of the first byte say how many bytes make up this character (0xxx = 1 byte, 110x = 2, 1110 = 3, 11110 = 4). The slide says "1-3 bytes"; in practice the full standard runs to 4. Continuation bytes always start with <code>10</code>.</p>
           </div>
@@ -248,7 +240,7 @@
           <div class="slide-caption">slide 10 · four families</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The four families:</p>
           <ul>
             <li><strong>Whitespace</strong> — <code>text.split()</code>. Trivial but broken for many languages.</li>
@@ -268,9 +260,9 @@
           <div class="slide-caption">slide 11 · why the first two lose</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>A one-line dismissal of the first two families. <strong>Whitespace</strong> fails on scripts without spaces. <strong>Rule-based</strong> works but has to be rewritten for every language, which does not scale to a multilingual model that wants to speak 100 languages.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Rule-based tokenizers survive in narrow, high-precision settings — medical text, legal text, biomedical NER — where domain experts can encode "always split on this string, never split on that abbreviation" and the payoff justifies the maintenance. But for a general-purpose LLM, hand-written rules are a losing bet. The rest of the lecture is about the two remaining families.</p>
         </div>
       </div>
@@ -282,7 +274,7 @@
           <div class="slide-caption">slide 12 · the statistical trio</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The three statistical methods that the rest of the lecture will unfold in detail: <strong>WordPiece</strong> (§3), <strong>Unigram Language Model</strong> and its implementation <strong>SentencePiece</strong> (§4), and <strong>Byte Pair Encoding</strong> (§5).</p>
           <h4>Who uses what</h4>
           <p>Ballpark, so you can put the names to models you have heard of: WordPiece powers <em>BERT</em> and the DistilBERT family. Unigram + SentencePiece powers <em>T5</em>, <em>ALBERT</em>, <em>XLNet</em>, and most multilingual encoders. BPE (and its byte-level variant) powers <em>GPT-2</em> through <em>GPT-4</em>, <em>Llama</em>, <em>Mistral</em>, and just about every autoregressive LLM. All three learn a subword vocabulary from a raw text corpus; they just disagree on the training objective.</p>
@@ -314,7 +306,7 @@
           <div class="slide-caption">slide 13 · WordPiece algorithm</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The five-step training loop.</p>
           <ol>
             <li>Initialise the vocabulary with every individual character in the corpus.</li>
@@ -324,7 +316,7 @@
             <li>Repeat until the vocabulary reaches the target size (BERT uses 30k).</li>
           </ol>
           <p>At inference time, WordPiece uses a <strong>greedy longest-match</strong> strategy: scan left-to-right, always taking the longest subword in the vocab that matches at the current position.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>The scoring rule is what distinguishes WordPiece from BPE. Instead of picking the <em>most frequent</em> pair (as BPE will), WordPiece picks the pair whose merge most improves a unigram language model of the corpus. Concretely, for a candidate pair <em>(a, b)</em> it looks at:</p>
           <div class="eq boxed">
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
@@ -335,7 +327,7 @@
           </div>
           <p>The ratio rewards pairs that co-occur specifically, not just pairs whose components are both common. So <em>th</em> wins over, say, <em>e_</em> even if space-<em>e</em> is more frequent, because <em>t</em> and <em>h</em> are much more predictable together than apart.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>BERT's vocabulary marks non-initial subwords with <code>##</code> — e.g. <em>playing</em> tokenises to <code>play</code>, <code>##ing</code>. Those <code>##</code> markers are how the model tells "this is the start of a new word" from "this piece continues the previous word." A different marker convention (<code>▁</code> in SentencePiece) will show up in §4.</p>
           </div>
         </div>
@@ -348,7 +340,7 @@
           <div class="slide-caption">slide 14 · WordPiece limitations</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Four failure modes.</p>
           <ol>
             <li><strong>Unknown characters</strong> map to <code>&lt;UNK&gt;</code>. If a character wasn't in the base vocabulary, WordPiece can't spell it.</li>
@@ -356,7 +348,7 @@
             <li>Still bad for <strong>morphologically rich</strong>, <strong>agglutinative</strong>, and <strong>no-word-boundary</strong> languages (Turkish, Finnish, Telugu, Thai). The greedy longest-match heuristic fights against languages that carry meaning in fine-grained affixes.</li>
             <li><strong>Domain shift.</strong> A WordPiece vocab trained on Wikipedia will fragment medical terms (<em>hydroxychloroquine</em>) or legal Latinate boilerplate into unhelpful little pieces, and downstream performance drops.</li>
           </ol>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Every problem here traces back to WordPiece's assumption that the training corpus is representative. When the deployment domain diverges from the training domain — new scripts, new terminology, new noise — the vocabulary is stuck. BPE and Unigram share the first three problems; only byte-level BPE (slide 22) fully sidesteps the <code>&lt;UNK&gt;</code> issue.</p>
         </div>
       </div>
@@ -381,7 +373,7 @@
           <div class="slide-caption">slide 15 · Unigram LM algorithm</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The algorithm runs in the <strong>opposite direction</strong> of WordPiece and BPE. Instead of starting with characters and merging up, it starts with a big pool of candidate subwords (usually all frequent substrings up to some length) and iteratively removes the least useful ones.</p>
           <ol>
             <li>Build a <strong>reasonably big seed vocabulary</strong> — say ten times the target size.</li>
@@ -394,7 +386,7 @@
             </li>
             <li>Never drop single-character subwords — that guarantees no OOV, since any word can be spelled out one character at a time as a fallback.</li>
           </ol>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Under a unigram LM, the probability of a segmentation <math><mrow><mo>(</mo><msub><mi>x</mi><mn>1</mn></msub><mo>,</mo><mo>…</mo><mo>,</mo><msub><mi>x</mi><mi>n</mi></msub><mo>)</mo></mrow></math> factorises as</p>
           <div class="eq boxed">
             <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
@@ -418,12 +410,12 @@
           <div class="slide-caption">slide 16 · SentencePiece</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>SentencePiece is not a new algorithm. It is a <strong>library</strong> that implements Unigram LM (and BPE) in a language-agnostic way. Two design choices distinguish it.</p>
           <h4>The two design choices</h4>
           <p>First, it treats the input as a <strong>raw stream of characters, spaces included</strong>. Every other tokenizer we have seen assumes text has already been split on whitespace. SentencePiece does not. It literally replaces the space character with a visible marker (<code>▁</code>, U+2581 LOWER ONE EIGHTH BLOCK) and treats that as just another character in the stream. This means it works identically on English (space-delimited) and Japanese (not), and detokenisation is exact: <code>join(pieces).replace('▁', ' ')</code>.</p>
           <p>Second, the vocab is built by <strong>ULM</strong> under the hood. So "SentencePiece" is best read as "SentencePiece(Unigram)" — although the same library can also run BPE if you ask it to.</p>
-          <div class="callout mechanism">
+          <div class="callout How it works">
             <div class="callout-label">◇ why it matters</div>
             <p>Language-agnostic tokenisation is essential for multilingual models. T5, mT5, ALBERT, XLNet, and most multilingual BERTs all use SentencePiece for exactly this reason.</p>
           </div>
@@ -437,7 +429,7 @@
           <div class="slide-caption">slide 17 · ULM/SentencePiece challenges</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Four honest disadvantages.</p>
           <ol>
             <li><strong>Computational cost.</strong> EM over the whole corpus is expensive, and you rerun it many times as you prune.</li>
@@ -445,7 +437,7 @@
             <li><strong>Pruning percentage</strong> is a hyperparameter — how aggressively to shrink at each round. Get it wrong and you either take forever or destroy useful subwords.</li>
             <li><strong>Non-deterministic.</strong> The same string can be segmented multiple ways with non-zero probability. This is a feature at training time (subword regularisation) and a headache at deployment (you may want the same input to always produce the same tokens).</li>
           </ol>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>The last point is the big one. If reproducibility matters — for evaluation, caching, or debugging — you have to fix the segmentation to the argmax, which throws away the subword-regularisation advantage. BPE, coming up next, sidesteps all four of these.</p>
         </div>
       </div>
@@ -468,12 +460,12 @@
           <div class="slide-caption">slide 18 · BPE was a compression algorithm</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Philip Gage's 1994 <em>C Users Journal</em> paper. BPE started life as a simple lossless <strong>data compression</strong> scheme: find the most frequent adjacent byte pair, replace every occurrence with a byte value that isn't yet used, and record the substitution in a dictionary. Repeat until no free byte values remain or no pair is worth merging.</p>
           <h4>Why this history matters</h4>
           <p>Sennrich, Haddow and Birch (2016) noticed that this trivial compression trick, applied to <em>text</em> and stopped early, produces exactly the kind of subword vocabulary a neural machine translation model wants. Frequent character sequences (<em>ing</em>, <em>tion</em>, <em>the</em>) become single tokens; rare words fall back to smaller pieces. No probabilistic model needed, no EM, just counting.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>The best tokenizer in modern NLP is a 1994 file-compression algorithm with the "stop early" knob turned to about 30,000 merges. Sometimes the simplest tool wins.</p>
           </div>
         </div>
@@ -486,7 +478,7 @@
           <div class="slide-caption">slide 19 · BPE for word segmentation</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The training loop.</p>
           <ol>
             <li>Initialise the vocabulary with every character in the corpus, plus an end-of-word marker.</li>
@@ -495,9 +487,9 @@
             <li>Every merge produces a new character n-gram; frequent n-grams and eventually whole common words get merged into single symbols.</li>
             <li>Repeat until you hit the target vocabulary size.</li>
           </ol>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>The scoring rule is the difference from WordPiece: BPE just picks the pair with the highest <em>raw count</em>. No likelihood, no probability. This is why BPE is fast to train and deterministic — there's no EM loop.</p>
-          <div class="callout mechanism">
+          <div class="callout How it works">
             <div class="callout-label">◇ the trained artefact</div>
             <p>What you save at the end of training is <em>the ordered list of merges</em>. At inference time you apply them to a new word in the exact order they were learned: split into characters, then greedily apply merges. Because the order is fixed, tokenisation is fully deterministic.</p>
           </div>
@@ -511,7 +503,7 @@
           <div class="slide-caption">slide 20 · BPE advantages</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Why BPE won. Four properties, all consequences of "count and merge, that's it":</p>
           <ol>
             <li><strong>Simple and fast.</strong> No EM, no probabilistic model. Training a 32k-merge tokenizer takes minutes on modest hardware.</li>
@@ -531,7 +523,7 @@
           <div class="slide-caption">slide 21 · BPE challenges</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The honest downsides.</p>
           <ol>
             <li><strong>Greedy step-wise merge can be globally suboptimal.</strong> Merging <em>a</em>+<em>b</em> because it's frequent right now may block a better <em>b</em>+<em>c</em> merge later that would compress the corpus more overall.</li>
@@ -553,11 +545,11 @@
           <div class="slide-caption">slide 22 · byte-level BPE</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The GPT-2 twist. Instead of running BPE over Unicode characters, run it over <strong>UTF-8 bytes</strong>. The base vocabulary is now the fixed 256 possible byte values, and merges happen over byte pairs.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>UTF-8 encodes every Unicode character as a sequence of 1–4 bytes. So a Chinese character is 3 bytes, an emoji is 4 bytes, and every ASCII character is 1 byte. If your base vocabulary is those 256 bytes, then <em>every possible input string</em> is representable — there is no OOV, ever, for any character in any script. You've bought perfect coverage at the cost of one extra layer of encoding.</p>
-          <div class="callout mechanism">
+          <div class="callout How it works">
             <div class="callout-label">◇ the 256-symbol foundation</div>
             <p>The base alphabet is finite and universal. Merges built on top of it may still learn "the byte sequence for common Chinese characters" as single tokens, so common text stays short — but the fallback all the way down to raw bytes is always available.</p>
           </div>
@@ -571,7 +563,7 @@
           <div class="slide-caption">slide 23 · byte-level BPE advantages</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Four wins over character-level BPE.</p>
           <ol>
             <li><strong>No OOV.</strong> Every byte value 0–255 is in the base vocab. Anything encodable as UTF-8 is representable.</li>
@@ -591,7 +583,7 @@
           <div class="slide-caption">slide 24 · byte-level BPE challenges</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three problems, all inherited or worsened by the byte-level move.</p>
           <ol>
             <li>All of <strong>BPE's core disadvantages</strong> still apply — greedy merges, corpus sensitivity.</li>
@@ -612,9 +604,9 @@
           <div class="slide-caption">slide 25 · parity-aware BPE (ACL 2026)</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>A very fresh (ACL 2026) research response to the multilingual token-tax problem. The core idea: replace BPE's global <em>total-frequency</em> objective with a <strong>max-min</strong> objective. At each step, don't pick the merge that reduces the corpus total the most — pick the merge that most helps the language that is currently <em>worst compressed</em>.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Standard BPE, run on a corpus that is 80% English and 20% "everything else", will spend its merge budget on English patterns because that's where the frequency counts are. Parity-aware BPE deliberately breaks this: it looks at compression ratio per language and greedily improves whichever language is doing worst. The result is a vocabulary that treats each language more evenly, at some cost to the highest-resource language.</p>
           <div class="callout gotcha">
             <div class="callout-label">⚠ the red asterisk</div>
@@ -643,7 +635,7 @@
           <div class="slide-caption">slide 26 · motivation</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three grievances with the tokenization pipeline as it stands.</p>
           <ol>
             <li><strong>Not human-like.</strong> Humans don't segment before reading. They compose meaning fluidly at multiple granularities at once.</li>
@@ -662,7 +654,7 @@
           <div class="slide-caption">slide 27 · three approaches</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Three families of "no-tokenization" designs.</p>
           <ol>
             <li><strong>Byte or character models.</strong> Feed the raw byte or character stream directly to a transformer. The vocabulary is 256 (bytes) or ~150k (Unicode). Sequences get long, but there is no chopping step.</li>
@@ -681,7 +673,7 @@
           <div class="slide-caption">slide 28 · four recent papers</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Four papers that populate the "no-tokenization" bucket over the last three years.</p>
           <ul>
             <li><strong>MegaByte</strong> (Yu et al., 2023, NeurIPS). Multiscale transformer for million-byte sequences, using fixed-stride patches.</li>
@@ -689,7 +681,7 @@
             <li><strong>SpaceByte</strong> (Slagle, 2024, NeurIPS). Uses spaces as natural chunk boundaries. Simple, effective for space-delimited scripts.</li>
             <li><strong>Byte Latent Transformer</strong> (Pagnoni et al., 2025, ACL). Entropy-based dynamic patching. The last few slides walk through this one.</li>
           </ul>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>Notice the arc: MegaByte fixes stride, SpaceByte uses spaces, BLT learns to segment dynamically based on model uncertainty. Each generation of the idea moves further from hand-designed segmentation toward learned segmentation.</p>
         </div>
       </div>
@@ -697,7 +689,7 @@
       <div class="slide-strip cols-2">
         <div class="slide-frame">
           <div class="tag">Slide 29 / 34</div>
-          <img src="../assets/slides/L3-tokenization/slide-29.png" alt="Byte Latent Transformer: Uses entropy-based grouping to dynamically segment bytes into patches. Patches are created based on the entropy of the next byte. 3 modules - Local Encoder, Latent Transformer, and Local Decoder. Incorporates byte n-gram embeddings and a cross-attention mechanism.">
+          <img src="../assets/slides/L3-tokenization/slide-29.png" alt="Byte Latent Transformer: Uses entropy-based grouping to dynamically segment bytes into patches. Patches are created based on the entropy of the next byte. 3 modules - Local Encoder, Latent Transformer, and Local Decoder. Incorporates byte n-gram embeddings and a cross-attention How it works.">
           <div class="slide-caption">slide 29 · BLT high-level</div>
         </div>
         <div class="slide-frame">
@@ -706,18 +698,18 @@
           <div class="slide-caption">slide 30 · BLT modules</div>
         </div>
         <div class="explain">
-          <h4>What these show</h4>
+          <h4>On these slides</h4>
           <p>Two slides describing the Byte Latent Transformer at the shape level. It has three modules stacked:</p>
           <ol>
             <li>A <strong>lightweight local encoder</strong> that reads the raw byte stream and emits per-byte hidden states, then aggregates them into <em class="term">patch</em> representations via cross-attention.</li>
             <li>A <strong>large, expensive latent transformer</strong> that operates on those patch representations. This is where the heavy compute lives — and because patches are longer than bytes, the sequence is short.</li>
             <li>A <strong>lightweight local decoder</strong> that takes the latent transformer's patch output and decodes the next patch of bytes.</li>
           </ol>
-          <h4>The mechanism that makes this work</h4>
+          <h4>The How it works that makes this work</h4>
           <p>The clever bit is how the encoder decides where one patch ends and the next begins. It uses <strong>entropy-based grouping</strong>: a small byte-level model predicts the next byte; when its prediction distribution has <em>high entropy</em> (the model is uncertain), a patch boundary is drawn. When entropy is low (the model is confident), the current patch keeps growing.</p>
           <p>The intuition is elegant. Boundaries fall where the model needs to "think harder" — the start of a new word, a rare character, an unexpected character. Predictable runs (the inside of a common word) get absorbed into one big patch, saving compute.</p>
           <div class="callout aha">
-            <div class="callout-label">✦ the aha</div>
+            <div class="callout-label">✦ Key takeaway</div>
             <p>BPE decides its boundaries once, at training time, based on corpus frequency. BLT decides its boundaries at every forward pass, based on <em>runtime uncertainty about the next byte</em>. That is a fundamentally different regime — segmentation becomes a function of context, not a static preprocessor.</p>
           </div>
         </div>
@@ -730,7 +722,7 @@
           <div class="slide-caption">slide 31 · the BLT dataflow</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The full BLT dataflow, drawn end-to-end on the sentence <code>Better_than_BPE!</code>. Trace it bottom-up:</p>
           <ol>
             <li>Bottom curve: the <strong>entropy</strong> H over the byte sequence. It spikes at the start of each new word — <em>B</em> of <em>Better</em>, <em>t</em> of <em>than</em>, <em>B</em> of <em>BPE</em>. Those spikes are the <strong>red dots</strong>, and they mark the patch boundaries.</li>
@@ -752,7 +744,7 @@
           <div class="slide-caption">slide 32 · a bake-off across schemes</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>The same sentence — <em>Daenerys Targaryen is in Game of Thrones, a fantasy epic by George R.R. Martin.</em> — chopped up six different ways.</p>
           <ul>
             <li><strong>MegaByte, 4-strided</strong>: brutal fixed windows of 4 bytes. Slices words mid-morpheme.</li>
@@ -762,7 +754,7 @@
             <li><strong>SpaceByte</strong>: chunks on spaces. Clean for English, useless for Chinese.</li>
             <li><strong>CNN</strong>: whole-word chunks from a convolutional segmenter. Beautiful but rigid.</li>
           </ul>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>You can see the tradeoffs at a glance. Fixed-stride is dumbest but simplest; BPE fragments; BLT-Entropy adapts; SpaceByte and CNN are elegant when language cooperates. There is no free lunch, but BLT-Entropy has the best claim to "learned, language-agnostic, and byte-faithful all at once".</p>
         </div>
       </div>
@@ -774,7 +766,7 @@
           <div class="slide-caption">slide 33 · the cross-attention detail</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>Zooming into the encoder-and-decoder blocks. Both are built around a <strong>patch cross-attention</strong> module.</p>
           <ul>
             <li><strong>Local encoder.</strong> Queries are patch representations (initialised via pooling of the bytes inside each patch). Keys and values are per-byte hidden states, masked so each patch only attends to its own bytes. Result: each patch is a summary of its bytes.</li>
@@ -793,16 +785,16 @@
           <div class="slide-caption">slide 34 · the closing note</div>
         </div>
         <div class="explain">
-          <h4>What this shows</h4>
+          <h4>On the slide</h4>
           <p>One sentence summing up the whole "no-tokenization" arc. BLT-style architectures <strong>dynamically group bytes into patches</strong>, and — critically — <strong>preserve access to byte-level information</strong> that a fixed BPE vocabulary throws away.</p>
-          <h4>The idea behind it</h4>
+          <h4>What to take from it</h4>
           <p>With BPE, once <em>strawberry</em> becomes a single token, the model can never see its component bytes again. With BLT, the local encoder and decoder always operate at the byte level; the latent transformer just sees a compressed patch view for efficiency. So questions like "how many r's are in <em>strawberry</em>?" become answerable without special training, because the bytes are still there in the graph.</p>
           <div class="callout aha">
             <div class="callout-label">✦ where the lecture lands</div>
             <p>Tokenization has been the quiet interface between text and transformer for eight years. It is being replaced, right now, by architectures that push the segmentation decision into the model. Whether BLT specifically wins or something else does, the takeaway is: <em>the fixed-vocabulary era of tokenization has an expiry date</em>, and you are watching it approach.</p>
           </div>
           <div class="callout link">
-            <div class="callout-label">→ where this goes next</div>
+            <div class="callout-label">→ Keep reading next</div>
             <p>The next lecture — <a class="xref" href="4-positional-encoding.html">Positional Encoding</a> — is about the <em>other</em> thing the input embedding has to carry beyond the token identity: where in the sequence each token sits.</p>
           </div>
         </div>
