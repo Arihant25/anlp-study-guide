@@ -1,502 +1,1464 @@
 <!doctype html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8">
-<title>Mid Sem 2024 · PYQ — ANLP Study Guide</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Mid-Semester Exam 2024 for Advanced NLP (M24CS7.501), IIIT Hyderabad. Full paper and a worked solution to every question — RNN long dependencies, seq2seq attention, transformer encoder block, LoRA vs Adapters.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="../assets/css/site.css">
+  <meta charset="utf-8">
+  <title>Mid Sem 2024 · PYQ — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Mid-Semester Exam 2024 for Advanced NLP (M24CS7.501), IIIT Hyderabad. Full paper and a worked solution to every question — RNN long dependencies, seq2seq attention, transformer encoder block, LoRA vs Adapters.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
 </head>
+
 <body>
-<div class="shell">
+  <div class="shell">
 
-  <aside class="rail-left">
-    <div class="brand">
-      <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
-      <small>ANLP · Monsoon '26</small>
-    </div>
-    <nav>
-      <div class="grp">On this page</div>
-      <a href="#paper">§1 · The paper</a>
-      <a href="#q1">§2 · Q1 · RNN long dependencies</a>
-      <a href="#q2">§3 · Q2 · Attention in seq2seq</a>
-      <a href="#q3">§4 · Q3 · Transformer encoder block</a>
-      <a href="#q4">§5 · Q4 · LoRA vs Adapters</a>
-
-      <div class="grp">Elsewhere</div>
-      <a href="mid-2023.html">← Mid Sem 2023 (PYQ)</a>
-      <a href="../index.html">Next: Home →</a>
-    </nav>
-  </aside>
-
-  <div class="topbar">
-    <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab notebook</em></a></div>
-    <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
-  </div>
-
-  <main>
-    <section class="hero">
-      <div class="kicker">PYQ · Mid Semester · Sep 23, 2024</div>
-      <h1>Mid Semester 2024 — <em>the paper, worked through</em>.</h1>
-      <p class="lead">
-        This is the 2024 mid-semester paper for M24CS7.501: four questions,
-        30 marks, and 90 minutes. It moves from classical sequence models to
-        transformer encoders and parameter-efficient fine-tuning. There is no
-        official key for this paper, so the worked answers show a clear,
-        well-structured way to respond.
-      </p>
-      <div class="meta">
-        <span class="pill heat">Mid Sem 2024</span>
-        <span class="pill">4 questions</span>
-        <span class="pill">30 marks · 1.5 hrs</span>
-        <span class="pill">RNN · attention · transformer · PEFT</span>
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
       </div>
-    </section>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#paper">§1 · The paper</a>
+        <a href="#q1">§2 · Q1 · RNN long dependencies</a>
+        <a href="#q2">§3 · Q2 · Attention in seq2seq</a>
+        <a href="#q3">§4 · Q3 · Transformer encoder block</a>
+        <a href="#q4">§5 · Q4 · LoRA vs Adapters</a>
 
-    <section id="paper">
-      <h2><span class="num">§1</span>The paper</h2>
-      <p class="section-intro">
-        The two five-mark questions cover RNNs and seq2seq attention. The two
-        ten-mark questions cover the transformer encoder and efficient
-        fine-tuning. Use the marks to decide how much detail each answer needs.
-      </p>
+        <div class="grp">Elsewhere</div>
+        <a href="mid-2023.html">← Mid Sem 2023 (PYQ)</a>
+        <a href="../index.html">Next: Home →</a>
+      </nav>
+    </aside>
 
-      <div class="slide" id="paper-img">
-        <div class="slide-frame">
-          <div class="tag">exam paper · page 1 / 1</div>
-          <img src="../assets/pyqs/mid-2024/page-1.png" alt="Sep 23, 2024 mid-sem exam paper with 4 questions">
-          <div class="slide-caption">the exam paper — all four questions on one page</div>
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">PYQ · Mid Semester · Sep 23, 2024</div>
+        <h1>Mid Semester 2024 — <em>the paper, worked through</em>.</h1>
+        <p class="lead">
+          This is the 2024 mid-semester paper for M24CS7.501: four questions,
+          30 marks, and 90 minutes. It moves from classical sequence models to
+          transformer encoders and parameter-efficient fine-tuning. There is no
+          official key for this paper, so the worked answers show a clear,
+          well-structured way to respond.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Mid Sem 2024</span>
+          <span class="pill">4 questions</span>
+          <span class="pill">30 marks · 1.5 hrs</span>
+          <span class="pill">RNN · attention · transformer · PEFT</span>
         </div>
-        <div class="explain">
-          <h4>Before you start</h4>
-          <p>Same shape as 2023: every question is an open-ended "explain / describe / compare" prompt with no numerical work. But the balance has shifted. In 2023 the whole paper was pre-transformer; here, <strong>two thirds of the marks (20 out of 30) are on transformer-era material</strong>: the encoder block itself, and PEFT methods that only make sense once you have a large pretrained transformer to fine-tune. The 2024 syllabus has caught up with the field.</p>
-          <ol>
-            <li>The two 5-mark questions want <em class="term">tight</em> answers, so think five distinct correct claims per question, one for each mark. Overwriting them steals time from Q3 and Q4.</li>
-            <li>The two 10-mark questions want <em class="term">structured</em> answers: a diagram, the defining equations, a walk through each sub-component, and a "why does it look this way" paragraph. A wall of prose without equations will not clear a 10-marker.</li>
-          </ol>
-          <div class="callout gotcha">
-            <div class="callout-label">⚠ Watch out</div>
-            <p>Q4 asks for architectures, plural. Answering only "LoRA is low-rank, Adapters are bottlenecks" without sketching where each of them <em>lives</em> in the transformer block loses half the mark. The word "architectures" in the question is not decoration.</p>
+      </section>
+
+      <section id="paper">
+        <h2><span class="num">§1</span>The paper</h2>
+        <p class="section-intro">
+          The two five-mark questions cover RNNs and seq2seq attention. The two
+          ten-mark questions cover the transformer encoder and efficient
+          fine-tuning. Use the marks to decide how much detail each answer needs.
+        </p>
+
+        <div class="slide" id="paper-img">
+          <div class="slide-frame">
+            <div class="tag">exam paper · page 1 / 1</div>
+            <img src="../assets/pyqs/mid-2024/page-1.png" alt="Sep 23, 2024 mid-sem exam paper with 4 questions">
+            <div class="slide-caption">the exam paper — all four questions on one page</div>
+          </div>
+          <div class="explain">
+            <h4>Before you start</h4>
+            <p>Same shape as 2023: every question is an open-ended "explain / describe / compare" prompt with no
+              numerical work. But the balance has shifted. In 2023 the whole paper was pre-transformer; here,
+              <strong>two thirds of the marks (20 out of 30) are on transformer-era material</strong>: the encoder block
+              itself, and PEFT methods that only make sense once you have a large pretrained transformer to fine-tune.
+              The 2024 syllabus has caught up with the field.</p>
+            <ol>
+              <li>The two 5-mark questions want <em class="term">tight</em> answers, so think five distinct correct
+                claims per question, one for each mark. Overwriting them steals time from Q3 and Q4.</li>
+              <li>The two 10-mark questions want <em class="term">structured</em> answers: a diagram, the defining
+                equations, a walk through each sub-component, and a "why does it look this way" paragraph. A wall of
+                prose without equations will not clear a 10-marker.</li>
+            </ol>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>Q4 asks for architectures, plural. Answering only "LoRA is low-rank, Adapters are bottlenecks" without
+                sketching where each of them <em>lives</em> in the transformer block loses half the mark. The word
+                "architectures" in the question is not decoration.</p>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <hr class="soft">
+      <hr class="soft">
 
-    <section>
-      <h2><span class="num">§2</span>Q1 · Long-distance dependencies in RNNs</h2>
+      <section>
+        <h2><span class="num">§2</span>Q1 · Long-distance dependencies in RNNs</h2>
 
-      <div class="pyq-q" id="q1">
-        <div class="qhead">
-          <span class="qnum">Q1</span>
-          <span class="qmarks">5 marks</span>
-          <a class="qtag" href="../lectures/5-rnns.html">RNN</a>
-          <a class="qtag" href="../lectures/5-rnns.html">LSTM</a>
-          <a class="qtag" href="../lectures/5-rnns.html">GRU</a>
-          <a class="qtag" href="../lectures/5-rnns.html">BPTT</a>
+        <div class="pyq-q" id="q1">
+          <div class="qhead">
+            <span class="qnum">Q1</span>
+            <span class="qmarks">5 marks</span>
+            <a class="qtag" href="../lectures/5-rnns.html">RNN</a>
+            <a class="qtag" href="../lectures/5-rnns.html">LSTM</a>
+            <a class="qtag" href="../lectures/5-rnns.html">GRU</a>
+            <a class="qtag" href="../lectures/5-rnns.html">BPTT</a>
+          </div>
+
+          <h3>The question, verbatim</h3>
+          <blockquote>
+            <p><strong>1.</strong> Explain how we can enable handling long distance dependencies in RNNs. <em>[5
+                marks]</em></p>
+          </blockquote>
+
+          <h3>How to approach it</h3>
+          <p>Only five marks, so keep it tight. Start with the failure mode a vanilla RNN has — the vanishing /
+            exploding gradient in <em class="term">back-propagation through time</em> — because "enable handling" only
+            makes sense once you have named what stops it. Then give the fix: <em class="term">gating</em>, in the
+            LSTM's cell-state form and the GRU's update-gate form, both of which turn the multiplicative gradient path
+            into a nearly additive one. Close with the more radical answer — attention removes recurrence altogether.
+            Five marks, five distinct claims.</p>
+
+          <h3>Worked answer</h3>
+
+          <h4>Where the problem comes from</h4>
+
+          <p>A vanilla RNN reads a sequence one token at a time and updates a hidden state through a shared recurrence:
+          </p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <msub>
+                <mi>h</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>=</mo>
+              <mi>tanh</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>h</mi>
+                  <mi>h</mi>
+                </mrow>
+              </msub>
+              <msub>
+                <mi>h</mi>
+                <mrow>
+                  <mi>t</mi>
+                  <mo>&#8722;</mo>
+                  <mn>1</mn>
+                </mrow>
+              </msub>
+              <mo>+</mo>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>x</mi>
+                  <mi>h</mi>
+                </mrow>
+              </msub>
+              <msub>
+                <mi>x</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>+</mo>
+              <mi>b</mi>
+              <mo>)</mo>
+            </math>
+          </div>
+
+          <p>In principle, this recurrence <em>can</em> carry information from step 1 to step 100 — the hidden state at
+            any late position is a function of every earlier one. But training with <em class="term">back-propagation
+              through time</em> unrolls the network into a <math>
+              <mi>T</mi>
+            </math>-layer deep computation, and the gradient of the loss with respect to an early hidden state is a
+            product of Jacobians, one per time step. That product either <em class="term">vanishes</em> (spectral norm
+            &lt; 1, geometric decay to zero) or <em class="term">explodes</em> (spectral norm &gt; 1, geometric
+            blow-up). Long-range gradients never reach the early weights — so a vanilla RNN has the <em>capacity</em>
+            for long dependencies but not the <em>trainability</em>.</p>
+
+          <h4>Fix 1 — gating (LSTM, GRU)</h4>
+
+          <p>Both LSTM and GRU replace the single <math>
+              <mi>tanh</mi>
+            </math> update with a small circuit of <em class="term">sigmoid gates</em> that decide, per component, how
+            much of the past to keep and how much of the new candidate to write. On any dimension where the "keep" gate
+            is near 1, the state passes through unchanged and the gradient across that step is close to the identity —
+            the multiplicative gradient path becomes an additive one.</p>
+
+          <p><strong>LSTM.</strong> Keeps a separate <em class="term">cell state</em> <math>
+              <msub>
+                <mi>c</mi>
+                <mi>t</mi>
+              </msub>
+            </math> that is updated by an <em class="term">additive</em> rule, gated by a forget gate <math>
+              <msub>
+                <mi>f</mi>
+                <mi>t</mi>
+              </msub>
+            </math> and an input gate <math>
+              <msub>
+                <mi>i</mi>
+                <mi>t</mi>
+              </msub>
+            </math>:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <msub>
+                <mi>c</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>=</mo>
+              <msub>
+                <mi>f</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>&#8857;</mo>
+              <msub>
+                <mi>c</mi>
+                <mrow>
+                  <mi>t</mi>
+                  <mo>&#8722;</mo>
+                  <mn>1</mn>
+                </mrow>
+              </msub>
+              <mo>+</mo>
+              <msub>
+                <mi>i</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>&#8857;</mo>
+              <mover>
+                <msub>
+                  <mi>c</mi>
+                  <mi>t</mi>
+                </msub>
+                <mo>~</mo>
+              </mover>
+            </math>
+          </div>
+
+          <p>This is the famous <em class="term">constant error carousel</em>: when the forget gate is near 1, gradients
+            flow along the cell-state highway across many time steps essentially unchanged. Long dependencies stop being
+            killed by BPTT.</p>
+
+          <p><strong>GRU.</strong> Fuses the cell and hidden state into one vector and uses only two gates — an <em
+              class="term">update gate</em> <math>
+              <msub>
+                <mi>z</mi>
+                <mi>t</mi>
+              </msub>
+            </math> and a <em class="term">reset gate</em> <math>
+              <msub>
+                <mi>r</mi>
+                <mi>t</mi>
+              </msub>
+            </math>. The update gate interpolates between the old state and the new candidate:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <msub>
+                <mi>h</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>=</mo>
+              <mo>(</mo>
+              <mn>1</mn>
+              <mo>&#8722;</mo>
+              <msub>
+                <mi>z</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>)</mo>
+              <mo>&#8857;</mo>
+              <msub>
+                <mi>h</mi>
+                <mrow>
+                  <mi>t</mi>
+                  <mo>&#8722;</mo>
+                  <mn>1</mn>
+                </mrow>
+              </msub>
+              <mo>+</mo>
+              <msub>
+                <mi>z</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>&#8857;</mo>
+              <mover>
+                <msub>
+                  <mi>h</mi>
+                  <mi>t</mi>
+                </msub>
+                <mo>~</mo>
+              </mover>
+            </math>
+          </div>
+
+          <p>When <math>
+              <msub>
+                <mi>z</mi>
+                <mi>t</mi>
+              </msub>
+            </math> is near 0, the past is preserved verbatim and the gradient across that step is again close to the
+            identity. Fewer parameters than LSTM, same additive-highway trick.</p>
+
+          <div class="callout How it works">
+            <div class="callout-label">How it works · one line</div>
+            <p>Gates turn the recurrence's <em>multiplicative</em> gradient path into a nearly <em>additive</em> one on
+              any step the gate says "keep". That is the single reason gated RNNs learn long dependencies where vanilla
+              RNNs cannot.</p>
+          </div>
+
+          <h4>Fix 2 — get rid of recurrence entirely (attention / self-attention)</h4>
+
+          <p>The other answer is more radical: if recurrence is the reason long-range signal is fragile, remove it. <em
+              class="term">Self-attention</em> lets any position look directly at any other position with a single
+            matrix multiply — the distance-1 shortcut a plain RNN never had. Every token has an <math>
+              <mi>O</mi>
+              <mo>(</mo>
+              <mn>1</mn>
+              <mo>)</mo>
+            </math> path length to every other token, so long-range dependencies stop being a training problem at all.
+            This is the escape hatch the transformer takes, and it is what makes the rest of this paper (Q3, Q4)
+            possible.</p>
+
+          <div class="callout aha">
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Notice the two answers point in opposite directions. Gates <em>keep</em> the recurrence and patch its
+              gradient path. Attention <em>throws out</em> the recurrence and gives every position a direct edge to
+              every other. Both work — but only the second scales, which is why the field moved on.</p>
+          </div>
         </div>
+      </section>
 
-        <h3>The question, verbatim</h3>
-        <blockquote>
-          <p><strong>1.</strong> Explain how we can enable handling long distance dependencies in RNNs. <em>[5 marks]</em></p>
-        </blockquote>
+      <hr class="soft">
 
-        <h3>How to approach it</h3>
-        <p>Only five marks, so keep it tight. Start with the failure mode a vanilla RNN has — the vanishing / exploding gradient in <em class="term">back-propagation through time</em> — because "enable handling" only makes sense once you have named what stops it. Then give the fix: <em class="term">gating</em>, in the LSTM's cell-state form and the GRU's update-gate form, both of which turn the multiplicative gradient path into a nearly additive one. Close with the more radical answer — attention removes recurrence altogether. Five marks, five distinct claims.</p>
+      <section>
+        <h2><span class="num">§3</span>Q2 · Why attention in seq2seq</h2>
 
-        <h3>Worked answer</h3>
+        <div class="pyq-q" id="q2">
+          <div class="qhead">
+            <span class="qnum">Q2</span>
+            <span class="qmarks">5 marks</span>
+            <a class="qtag" href="../lectures/5-rnns.html">seq2seq</a>
+            <a class="qtag" href="../lectures/5-rnns.html">attention</a>
+            <a class="qtag" href="../lectures/5-rnns.html">Bahdanau</a>
+            <a class="qtag" href="../lectures/5-rnns.html">Luong</a>
+          </div>
 
-        <h4>Where the problem comes from</h4>
+          <h3>The question, verbatim</h3>
+          <blockquote>
+            <p><strong>2.</strong> Why is attention needed in a sequence-to-sequence model? Explain with attention
+              function description. <em>[5 marks]</em></p>
+          </blockquote>
 
-        <p>A vanilla RNN reads a sequence one token at a time and updates a hidden state through a shared recurrence:</p>
+          <h3>How to approach it</h3>
+          <p>The question is two halves. First, <em>why</em>: name the bottleneck in vanilla seq2seq and argue that
+            different target words need different source content, so the decoder needs a fresh source view at each step.
+            Second, <em>the function</em>: write the three-line attention block — score, softmax, weighted sum — and
+            name at least one concrete score function (additive Bahdanau or multiplicative Luong). Five marks, so keep
+            it to one crisp diagram-in-words plus the equations.</p>
 
-        <div class="eq boxed">
-          <math display="block">
-            <msub><mi>h</mi><mi>t</mi></msub>
-            <mo>=</mo>
-            <mi>tanh</mi>
-            <mo>(</mo>
-            <msub><mi>W</mi><mrow><mi>h</mi><mi>h</mi></mrow></msub>
-            <msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub>
-            <mo>+</mo>
-            <msub><mi>W</mi><mrow><mi>x</mi><mi>h</mi></mrow></msub>
-            <msub><mi>x</mi><mi>t</mi></msub>
-            <mo>+</mo>
-            <mi>b</mi>
-            <mo>)</mo>
-          </math>
+          <h3>Worked answer</h3>
+
+          <h4>Why attention is needed</h4>
+
+          <p>A vanilla encoder-decoder for machine translation (Sutskever et al. 2014) reads the whole source sentence
+            with an RNN and summarises it into a <em>single fixed-length vector</em> — the final encoder hidden state —
+            which is then handed to the decoder as its only source-side input. The decoder must generate the entire
+            target sentence from that one vector.</p>
+
+          <p>Two problems fall out of this design:</p>
+          <ol>
+            <li><strong>The bottleneck.</strong> A fixed-size vector cannot carry all of a long source sentence.
+              Empirically, translation quality drops sharply once the source exceeds roughly 20–30 tokens, because the
+              encoder is being asked to compress unbounded content into a bounded state.</li>
+            <li><strong>Different targets need different source content.</strong> Consider translating <em>"the red car
+                is fast"</em> into French — <em>"la voiture rouge est rapide"</em>. When the decoder is producing
+              <em>voiture</em>, it needs to look at <em>car</em>. When it is producing <em>rouge</em>, it needs to look
+              at <em>red</em>. One fixed vector cannot serve both — it averages them or forgets one. What the decoder
+              actually needs is a <em class="term">different source view at every target step</em>.</li>
+          </ol>
+
+          <p>Attention (Bahdanau et al. 2015) fixes both. The encoder keeps <em>all</em> its per-position hidden states
+            <math>
+              <msub>
+                <mi>h</mi>
+                <mn>1</mn>
+              </msub>
+              <mo>,</mo>
+              <mo>&#8230;</mo>
+              <mo>,</mo>
+              <msub>
+                <mi>h</mi>
+                <mi>n</mi>
+              </msub>
+            </math>. At each decoder step, a soft <em class="term">alignment</em> is computed over those states and a
+            fresh context vector <math>
+              <msub>
+                <mi>c</mi>
+                <mi>t</mi>
+              </msub>
+            </math> is produced — a weighted sum of encoder states, weighted by how well each source position matches
+            the current decoder state. The decoder can "look back" at any source token at any time.</p>
+
+          <h4>The attention function</h4>
+
+          <p>At decoder step <math>
+              <mi>t</mi>
+            </math>, attention runs three lines:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <mtable columnalign="left">
+                <mtr>
+                  <mtd>
+                    <msub>
+                      <mi>e</mi>
+                      <mrow>
+                        <mi>t</mi>
+                        <mo>,</mo>
+                        <mi>i</mi>
+                      </mrow>
+                    </msub>
+                    <mo>=</mo>
+                    <mi>score</mi>
+                    <mo>(</mo>
+                    <msub>
+                      <mi>s</mi>
+                      <mrow>
+                        <mi>t</mi>
+                        <mo>&#8722;</mo>
+                        <mn>1</mn>
+                      </mrow>
+                    </msub>
+                    <mo>,</mo>
+                    <msub>
+                      <mi>h</mi>
+                      <mi>i</mi>
+                    </msub>
+                    <mo>)</mo>
+                  </mtd>
+                  <mtd>
+                    <mtext>&#8202;alignment score&#8202;</mtext>
+                  </mtd>
+                </mtr>
+                <mtr>
+                  <mtd>
+                    <msub>
+                      <mi>&#945;</mi>
+                      <mrow>
+                        <mi>t</mi>
+                        <mo>,</mo>
+                        <mi>i</mi>
+                      </mrow>
+                    </msub>
+                    <mo>=</mo>
+                    <mfrac>
+                      <mrow>
+                        <mi>exp</mi>
+                        <mo>(</mo>
+                        <msub>
+                          <mi>e</mi>
+                          <mrow>
+                            <mi>t</mi>
+                            <mo>,</mo>
+                            <mi>i</mi>
+                          </mrow>
+                        </msub>
+                        <mo>)</mo>
+                      </mrow>
+                      <mrow>
+                        <munderover>
+                          <mo>&#8721;</mo>
+                          <mrow>
+                            <mi>j</mi>
+                            <mo>=</mo>
+                            <mn>1</mn>
+                          </mrow>
+                          <mi>n</mi>
+                        </munderover>
+                        <mi>exp</mi>
+                        <mo>(</mo>
+                        <msub>
+                          <mi>e</mi>
+                          <mrow>
+                            <mi>t</mi>
+                            <mo>,</mo>
+                            <mi>j</mi>
+                          </mrow>
+                        </msub>
+                        <mo>)</mo>
+                      </mrow>
+                    </mfrac>
+                  </mtd>
+                  <mtd>
+                    <mtext>&#8202;attention weight&#8202;</mtext>
+                  </mtd>
+                </mtr>
+                <mtr>
+                  <mtd>
+                    <msub>
+                      <mi>c</mi>
+                      <mi>t</mi>
+                    </msub>
+                    <mo>=</mo>
+                    <munderover>
+                      <mo>&#8721;</mo>
+                      <mrow>
+                        <mi>i</mi>
+                        <mo>=</mo>
+                        <mn>1</mn>
+                      </mrow>
+                      <mi>n</mi>
+                    </munderover>
+                    <msub>
+                      <mi>&#945;</mi>
+                      <mrow>
+                        <mi>t</mi>
+                        <mo>,</mo>
+                        <mi>i</mi>
+                      </mrow>
+                    </msub>
+                    <msub>
+                      <mi>h</mi>
+                      <mi>i</mi>
+                    </msub>
+                  </mtd>
+                  <mtd>
+                    <mtext>&#8202;context vector&#8202;</mtext>
+                  </mtd>
+                </mtr>
+              </mtable>
+            </math>
+          </div>
+
+          <p>The <em>score</em> function is the model's judgement of how relevant source position <math>
+              <mi>i</mi>
+            </math> is to producing the next target token. Two standard choices:</p>
+
+          <p><strong>Additive (Bahdanau, 2015)</strong> — a tiny one-hidden-layer feedforward network on the
+            concatenated decoder and encoder states:</p>
+          <div class="eq boxed">
+            <math display="block">
+              <mi>score</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>s</mi>
+                <mrow>
+                  <mi>t</mi>
+                  <mo>&#8722;</mo>
+                  <mn>1</mn>
+                </mrow>
+              </msub>
+              <mo>,</mo>
+              <msub>
+                <mi>h</mi>
+                <mi>i</mi>
+              </msub>
+              <mo>)</mo>
+              <mo>=</mo>
+              <msup>
+                <mi>v</mi>
+                <mi>T</mi>
+              </msup>
+              <mi>tanh</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>W</mi>
+                <mi>s</mi>
+              </msub>
+              <msub>
+                <mi>s</mi>
+                <mrow>
+                  <mi>t</mi>
+                  <mo>&#8722;</mo>
+                  <mn>1</mn>
+                </mrow>
+              </msub>
+              <mo>+</mo>
+              <msub>
+                <mi>W</mi>
+                <mi>h</mi>
+              </msub>
+              <msub>
+                <mi>h</mi>
+                <mi>i</mi>
+              </msub>
+              <mo>)</mo>
+            </math>
+          </div>
+
+          <p><strong>Multiplicative / dot (Luong, 2015)</strong> — a bilinear form, cheaper because it is essentially a
+            matrix multiply:</p>
+          <div class="eq boxed">
+            <math display="block">
+              <mi>score</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>s</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>,</mo>
+              <msub>
+                <mi>h</mi>
+                <mi>i</mi>
+              </msub>
+              <mo>)</mo>
+              <mo>=</mo>
+              <msubsup>
+                <mi>s</mi>
+                <mi>t</mi>
+                <mi>T</mi>
+              </msubsup>
+              <mspace width="0.15em" />
+              <mi>W</mi>
+              <mspace width="0.15em" />
+              <msub>
+                <mi>h</mi>
+                <mi>i</mi>
+              </msub>
+            </math>
+          </div>
+
+          <p>Once <math>
+              <msub>
+                <mi>c</mi>
+                <mi>t</mi>
+              </msub>
+            </math> is computed, the decoder produces the next word from a combination of its own state and the context
+            vector: <math>
+              <mi>p</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>y</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>&#124;</mo>
+              <msub>
+                <mi>y</mi>
+                <mrow>
+                  <mo>&lt;</mo>
+                  <mi>t</mi>
+                </mrow>
+              </msub>
+              <mo>,</mo>
+              <mi>x</mi>
+              <mo>)</mo>
+              <mo>=</mo>
+              <mi>softmax</mi>
+              <mo>(</mo>
+              <mi>W</mi>
+              <mo>[</mo>
+              <msub>
+                <mi>s</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>;</mo>
+              <msub>
+                <mi>c</mi>
+                <mi>t</mi>
+              </msub>
+              <mo>]</mo>
+              <mo>)</mo>
+            </math>.</p>
+
+          <div class="callout aha">
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Attention is not just an accuracy fix for long sentences. It is the realisation that <em>"which piece of
+                input do I need right now?"</em> is itself something the model can learn. Once you can learn a soft
+              lookup over encoder states, you no longer need a recurrence to carry information across positions — you
+              can just attend. That observation is what leads to the transformer.</p>
+          </div>
         </div>
+      </section>
 
-        <p>In principle, this recurrence <em>can</em> carry information from step 1 to step 100 — the hidden state at any late position is a function of every earlier one. But training with <em class="term">back-propagation through time</em> unrolls the network into a <math><mi>T</mi></math>-layer deep computation, and the gradient of the loss with respect to an early hidden state is a product of Jacobians, one per time step. That product either <em class="term">vanishes</em> (spectral norm &lt; 1, geometric decay to zero) or <em class="term">explodes</em> (spectral norm &gt; 1, geometric blow-up). Long-range gradients never reach the early weights — so a vanilla RNN has the <em>capacity</em> for long dependencies but not the <em>trainability</em>.</p>
+      <hr class="soft">
 
-        <h4>Fix 1 — gating (LSTM, GRU)</h4>
+      <section>
+        <h2><span class="num">§4</span>Q3 · Transformer encoder block, in detail</h2>
 
-        <p>Both LSTM and GRU replace the single <math><mi>tanh</mi></math> update with a small circuit of <em class="term">sigmoid gates</em> that decide, per component, how much of the past to keep and how much of the new candidate to write. On any dimension where the "keep" gate is near 1, the state passes through unchanged and the gradient across that step is close to the identity — the multiplicative gradient path becomes an additive one.</p>
+        <div class="pyq-q" id="q3">
+          <div class="qhead">
+            <span class="qnum">Q3</span>
+            <span class="qmarks">10 marks</span>
+            <a class="qtag" href="../lectures/2-transformers.html">transformer</a>
+            <a class="qtag" href="../lectures/2-transformers.html">self-attention</a>
+            <a class="qtag" href="../lectures/2-transformers.html">multi-head</a>
+            <a class="qtag" href="../lectures/2-transformers.html">LayerNorm</a>
+            <a class="qtag" href="../lectures/2-transformers.html">FFN</a>
+          </div>
 
-        <p><strong>LSTM.</strong> Keeps a separate <em class="term">cell state</em> <math><msub><mi>c</mi><mi>t</mi></msub></math> that is updated by an <em class="term">additive</em> rule, gated by a forget gate <math><msub><mi>f</mi><mi>t</mi></msub></math> and an input gate <math><msub><mi>i</mi><mi>t</mi></msub></math>:</p>
+          <h3>The question, verbatim</h3>
+          <blockquote>
+            <p><strong>3.</strong> Describe the transformer encoder block in detail. <em>[10 marks]</em></p>
+          </blockquote>
 
-        <div class="eq boxed">
-          <math display="block">
-            <msub><mi>c</mi><mi>t</mi></msub>
-            <mo>=</mo>
-            <msub><mi>f</mi><mi>t</mi></msub><mo>&#8857;</mo><msub><mi>c</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub>
-            <mo>+</mo>
-            <msub><mi>i</mi><mi>t</mi></msub><mo>&#8857;</mo>
-            <mover><msub><mi>c</mi><mi>t</mi></msub><mo>~</mo></mover>
-          </math>
+          <h3>How to approach it</h3>
+          <p>A ten-mark structural question. Walk from input to output, naming each sub-component and giving its
+            defining equation. The full checklist: <em>input embedding + positional encoding</em>, <em>multi-head
+              self-attention</em> (with the scaled dot-product formula and how heads are computed and combined),
+            <em>residual connection and LayerNorm</em>, <em>position-wise feedforward network</em>, <em>residual and
+              LayerNorm again</em>. Close with the complexity <math>
+              <mi>O</mi>
+              <mo>(</mo>
+              <msup>
+                <mi>n</mi>
+                <mn>2</mn>
+              </msup>
+              <mo>&#183;</mo>
+              <mi>d</mi>
+              <mo>)</mo>
+            </math> and one line on why the block looks this way. Aim for one equation-plus-paragraph per sub-component
+            — that is roughly two marks each, which lines up with the ten.</p>
+
+          <h3>Worked answer</h3>
+
+          <h4>Setup — the block's input and output</h4>
+
+          <p>An encoder block takes a matrix <math>
+              <mi>x</mi>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <mi>n</mi>
+                  <mo>&#215;</mo>
+                  <msub>
+                    <mi>d</mi>
+                    <mrow>
+                      <mi>model</mi>
+                    </mrow>
+                  </msub>
+                </mrow>
+              </msup>
+            </math> — one row per input token, embedded into a shared <math>
+              <msub>
+                <mi>d</mi>
+                <mrow>
+                  <mi>model</mi>
+                </mrow>
+              </msub>
+            </math>-dimensional space. It returns a tensor of the same shape, so blocks stack cleanly. A transformer
+            encoder is <math>
+              <mi>N</mi>
+            </math> such blocks in series (the original paper uses <math>
+              <mi>N</mi>
+              <mo>=</mo>
+              <mn>6</mn>
+            </math>).</p>
+
+          <p>Before the first block, two things happen once to the input:</p>
+          <ol>
+            <li>Each token id is turned into a <math>
+                <msub>
+                  <mi>d</mi>
+                  <mrow>
+                    <mi>model</mi>
+                  </mrow>
+                </msub>
+              </math>-dimensional <em class="term">token embedding</em> via a learned lookup table.</li>
+            <li>A <em class="term">positional encoding</em> — a fixed sinusoidal signal or a learned vector — is added
+              to each embedding. Self-attention is otherwise position-agnostic; without this, the model would treat the
+              sentence as a bag of tokens.</li>
+          </ol>
+
+          <h4>Sub-layer 1 — multi-head self-attention</h4>
+
+          <p>The first sub-layer lets each token look at every other token in the sequence. For a single head, three
+            learned projections turn the input into <em class="term">queries</em>, <em class="term">keys</em>, and <em
+              class="term">values</em>:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <mi>Q</mi>
+              <mo>=</mo>
+              <mi>x</mi>
+              <msub>
+                <mi>W</mi>
+                <mi>Q</mi>
+              </msub>
+              <mo>,</mo>
+              <mspace width="0.6em" />
+              <mi>K</mi>
+              <mo>=</mo>
+              <mi>x</mi>
+              <msub>
+                <mi>W</mi>
+                <mi>K</mi>
+              </msub>
+              <mo>,</mo>
+              <mspace width="0.6em" />
+              <mi>V</mi>
+              <mo>=</mo>
+              <mi>x</mi>
+              <msub>
+                <mi>W</mi>
+                <mi>V</mi>
+              </msub>
+            </math>
+          </div>
+
+          <p>where <math>
+              <msub>
+                <mi>W</mi>
+                <mi>Q</mi>
+              </msub>
+              <mo>,</mo>
+              <msub>
+                <mi>W</mi>
+                <mi>K</mi>
+              </msub>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <msub>
+                    <mi>d</mi>
+                    <mrow>
+                      <mi>model</mi>
+                    </mrow>
+                  </msub>
+                  <mo>&#215;</mo>
+                  <msub>
+                    <mi>d</mi>
+                    <mi>k</mi>
+                  </msub>
+                </mrow>
+              </msup>
+            </math> and <math>
+              <msub>
+                <mi>W</mi>
+                <mi>V</mi>
+              </msub>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <msub>
+                    <mi>d</mi>
+                    <mrow>
+                      <mi>model</mi>
+                    </mrow>
+                  </msub>
+                  <mo>&#215;</mo>
+                  <msub>
+                    <mi>d</mi>
+                    <mi>v</mi>
+                  </msub>
+                </mrow>
+              </msup>
+            </math>. Scaled dot-product attention is then:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <mi>Attention</mi>
+              <mo>(</mo>
+              <mi>Q</mi>
+              <mo>,</mo>
+              <mi>K</mi>
+              <mo>,</mo>
+              <mi>V</mi>
+              <mo>)</mo>
+              <mo>=</mo>
+              <mi>softmax</mi>
+              <mo>(</mo>
+              <mfrac>
+                <mrow>
+                  <mi>Q</mi>
+                  <msup>
+                    <mi>K</mi>
+                    <mi>T</mi>
+                  </msup>
+                </mrow>
+                <msqrt>
+                  <msub>
+                    <mi>d</mi>
+                    <mi>k</mi>
+                  </msub>
+                </msqrt>
+              </mfrac>
+              <mo>)</mo>
+              <mi>V</mi>
+            </math>
+          </div>
+
+          <p>Reading it row by row: for each query token, dot it with every key to get a raw score, divide by <math>
+              <msqrt>
+                <msub>
+                  <mi>d</mi>
+                  <mi>k</mi>
+                </msub>
+              </msqrt>
+            </math> so the softmax does not saturate at high dimension, softmax over the sequence to get attention
+            weights, and take a weighted sum of the value vectors. Each output row is a <em class="term">soft
+              lookup</em> — a mixture of value vectors, weighted by query-key similarity.</p>
+
+          <p><strong>Multi-head.</strong> Instead of one large attention with dimension <math>
+              <msub>
+                <mi>d</mi>
+                <mrow>
+                  <mi>model</mi>
+                </mrow>
+              </msub>
+            </math>, the block runs <math>
+              <mi>h</mi>
+            </math> heads in parallel with per-head dimension <math>
+              <msub>
+                <mi>d</mi>
+                <mi>k</mi>
+              </msub>
+              <mo>=</mo>
+              <msub>
+                <mi>d</mi>
+                <mrow>
+                  <mi>model</mi>
+                </mrow>
+              </msub>
+              <mo>/</mo>
+              <mi>h</mi>
+            </math>. Each head has its own <math>
+              <msub>
+                <mi>W</mi>
+                <mi>Q</mi>
+              </msub>
+              <mo>,</mo>
+              <msub>
+                <mi>W</mi>
+                <mi>K</mi>
+              </msub>
+              <mo>,</mo>
+              <msub>
+                <mi>W</mi>
+                <mi>V</mi>
+              </msub>
+            </math>. Their outputs are concatenated and projected back:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <mi>MultiHead</mi>
+              <mo>(</mo>
+              <mi>x</mi>
+              <mo>)</mo>
+              <mo>=</mo>
+              <mi>Concat</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>head</mi>
+                <mn>1</mn>
+              </msub>
+              <mo>,</mo>
+              <mo>&#8230;</mo>
+              <mo>,</mo>
+              <msub>
+                <mi>head</mi>
+                <mi>h</mi>
+              </msub>
+              <mo>)</mo>
+              <msub>
+                <mi>W</mi>
+                <mi>O</mi>
+              </msub>
+            </math>
+          </div>
+
+          <p>Different heads learn to attend to different kinds of structure — one may track syntactic dependencies,
+            another may track co-reference. Splitting into heads is essentially free (the total parameter count is
+            roughly the same as a single-head attention of dimension <math>
+              <msub>
+                <mi>d</mi>
+                <mrow>
+                  <mi>model</mi>
+                </mrow>
+              </msub>
+            </math>) but is strictly more expressive.</p>
+
+          <div class="callout How it works">
+            <div class="callout-label">How it works · why the √d<sub>k</sub></div>
+            <p>Dot products of two random <math>
+                <msub>
+                  <mi>d</mi>
+                  <mi>k</mi>
+                </msub>
+              </math>-dim vectors have variance proportional to <math>
+                <msub>
+                  <mi>d</mi>
+                  <mi>k</mi>
+                </msub>
+              </math>. Without the <math>
+                <msqrt>
+                  <msub>
+                    <mi>d</mi>
+                    <mi>k</mi>
+                  </msub>
+                </msqrt>
+              </math> denominator, softmax inputs grow with <math>
+                <msub>
+                  <mi>d</mi>
+                  <mi>k</mi>
+                </msub>
+              </math>, saturating the softmax and killing gradients. Dividing by <math>
+                <msqrt>
+                  <msub>
+                    <mi>d</mi>
+                    <mi>k</mi>
+                  </msub>
+                </msqrt>
+              </math> keeps the scale roughly unit variance regardless of dimension.</p>
+          </div>
+
+          <h4>Residual connection and LayerNorm (round 1)</h4>
+
+          <p>The attention output is added back to its input via a <em class="term">residual connection</em>, and the
+            sum is normalised:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <msub>
+                <mi>z</mi>
+                <mn>1</mn>
+              </msub>
+              <mo>=</mo>
+              <mi>LayerNorm</mi>
+              <mo>(</mo>
+              <mi>x</mi>
+              <mo>+</mo>
+              <mi>MultiHead</mi>
+              <mo>(</mo>
+              <mi>x</mi>
+              <mo>)</mo>
+              <mo>)</mo>
+            </math>
+          </div>
+
+          <p>The residual gives gradients a direct path around the sub-layer, letting deep stacks train stably. <em
+              class="term">LayerNorm</em> normalises each token vector to zero mean and unit variance across its
+            features, then rescales with learned per-feature <math>
+              <mi>&#947;</mi>
+            </math> and <math>
+              <mi>&#946;</mi>
+            </math>. Unlike BatchNorm, it depends only on the token itself, so it works with variable sequence lengths
+            and small batches.</p>
+
+          <h4>Sub-layer 2 — position-wise feedforward network</h4>
+
+          <p>The second sub-layer is a small MLP applied <em>independently to each position</em>. Two linear layers with
+            a non-linearity in between:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <mi>FFN</mi>
+              <mo>(</mo>
+              <mi>x</mi>
+              <mo>)</mo>
+              <mo>=</mo>
+              <mi>max</mi>
+              <mo>(</mo>
+              <mn>0</mn>
+              <mo>,</mo>
+              <mspace width="0.15em" />
+              <mi>x</mi>
+              <msub>
+                <mi>W</mi>
+                <mn>1</mn>
+              </msub>
+              <mo>+</mo>
+              <msub>
+                <mi>b</mi>
+                <mn>1</mn>
+              </msub>
+              <mo>)</mo>
+              <msub>
+                <mi>W</mi>
+                <mn>2</mn>
+              </msub>
+              <mo>+</mo>
+              <msub>
+                <mi>b</mi>
+                <mn>2</mn>
+              </msub>
+            </math>
+          </div>
+
+          <p>with <math>
+              <msub>
+                <mi>W</mi>
+                <mn>1</mn>
+              </msub>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <msub>
+                    <mi>d</mi>
+                    <mrow>
+                      <mi>model</mi>
+                    </mrow>
+                  </msub>
+                  <mo>&#215;</mo>
+                  <msub>
+                    <mi>d</mi>
+                    <mrow>
+                      <mi>ff</mi>
+                    </mrow>
+                  </msub>
+                </mrow>
+              </msup>
+            </math> and <math>
+              <msub>
+                <mi>W</mi>
+                <mn>2</mn>
+              </msub>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <msub>
+                    <mi>d</mi>
+                    <mrow>
+                      <mi>ff</mi>
+                    </mrow>
+                  </msub>
+                  <mo>&#215;</mo>
+                  <msub>
+                    <mi>d</mi>
+                    <mrow>
+                      <mi>model</mi>
+                    </mrow>
+                  </msub>
+                </mrow>
+              </msup>
+            </math> — the inner dimension is typically <math>
+              <mn>4</mn>
+              <msub>
+                <mi>d</mi>
+                <mrow>
+                  <mi>model</mi>
+                </mrow>
+              </msub>
+            </math>. The original paper uses ReLU; modern implementations (BERT, GPT-2 onwards) use GELU. The point is
+            that self-attention only mixes information across positions <em>linearly</em>; the FFN adds a per-token
+            non-linear transformation, and does most of the block's per-position compute.</p>
+
+          <h4>Residual and LayerNorm (round 2)</h4>
+
+          <p>Same pattern as after attention:</p>
+          <div class="eq boxed">
+            <math display="block">
+              <msub>
+                <mi>z</mi>
+                <mn>2</mn>
+              </msub>
+              <mo>=</mo>
+              <mi>LayerNorm</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>z</mi>
+                <mn>1</mn>
+              </msub>
+              <mo>+</mo>
+              <mi>FFN</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>z</mi>
+                <mn>1</mn>
+              </msub>
+              <mo>)</mo>
+              <mo>)</mo>
+            </math>
+          </div>
+
+          <p><math>
+              <msub>
+                <mi>z</mi>
+                <mn>2</mn>
+              </msub>
+            </math> is the output of one encoder block, ready to be fed into the next.</p>
+
+          <h4>The block, at a glance</h4>
+
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>What it does</th>
+                <th>Shape</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Input</td>
+                <td>token embedding + positional encoding</td>
+                <td><math>
+                    <mi>n</mi>
+                    <mo>&#215;</mo>
+                    <msub>
+                      <mi>d</mi>
+                      <mrow>
+                        <mi>model</mi>
+                      </mrow>
+                    </msub>
+                  </math></td>
+              </tr>
+              <tr>
+                <td>Multi-head self-attention</td>
+                <td>each token attends to every token; <math>
+                    <mi>h</mi>
+                  </math> heads run in parallel</td>
+                <td><math>
+                    <mi>n</mi>
+                    <mo>&#215;</mo>
+                    <msub>
+                      <mi>d</mi>
+                      <mrow>
+                        <mi>model</mi>
+                      </mrow>
+                    </msub>
+                  </math></td>
+              </tr>
+              <tr>
+                <td>Add &amp; Norm</td>
+                <td>residual, then LayerNorm across features</td>
+                <td><math>
+                    <mi>n</mi>
+                    <mo>&#215;</mo>
+                    <msub>
+                      <mi>d</mi>
+                      <mrow>
+                        <mi>model</mi>
+                      </mrow>
+                    </msub>
+                  </math></td>
+              </tr>
+              <tr>
+                <td>Position-wise FFN</td>
+                <td>two-layer MLP, applied independently at each position</td>
+                <td><math>
+                    <mi>n</mi>
+                    <mo>&#215;</mo>
+                    <msub>
+                      <mi>d</mi>
+                      <mrow>
+                        <mi>model</mi>
+                      </mrow>
+                    </msub>
+                  </math></td>
+              </tr>
+              <tr>
+                <td>Add &amp; Norm</td>
+                <td>residual, then LayerNorm again</td>
+                <td><math>
+                    <mi>n</mi>
+                    <mo>&#215;</mo>
+                    <msub>
+                      <mi>d</mi>
+                      <mrow>
+                        <mi>model</mi>
+                      </mrow>
+                    </msub>
+                  </math></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h4>Complexity</h4>
+
+          <p>Self-attention forms an <math>
+              <mi>n</mi>
+              <mo>&#215;</mo>
+              <mi>n</mi>
+            </math> attention matrix, so the block is <math>
+              <mi>O</mi>
+              <mo>(</mo>
+              <msup>
+                <mi>n</mi>
+                <mn>2</mn>
+              </msup>
+              <mo>&#183;</mo>
+              <msub>
+                <mi>d</mi>
+                <mrow>
+                  <mi>model</mi>
+                </mrow>
+              </msub>
+              <mo>)</mo>
+            </math> in time and <math>
+              <mi>O</mi>
+              <mo>(</mo>
+              <msup>
+                <mi>n</mi>
+                <mn>2</mn>
+              </msup>
+              <mo>)</mo>
+            </math> in memory. Quadratic in the sequence length. This is the cost the field has spent the last five
+            years trying to reduce — Flash Attention, sparse attention, linear attention, state-space models. But inside
+            <em>one</em> encoder block, this cost is what buys you an <math>
+              <mi>O</mi>
+              <mo>(</mo>
+              <mn>1</mn>
+              <mo>)</mo>
+            </math> path length between any two tokens, which is the whole point.</p>
+
+          <div class="callout aha">
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>Read the block as two sub-layers with the same shape — each is <em>(mix, then residual + norm)</em>.
+              Self-attention mixes information <em>across tokens</em>; the FFN mixes information <em>across feature
+                dimensions</em>. Every subsequent architecture in this course either changes how the across-tokens mixer
+              works (Mamba, Flash Attention, sparse variants) or how the across-features mixer scales
+              (Mixture-of-Experts). The template is the same.</p>
+          </div>
         </div>
-
-        <p>This is the famous <em class="term">constant error carousel</em>: when the forget gate is near 1, gradients flow along the cell-state highway across many time steps essentially unchanged. Long dependencies stop being killed by BPTT.</p>
-
-        <p><strong>GRU.</strong> Fuses the cell and hidden state into one vector and uses only two gates — an <em class="term">update gate</em> <math><msub><mi>z</mi><mi>t</mi></msub></math> and a <em class="term">reset gate</em> <math><msub><mi>r</mi><mi>t</mi></msub></math>. The update gate interpolates between the old state and the new candidate:</p>
-
-        <div class="eq boxed">
-          <math display="block">
-            <msub><mi>h</mi><mi>t</mi></msub>
-            <mo>=</mo>
-            <mo>(</mo><mn>1</mn><mo>&#8722;</mo><msub><mi>z</mi><mi>t</mi></msub><mo>)</mo><mo>&#8857;</mo>
-            <msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub>
-            <mo>+</mo>
-            <msub><mi>z</mi><mi>t</mi></msub><mo>&#8857;</mo>
-            <mover><msub><mi>h</mi><mi>t</mi></msub><mo>~</mo></mover>
-          </math>
-        </div>
-
-        <p>When <math><msub><mi>z</mi><mi>t</mi></msub></math> is near 0, the past is preserved verbatim and the gradient across that step is again close to the identity. Fewer parameters than LSTM, same additive-highway trick.</p>
-
-        <div class="callout How it works">
-          <div class="callout-label">How it works · one line</div>
-          <p>Gates turn the recurrence's <em>multiplicative</em> gradient path into a nearly <em>additive</em> one on any step the gate says "keep". That is the single reason gated RNNs learn long dependencies where vanilla RNNs cannot.</p>
-        </div>
-
-        <h4>Fix 2 — get rid of recurrence entirely (attention / self-attention)</h4>
-
-        <p>The other answer is more radical: if recurrence is the reason long-range signal is fragile, remove it. <em class="term">Self-attention</em> lets any position look directly at any other position with a single matrix multiply — the distance-1 shortcut a plain RNN never had. Every token has an <math><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></math> path length to every other token, so long-range dependencies stop being a training problem at all. This is the escape hatch the transformer takes, and it is what makes the rest of this paper (Q3, Q4) possible.</p>
-
-        <div class="callout aha">
-          <div class="callout-label">✦ Key takeaway</div>
-          <p>Notice the two answers point in opposite directions. Gates <em>keep</em> the recurrence and patch its gradient path. Attention <em>throws out</em> the recurrence and gives every position a direct edge to every other. Both work — but only the second scales, which is why the field moved on.</p>
-        </div>
-      </div>
-    </section>
-
-    <hr class="soft">
-
-    <section>
-      <h2><span class="num">§3</span>Q2 · Why attention in seq2seq</h2>
-
-      <div class="pyq-q" id="q2">
-        <div class="qhead">
-          <span class="qnum">Q2</span>
-          <span class="qmarks">5 marks</span>
-          <a class="qtag" href="../lectures/5-rnns.html">seq2seq</a>
-          <a class="qtag" href="../lectures/5-rnns.html">attention</a>
-          <a class="qtag" href="../lectures/5-rnns.html">Bahdanau</a>
-          <a class="qtag" href="../lectures/5-rnns.html">Luong</a>
-        </div>
-
-        <h3>The question, verbatim</h3>
-        <blockquote>
-          <p><strong>2.</strong> Why is attention needed in a sequence-to-sequence model? Explain with attention function description. <em>[5 marks]</em></p>
-        </blockquote>
-
-        <h3>How to approach it</h3>
-        <p>The question is two halves. First, <em>why</em>: name the bottleneck in vanilla seq2seq and argue that different target words need different source content, so the decoder needs a fresh source view at each step. Second, <em>the function</em>: write the three-line attention block — score, softmax, weighted sum — and name at least one concrete score function (additive Bahdanau or multiplicative Luong). Five marks, so keep it to one crisp diagram-in-words plus the equations.</p>
-
-        <h3>Worked answer</h3>
-
-        <h4>Why attention is needed</h4>
-
-        <p>A vanilla encoder-decoder for machine translation (Sutskever et al. 2014) reads the whole source sentence with an RNN and summarises it into a <em>single fixed-length vector</em> — the final encoder hidden state — which is then handed to the decoder as its only source-side input. The decoder must generate the entire target sentence from that one vector.</p>
-
-        <p>Two problems fall out of this design:</p>
-        <ol>
-          <li><strong>The bottleneck.</strong> A fixed-size vector cannot carry all of a long source sentence. Empirically, translation quality drops sharply once the source exceeds roughly 20–30 tokens, because the encoder is being asked to compress unbounded content into a bounded state.</li>
-          <li><strong>Different targets need different source content.</strong> Consider translating <em>"the red car is fast"</em> into French — <em>"la voiture rouge est rapide"</em>. When the decoder is producing <em>voiture</em>, it needs to look at <em>car</em>. When it is producing <em>rouge</em>, it needs to look at <em>red</em>. One fixed vector cannot serve both — it averages them or forgets one. What the decoder actually needs is a <em class="term">different source view at every target step</em>.</li>
-        </ol>
-
-        <p>Attention (Bahdanau et al. 2015) fixes both. The encoder keeps <em>all</em> its per-position hidden states <math><msub><mi>h</mi><mn>1</mn></msub><mo>,</mo><mo>&#8230;</mo><mo>,</mo><msub><mi>h</mi><mi>n</mi></msub></math>. At each decoder step, a soft <em class="term">alignment</em> is computed over those states and a fresh context vector <math><msub><mi>c</mi><mi>t</mi></msub></math> is produced — a weighted sum of encoder states, weighted by how well each source position matches the current decoder state. The decoder can "look back" at any source token at any time.</p>
-
-        <h4>The attention function</h4>
-
-        <p>At decoder step <math><mi>t</mi></math>, attention runs three lines:</p>
-
-        <div class="eq boxed">
-          <math display="block">
-            <mtable columnalign="left">
-              <mtr><mtd><msub><mi>e</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub> <mo>=</mo> <mi>score</mi><mo>(</mo><msub><mi>s</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>h</mi><mi>i</mi></msub><mo>)</mo></mtd><mtd><mtext>&#8202;alignment score&#8202;</mtext></mtd></mtr>
-              <mtr><mtd><msub><mi>&#945;</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub> <mo>=</mo> <mfrac><mrow><mi>exp</mi><mo>(</mo><msub><mi>e</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub><mo>)</mo></mrow><mrow><munderover><mo>&#8721;</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover><mi>exp</mi><mo>(</mo><msub><mi>e</mi><mrow><mi>t</mi><mo>,</mo><mi>j</mi></mrow></msub><mo>)</mo></mrow></mfrac></mtd><mtd><mtext>&#8202;attention weight&#8202;</mtext></mtd></mtr>
-              <mtr><mtd><msub><mi>c</mi><mi>t</mi></msub> <mo>=</mo> <munderover><mo>&#8721;</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover> <msub><mi>&#945;</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub> <msub><mi>h</mi><mi>i</mi></msub></mtd><mtd><mtext>&#8202;context vector&#8202;</mtext></mtd></mtr>
-            </mtable>
-          </math>
-        </div>
-
-        <p>The <em>score</em> function is the model's judgement of how relevant source position <math><mi>i</mi></math> is to producing the next target token. Two standard choices:</p>
-
-        <p><strong>Additive (Bahdanau, 2015)</strong> — a tiny one-hidden-layer feedforward network on the concatenated decoder and encoder states:</p>
-        <div class="eq boxed">
-          <math display="block">
-            <mi>score</mi><mo>(</mo><msub><mi>s</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>h</mi><mi>i</mi></msub><mo>)</mo>
-            <mo>=</mo>
-            <msup><mi>v</mi><mi>T</mi></msup>
-            <mi>tanh</mi>
-            <mo>(</mo>
-            <msub><mi>W</mi><mi>s</mi></msub><msub><mi>s</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub>
-            <mo>+</mo>
-            <msub><mi>W</mi><mi>h</mi></msub><msub><mi>h</mi><mi>i</mi></msub>
-            <mo>)</mo>
-          </math>
-        </div>
-
-        <p><strong>Multiplicative / dot (Luong, 2015)</strong> — a bilinear form, cheaper because it is essentially a matrix multiply:</p>
-        <div class="eq boxed">
-          <math display="block">
-            <mi>score</mi><mo>(</mo><msub><mi>s</mi><mi>t</mi></msub><mo>,</mo><msub><mi>h</mi><mi>i</mi></msub><mo>)</mo>
-            <mo>=</mo>
-            <msubsup><mi>s</mi><mi>t</mi><mi>T</mi></msubsup>
-            <mspace width="0.15em"/>
-            <mi>W</mi>
-            <mspace width="0.15em"/>
-            <msub><mi>h</mi><mi>i</mi></msub>
-          </math>
-        </div>
-
-        <p>Once <math><msub><mi>c</mi><mi>t</mi></msub></math> is computed, the decoder produces the next word from a combination of its own state and the context vector: <math><mi>p</mi><mo>(</mo><msub><mi>y</mi><mi>t</mi></msub><mo>&#124;</mo><msub><mi>y</mi><mrow><mo>&lt;</mo><mi>t</mi></mrow></msub><mo>,</mo><mi>x</mi><mo>)</mo> <mo>=</mo> <mi>softmax</mi><mo>(</mo><mi>W</mi><mo>[</mo><msub><mi>s</mi><mi>t</mi></msub><mo>;</mo><msub><mi>c</mi><mi>t</mi></msub><mo>]</mo><mo>)</mo></math>.</p>
-
-        <div class="callout aha">
-          <div class="callout-label">✦ Key takeaway</div>
-          <p>Attention is not just an accuracy fix for long sentences. It is the realisation that <em>"which piece of input do I need right now?"</em> is itself something the model can learn. Once you can learn a soft lookup over encoder states, you no longer need a recurrence to carry information across positions — you can just attend. That observation is what leads to the transformer.</p>
-        </div>
-      </div>
-    </section>
-
-    <hr class="soft">
-
-    <section>
-      <h2><span class="num">§4</span>Q3 · Transformer encoder block, in detail</h2>
-
-      <div class="pyq-q" id="q3">
-        <div class="qhead">
-          <span class="qnum">Q3</span>
-          <span class="qmarks">10 marks</span>
-          <a class="qtag" href="../lectures/2-transformers.html">transformer</a>
-          <a class="qtag" href="../lectures/2-transformers.html">self-attention</a>
-          <a class="qtag" href="../lectures/2-transformers.html">multi-head</a>
-          <a class="qtag" href="../lectures/2-transformers.html">LayerNorm</a>
-          <a class="qtag" href="../lectures/2-transformers.html">FFN</a>
-        </div>
-
-        <h3>The question, verbatim</h3>
-        <blockquote>
-          <p><strong>3.</strong> Describe the transformer encoder block in detail. <em>[10 marks]</em></p>
-        </blockquote>
-
-        <h3>How to approach it</h3>
-        <p>A ten-mark structural question. Walk from input to output, naming each sub-component and giving its defining equation. The full checklist: <em>input embedding + positional encoding</em>, <em>multi-head self-attention</em> (with the scaled dot-product formula and how heads are computed and combined), <em>residual connection and LayerNorm</em>, <em>position-wise feedforward network</em>, <em>residual and LayerNorm again</em>. Close with the complexity <math><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>&#183;</mo><mi>d</mi><mo>)</mo></math> and one line on why the block looks this way. Aim for one equation-plus-paragraph per sub-component — that is roughly two marks each, which lines up with the ten.</p>
-
-        <h3>Worked answer</h3>
-
-        <h4>Setup — the block's input and output</h4>
-
-        <p>An encoder block takes a matrix <math><mi>x</mi><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><mi>n</mi><mo>&#215;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></mrow></msup></math> — one row per input token, embedded into a shared <math><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math>-dimensional space. It returns a tensor of the same shape, so blocks stack cleanly. A transformer encoder is <math><mi>N</mi></math> such blocks in series (the original paper uses <math><mi>N</mi><mo>=</mo><mn>6</mn></math>).</p>
-
-        <p>Before the first block, two things happen once to the input:</p>
-        <ol>
-          <li>Each token id is turned into a <math><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math>-dimensional <em class="term">token embedding</em> via a learned lookup table.</li>
-          <li>A <em class="term">positional encoding</em> — a fixed sinusoidal signal or a learned vector — is added to each embedding. Self-attention is otherwise position-agnostic; without this, the model would treat the sentence as a bag of tokens.</li>
-        </ol>
-
-        <h4>Sub-layer 1 — multi-head self-attention</h4>
-
-        <p>The first sub-layer lets each token look at every other token in the sequence. For a single head, three learned projections turn the input into <em class="term">queries</em>, <em class="term">keys</em>, and <em class="term">values</em>:</p>
-
-        <div class="eq boxed">
-          <math display="block">
-            <mi>Q</mi> <mo>=</mo> <mi>x</mi> <msub><mi>W</mi><mi>Q</mi></msub><mo>,</mo>
-            <mspace width="0.6em"/>
-            <mi>K</mi> <mo>=</mo> <mi>x</mi> <msub><mi>W</mi><mi>K</mi></msub><mo>,</mo>
-            <mspace width="0.6em"/>
-            <mi>V</mi> <mo>=</mo> <mi>x</mi> <msub><mi>W</mi><mi>V</mi></msub>
-          </math>
-        </div>
-
-        <p>where <math><msub><mi>W</mi><mi>Q</mi></msub><mo>,</mo><msub><mi>W</mi><mi>K</mi></msub><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub><mo>&#215;</mo><msub><mi>d</mi><mi>k</mi></msub></mrow></msup></math> and <math><msub><mi>W</mi><mi>V</mi></msub><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub><mo>&#215;</mo><msub><mi>d</mi><mi>v</mi></msub></mrow></msup></math>. Scaled dot-product attention is then:</p>
-
-        <div class="eq boxed">
-          <math display="block">
-            <mi>Attention</mi><mo>(</mo><mi>Q</mi><mo>,</mo><mi>K</mi><mo>,</mo><mi>V</mi><mo>)</mo>
-            <mo>=</mo>
-            <mi>softmax</mi>
-            <mo>(</mo>
-            <mfrac>
-              <mrow><mi>Q</mi><msup><mi>K</mi><mi>T</mi></msup></mrow>
-              <msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt>
-            </mfrac>
-            <mo>)</mo>
-            <mi>V</mi>
-          </math>
-        </div>
-
-        <p>Reading it row by row: for each query token, dot it with every key to get a raw score, divide by <math><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></math> so the softmax does not saturate at high dimension, softmax over the sequence to get attention weights, and take a weighted sum of the value vectors. Each output row is a <em class="term">soft lookup</em> — a mixture of value vectors, weighted by query-key similarity.</p>
-
-        <p><strong>Multi-head.</strong> Instead of one large attention with dimension <math><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math>, the block runs <math><mi>h</mi></math> heads in parallel with per-head dimension <math><msub><mi>d</mi><mi>k</mi></msub> <mo>=</mo> <msub><mi>d</mi><mrow><mi>model</mi></mrow></msub> <mo>/</mo> <mi>h</mi></math>. Each head has its own <math><msub><mi>W</mi><mi>Q</mi></msub><mo>,</mo><msub><mi>W</mi><mi>K</mi></msub><mo>,</mo><msub><mi>W</mi><mi>V</mi></msub></math>. Their outputs are concatenated and projected back:</p>
-
-        <div class="eq boxed">
-          <math display="block">
-            <mi>MultiHead</mi><mo>(</mo><mi>x</mi><mo>)</mo>
-            <mo>=</mo>
-            <mi>Concat</mi><mo>(</mo>
-            <msub><mi>head</mi><mn>1</mn></msub><mo>,</mo><mo>&#8230;</mo><mo>,</mo>
-            <msub><mi>head</mi><mi>h</mi></msub>
-            <mo>)</mo>
-            <msub><mi>W</mi><mi>O</mi></msub>
-          </math>
-        </div>
-
-        <p>Different heads learn to attend to different kinds of structure — one may track syntactic dependencies, another may track co-reference. Splitting into heads is essentially free (the total parameter count is roughly the same as a single-head attention of dimension <math><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math>) but is strictly more expressive.</p>
-
-        <div class="callout How it works">
-          <div class="callout-label">How it works · why the √d<sub>k</sub></div>
-          <p>Dot products of two random <math><msub><mi>d</mi><mi>k</mi></msub></math>-dim vectors have variance proportional to <math><msub><mi>d</mi><mi>k</mi></msub></math>. Without the <math><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></math> denominator, softmax inputs grow with <math><msub><mi>d</mi><mi>k</mi></msub></math>, saturating the softmax and killing gradients. Dividing by <math><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></math> keeps the scale roughly unit variance regardless of dimension.</p>
-        </div>
-
-        <h4>Residual connection and LayerNorm (round 1)</h4>
-
-        <p>The attention output is added back to its input via a <em class="term">residual connection</em>, and the sum is normalised:</p>
-
-        <div class="eq boxed">
-          <math display="block">
-            <msub><mi>z</mi><mn>1</mn></msub>
-            <mo>=</mo>
-            <mi>LayerNorm</mi>
-            <mo>(</mo>
-            <mi>x</mi>
-            <mo>+</mo>
-            <mi>MultiHead</mi><mo>(</mo><mi>x</mi><mo>)</mo>
-            <mo>)</mo>
-          </math>
-        </div>
-
-        <p>The residual gives gradients a direct path around the sub-layer, letting deep stacks train stably. <em class="term">LayerNorm</em> normalises each token vector to zero mean and unit variance across its features, then rescales with learned per-feature <math><mi>&#947;</mi></math> and <math><mi>&#946;</mi></math>. Unlike BatchNorm, it depends only on the token itself, so it works with variable sequence lengths and small batches.</p>
-
-        <h4>Sub-layer 2 — position-wise feedforward network</h4>
-
-        <p>The second sub-layer is a small MLP applied <em>independently to each position</em>. Two linear layers with a non-linearity in between:</p>
-
-        <div class="eq boxed">
-          <math display="block">
-            <mi>FFN</mi><mo>(</mo><mi>x</mi><mo>)</mo>
-            <mo>=</mo>
-            <mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mspace width="0.15em"/><mi>x</mi><msub><mi>W</mi><mn>1</mn></msub><mo>+</mo><msub><mi>b</mi><mn>1</mn></msub><mo>)</mo>
-            <msub><mi>W</mi><mn>2</mn></msub>
-            <mo>+</mo>
-            <msub><mi>b</mi><mn>2</mn></msub>
-          </math>
-        </div>
-
-        <p>with <math><msub><mi>W</mi><mn>1</mn></msub><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub><mo>&#215;</mo><msub><mi>d</mi><mrow><mi>ff</mi></mrow></msub></mrow></msup></math> and <math><msub><mi>W</mi><mn>2</mn></msub><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><msub><mi>d</mi><mrow><mi>ff</mi></mrow></msub><mo>&#215;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></mrow></msup></math> — the inner dimension is typically <math><mn>4</mn><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math>. The original paper uses ReLU; modern implementations (BERT, GPT-2 onwards) use GELU. The point is that self-attention only mixes information across positions <em>linearly</em>; the FFN adds a per-token non-linear transformation, and does most of the block's per-position compute.</p>
-
-        <h4>Residual and LayerNorm (round 2)</h4>
-
-        <p>Same pattern as after attention:</p>
-        <div class="eq boxed">
-          <math display="block">
-            <msub><mi>z</mi><mn>2</mn></msub>
-            <mo>=</mo>
-            <mi>LayerNorm</mi>
-            <mo>(</mo>
-            <msub><mi>z</mi><mn>1</mn></msub>
-            <mo>+</mo>
-            <mi>FFN</mi><mo>(</mo><msub><mi>z</mi><mn>1</mn></msub><mo>)</mo>
-            <mo>)</mo>
-          </math>
-        </div>
-
-        <p><math><msub><mi>z</mi><mn>2</mn></msub></math> is the output of one encoder block, ready to be fed into the next.</p>
-
-        <h4>The block, at a glance</h4>
-
-        <table class="tbl">
-          <thead><tr><th>Step</th><th>What it does</th><th>Shape</th></tr></thead>
-          <tbody>
-            <tr><td>Input</td><td>token embedding + positional encoding</td><td><math><mi>n</mi><mo>&#215;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math></td></tr>
-            <tr><td>Multi-head self-attention</td><td>each token attends to every token; <math><mi>h</mi></math> heads run in parallel</td><td><math><mi>n</mi><mo>&#215;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math></td></tr>
-            <tr><td>Add &amp; Norm</td><td>residual, then LayerNorm across features</td><td><math><mi>n</mi><mo>&#215;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math></td></tr>
-            <tr><td>Position-wise FFN</td><td>two-layer MLP, applied independently at each position</td><td><math><mi>n</mi><mo>&#215;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math></td></tr>
-            <tr><td>Add &amp; Norm</td><td>residual, then LayerNorm again</td><td><math><mi>n</mi><mo>&#215;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub></math></td></tr>
-          </tbody>
-        </table>
-
-        <h4>Complexity</h4>
-
-        <p>Self-attention forms an <math><mi>n</mi><mo>&#215;</mo><mi>n</mi></math> attention matrix, so the block is <math><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>&#183;</mo><msub><mi>d</mi><mrow><mi>model</mi></mrow></msub><mo>)</mo></math> in time and <math><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math> in memory. Quadratic in the sequence length. This is the cost the field has spent the last five years trying to reduce — Flash Attention, sparse attention, linear attention, state-space models. But inside <em>one</em> encoder block, this cost is what buys you an <math><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></math> path length between any two tokens, which is the whole point.</p>
-
-        <div class="callout aha">
-          <div class="callout-label">✦ Key takeaway</div>
-          <p>Read the block as two sub-layers with the same shape — each is <em>(mix, then residual + norm)</em>. Self-attention mixes information <em>across tokens</em>; the FFN mixes information <em>across feature dimensions</em>. Every subsequent architecture in this course either changes how the across-tokens mixer works (Mamba, Flash Attention, sparse variants) or how the across-features mixer scales (Mixture-of-Experts). The template is the same.</p>
-        </div>
-      </div>
-    </section>
-
-    <hr class="soft">
-
-    <section>
-      <h2><span class="num">§5</span>Q4 · LoRA vs Adapters</h2>
-
-      <div class="pyq-q" id="q4">
-        <div class="qhead">
-          <span class="qnum">Q4</span>
-          <span class="qmarks">10 marks</span>
-          <a class="qtag" href="../lectures/2-transformers.html">PEFT</a>
-          <a class="qtag" href="../lectures/2-transformers.html">LoRA</a>
-          <a class="qtag" href="../lectures/2-transformers.html">Adapters</a>
-          <a class="qtag" href="../lectures/2-transformers.html">fine-tuning</a>
-        </div>
-
-        <h3>The question, verbatim</h3>
-        <blockquote>
-          <p><strong>4.</strong> How does LoRA Finetuning approach differ from Adapters? Explain with architectures. <em>[10 marks]</em></p>
-        </blockquote>
-
-        <h3>How to approach it</h3>
-        <p>Frame both as <em class="term">parameter-efficient fine-tuning</em> (PEFT) — same problem (fine-tune a large pretrained model cheaply by touching only a small number of new parameters, keeping the original weights frozen), two different architectural answers. Sketch each one: where it plugs into the transformer block, what its forward equation looks like, how many parameters it adds. Then give the differences on axes that actually matter: serial vs parallel placement, inference latency, mergeability, expressiveness. The word "architectures" in the question is a rubric signal — you need diagrams-in-words or pictures, not just prose.</p>
-
-        <h3>Worked answer</h3>
-
-        <h4>The shared problem</h4>
-
-        <p>Full fine-tuning of a modern pretrained transformer means updating all of its billions of parameters and storing a full-sized checkpoint per downstream task. That is expensive to train and impossible to serve if you have many tasks. <em class="term">Parameter-efficient fine-tuning</em> methods freeze the original weights <math><mi>W</mi></math> and add a small number of new, trainable parameters — typically 0.1%–5% of the base model — that specialise it to the task. Two of the most widely used are <em class="term">Adapters</em> (Houlsby et al. 2019) and <em class="term">LoRA</em> (Hu et al. 2021).</p>
-
-        <h4>Adapters — architecture</h4>
-
-        <p>An adapter is a small bottleneck MLP inserted <em>inside</em> the transformer block, in series with the frozen sub-layers. Given an input <math><mi>h</mi><mo>&#8712;</mo><msup><mi>&#8477;</mi><mi>d</mi></msup></math>, the adapter does:</p>
-
-        <div class="eq boxed">
-          <math display="block">
-            <mi>Adapter</mi><mo>(</mo><mi>h</mi><mo>)</mo>
-            <mo>=</mo>
-            <mi>h</mi>
-            <mo>+</mo>
-            <msub><mi>W</mi><mrow><mi>up</mi></mrow></msub>
-            <mspace width="0.15em"/>
-            <mi>&#963;</mi>
-            <mo>(</mo>
-            <msub><mi>W</mi><mrow><mi>down</mi></mrow></msub>
-            <mspace width="0.15em"/>
-            <mi>h</mi>
-            <mo>)</mo>
-          </math>
-        </div>
-
-        <p>Three pieces: a <em class="term">down-projection</em> <math><msub><mi>W</mi><mrow><mi>down</mi></mrow></msub><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><mi>r</mi><mo>&#215;</mo><mi>d</mi></mrow></msup></math> that squashes to a small bottleneck of size <math><mi>r</mi><mo>&#8810;</mo><mi>d</mi></math>, a non-linearity <math><mi>&#963;</mi></math> (GELU / ReLU), and an <em class="term">up-projection</em> <math><msub><mi>W</mi><mrow><mi>up</mi></mrow></msub><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><mi>d</mi><mo>&#215;</mo><mi>r</mi></mrow></msup></math> back to the model dimension. A residual connection carries the input around it, and <math><msub><mi>W</mi><mrow><mi>up</mi></mrow></msub></math> is initialised to zero so the adapter starts as an identity — the model behaves exactly like the frozen base at initialisation and only drifts as the adapter learns.</p>
-
-        <p>The adapter is inserted <em>twice</em> per transformer block: once after the multi-head self-attention sub-layer, once after the FFN sub-layer. The block becomes:</p>
-
-        <pre class="code"><code>x
+      </section>
+
+      <hr class="soft">
+
+      <section>
+        <h2><span class="num">§5</span>Q4 · LoRA vs Adapters</h2>
+
+        <div class="pyq-q" id="q4">
+          <div class="qhead">
+            <span class="qnum">Q4</span>
+            <span class="qmarks">10 marks</span>
+            <a class="qtag" href="../lectures/2-transformers.html">PEFT</a>
+            <a class="qtag" href="../lectures/2-transformers.html">LoRA</a>
+            <a class="qtag" href="../lectures/2-transformers.html">Adapters</a>
+            <a class="qtag" href="../lectures/2-transformers.html">fine-tuning</a>
+          </div>
+
+          <h3>The question, verbatim</h3>
+          <blockquote>
+            <p><strong>4.</strong> How does LoRA Finetuning approach differ from Adapters? Explain with architectures.
+              <em>[10 marks]</em></p>
+          </blockquote>
+
+          <h3>How to approach it</h3>
+          <p>Frame both as <em class="term">parameter-efficient fine-tuning</em> (PEFT) — same problem (fine-tune a
+            large pretrained model cheaply by touching only a small number of new parameters, keeping the original
+            weights frozen), two different architectural answers. Sketch each one: where it plugs into the transformer
+            block, what its forward equation looks like, how many parameters it adds. Then give the differences on axes
+            that actually matter: serial vs parallel placement, inference latency, mergeability, expressiveness. The
+            word "architectures" in the question is a rubric signal — you need diagrams-in-words or pictures, not just
+            prose.</p>
+
+          <h3>Worked answer</h3>
+
+          <h4>The shared problem</h4>
+
+          <p>Full fine-tuning of a modern pretrained transformer means updating all of its billions of parameters and
+            storing a full-sized checkpoint per downstream task. That is expensive to train and impossible to serve if
+            you have many tasks. <em class="term">Parameter-efficient fine-tuning</em> methods freeze the original
+            weights <math>
+              <mi>W</mi>
+            </math> and add a small number of new, trainable parameters — typically 0.1%–5% of the base model — that
+            specialise it to the task. Two of the most widely used are <em class="term">Adapters</em> (Houlsby et al.
+            2019) and <em class="term">LoRA</em> (Hu et al. 2021).</p>
+
+          <h4>Adapters — architecture</h4>
+
+          <p>An adapter is a small bottleneck MLP inserted <em>inside</em> the transformer block, in series with the
+            frozen sub-layers. Given an input <math>
+              <mi>h</mi>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mi>d</mi>
+              </msup>
+            </math>, the adapter does:</p>
+
+          <div class="eq boxed">
+            <math display="block">
+              <mi>Adapter</mi>
+              <mo>(</mo>
+              <mi>h</mi>
+              <mo>)</mo>
+              <mo>=</mo>
+              <mi>h</mi>
+              <mo>+</mo>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>up</mi>
+                </mrow>
+              </msub>
+              <mspace width="0.15em" />
+              <mi>&#963;</mi>
+              <mo>(</mo>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>down</mi>
+                </mrow>
+              </msub>
+              <mspace width="0.15em" />
+              <mi>h</mi>
+              <mo>)</mo>
+            </math>
+          </div>
+
+          <p>Three pieces: a <em class="term">down-projection</em> <math>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>down</mi>
+                </mrow>
+              </msub>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <mi>r</mi>
+                  <mo>&#215;</mo>
+                  <mi>d</mi>
+                </mrow>
+              </msup>
+            </math> that squashes to a small bottleneck of size <math>
+              <mi>r</mi>
+              <mo>&#8810;</mo>
+              <mi>d</mi>
+            </math>, a non-linearity <math>
+              <mi>&#963;</mi>
+            </math> (GELU / ReLU), and an <em class="term">up-projection</em> <math>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>up</mi>
+                </mrow>
+              </msub>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <mi>d</mi>
+                  <mo>&#215;</mo>
+                  <mi>r</mi>
+                </mrow>
+              </msup>
+            </math> back to the model dimension. A residual connection carries the input around it, and <math>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>up</mi>
+                </mrow>
+              </msub>
+            </math> is initialised to zero so the adapter starts as an identity — the model behaves exactly like the
+            frozen base at initialisation and only drifts as the adapter learns.</p>
+
+          <p>The adapter is inserted <em>twice</em> per transformer block: once after the multi-head self-attention
+            sub-layer, once after the FFN sub-layer. The block becomes:</p>
+
+          <pre class="code"><code>x
  ├─&gt; MultiHead-SelfAttn (frozen)
  ├─&gt; Add + LayerNorm
  ├─&gt; Adapter  (trainable, ~few % params)
@@ -505,141 +1467,318 @@
  ├─&gt; Adapter  (trainable)
  └─&gt; out</code></pre>
 
-        <p>Only <math><msub><mi>W</mi><mrow><mi>down</mi></mrow></msub></math>, <math><msub><mi>W</mi><mrow><mi>up</mi></mrow></msub></math>, and the LayerNorm parameters are trained. Everything else is frozen. Adapters typically add ~1–5% of the base model's parameter count per task.</p>
+          <p>Only <math>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>down</mi>
+                </mrow>
+              </msub>
+            </math>, <math>
+              <msub>
+                <mi>W</mi>
+                <mrow>
+                  <mi>up</mi>
+                </mrow>
+              </msub>
+            </math>, and the LayerNorm parameters are trained. Everything else is frozen. Adapters typically add ~1–5%
+            of the base model's parameter count per task.</p>
 
-        <h4>LoRA — architecture</h4>
+          <h4>LoRA — architecture</h4>
 
-        <p>LoRA does not <em>insert</em> anything into the block. It adds a <em class="term">trainable low-rank update</em> in parallel to selected frozen weight matrices — typically the query and value projections inside self-attention. If <math><mi>W</mi><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><mi>d</mi><mo>&#215;</mo><mi>d</mi></mrow></msup></math> is one of the frozen projections, LoRA replaces it with:</p>
+          <p>LoRA does not <em>insert</em> anything into the block. It adds a <em class="term">trainable low-rank
+              update</em> in parallel to selected frozen weight matrices — typically the query and value projections
+            inside self-attention. If <math>
+              <mi>W</mi>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <mi>d</mi>
+                  <mo>&#215;</mo>
+                  <mi>d</mi>
+                </mrow>
+              </msup>
+            </math> is one of the frozen projections, LoRA replaces it with:</p>
 
-        <div class="eq boxed">
-          <math display="block">
-            <msup><mi>W</mi><mo>&#8242;</mo></msup>
-            <mo>=</mo>
-            <mi>W</mi>
-            <mo>+</mo>
-            <mi>&#916;</mi><mi>W</mi>
-            <mo>=</mo>
-            <mi>W</mi>
-            <mo>+</mo>
-            <mfrac><mi>&#945;</mi><mi>r</mi></mfrac>
-            <mspace width="0.15em"/>
-            <mi>B</mi>
-            <mspace width="0.15em"/>
-            <mi>A</mi>
-          </math>
-        </div>
+          <div class="eq boxed">
+            <math display="block">
+              <msup>
+                <mi>W</mi>
+                <mo>&#8242;</mo>
+              </msup>
+              <mo>=</mo>
+              <mi>W</mi>
+              <mo>+</mo>
+              <mi>&#916;</mi>
+              <mi>W</mi>
+              <mo>=</mo>
+              <mi>W</mi>
+              <mo>+</mo>
+              <mfrac>
+                <mi>&#945;</mi>
+                <mi>r</mi>
+              </mfrac>
+              <mspace width="0.15em" />
+              <mi>B</mi>
+              <mspace width="0.15em" />
+              <mi>A</mi>
+            </math>
+          </div>
 
-        <p>with <math><mi>A</mi><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><mi>r</mi><mo>&#215;</mo><mi>d</mi></mrow></msup></math> and <math><mi>B</mi><mo>&#8712;</mo><msup><mi>&#8477;</mi><mrow><mi>d</mi><mo>&#215;</mo><mi>r</mi></mrow></msup></math>, <math><mi>r</mi><mo>&#8810;</mo><mi>d</mi></math>. The factor <math><mi>&#945;</mi><mo>/</mo><mi>r</mi></math> is a scaling constant. <math><mi>A</mi></math> is initialised at random and <math><mi>B</mi></math> is initialised to zero, so at the start of training <math><mi>B</mi><mi>A</mi><mo>=</mo><mn>0</mn></math> and the model is exactly the frozen base — the same "start as identity" trick as adapters.</p>
+          <p>with <math>
+              <mi>A</mi>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <mi>r</mi>
+                  <mo>&#215;</mo>
+                  <mi>d</mi>
+                </mrow>
+              </msup>
+            </math> and <math>
+              <mi>B</mi>
+              <mo>&#8712;</mo>
+              <msup>
+                <mi>&#8477;</mi>
+                <mrow>
+                  <mi>d</mi>
+                  <mo>&#215;</mo>
+                  <mi>r</mi>
+                </mrow>
+              </msup>
+            </math>, <math>
+              <mi>r</mi>
+              <mo>&#8810;</mo>
+              <mi>d</mi>
+            </math>. The factor <math>
+              <mi>&#945;</mi>
+              <mo>/</mo>
+              <mi>r</mi>
+            </math> is a scaling constant. <math>
+              <mi>A</mi>
+            </math> is initialised at random and <math>
+              <mi>B</mi>
+            </math> is initialised to zero, so at the start of training <math>
+              <mi>B</mi>
+              <mi>A</mi>
+              <mo>=</mo>
+              <mn>0</mn>
+            </math> and the model is exactly the frozen base — the same "start as identity" trick as adapters.</p>
 
-        <p>Forward pass through a LoRA-augmented projection:</p>
-        <div class="eq boxed">
-          <math display="block">
-            <mi>h</mi>
-            <mo>=</mo>
-            <mi>W</mi><mi>x</mi>
-            <mo>+</mo>
-            <mfrac><mi>&#945;</mi><mi>r</mi></mfrac>
-            <mspace width="0.15em"/>
-            <mi>B</mi>
-            <mo>(</mo>
-            <mi>A</mi><mi>x</mi>
-            <mo>)</mo>
-          </math>
-        </div>
+          <p>Forward pass through a LoRA-augmented projection:</p>
+          <div class="eq boxed">
+            <math display="block">
+              <mi>h</mi>
+              <mo>=</mo>
+              <mi>W</mi>
+              <mi>x</mi>
+              <mo>+</mo>
+              <mfrac>
+                <mi>&#945;</mi>
+                <mi>r</mi>
+              </mfrac>
+              <mspace width="0.15em" />
+              <mi>B</mi>
+              <mo>(</mo>
+              <mi>A</mi>
+              <mi>x</mi>
+              <mo>)</mo>
+            </math>
+          </div>
 
-        <p>Two matrix multiplies down the low-rank path, in parallel with the frozen <math><mi>W</mi><mi>x</mi></math>. Trained parameters per LoRA-adapted matrix: <math><mn>2</mn><mi>d</mi><mi>r</mi></math>. With rank <math><mi>r</mi><mo>=</mo><mn>8</mn></math> or 16 applied to just <math><msub><mi>W</mi><mi>Q</mi></msub></math> and <math><msub><mi>W</mi><mi>V</mi></msub></math>, LoRA typically trains &lt;1% of the base model's parameters.</p>
+          <p>Two matrix multiplies down the low-rank path, in parallel with the frozen <math>
+              <mi>W</mi>
+              <mi>x</mi>
+            </math>. Trained parameters per LoRA-adapted matrix: <math>
+              <mn>2</mn>
+              <mi>d</mi>
+              <mi>r</mi>
+            </math>. With rank <math>
+              <mi>r</mi>
+              <mo>=</mo>
+              <mn>8</mn>
+            </math> or 16 applied to just <math>
+              <msub>
+                <mi>W</mi>
+                <mi>Q</mi>
+              </msub>
+            </math> and <math>
+              <msub>
+                <mi>W</mi>
+                <mi>V</mi>
+              </msub>
+            </math>, LoRA typically trains &lt;1% of the base model's parameters.</p>
 
-        <pre class="code"><code>x ──&gt; W (frozen)     ──┐
+          <pre class="code"><code>x ──&gt; W (frozen)     ──┐
       │                 ├─&gt; add ─&gt; h
       └─&gt; A ─&gt; B (train)┘</code></pre>
 
-        <h4>The critical differences</h4>
+          <h4>The critical differences</h4>
 
-        <table class="tbl">
-          <thead><tr><th>Axis</th><th>Adapters</th><th>LoRA</th></tr></thead>
-          <tbody>
-            <tr>
-              <td>Where it sits</td>
-              <td><em>Inside</em> the block, after each sub-layer</td>
-              <td><em>Parallel to</em> chosen weight matrices (usually <math><msub><mi>W</mi><mi>Q</mi></msub></math>, <math><msub><mi>W</mi><mi>V</mi></msub></math>)</td>
-            </tr>
-            <tr>
-              <td>Placement in the graph</td>
-              <td><strong>Serial</strong> — the forward pass goes through it</td>
-              <td><strong>Parallel</strong> — added to the frozen matmul</td>
-            </tr>
-            <tr>
-              <td>Inference latency</td>
-              <td>Adds latency at every layer, both training and inference</td>
-              <td><em>Zero</em> extra latency at inference — the update <math><mi>B</mi><mi>A</mi></math> can be <em class="term">merged</em> into <math><mi>W</mi></math>: <math><msup><mi>W</mi><mo>&#8242;</mo></msup> <mo>=</mo> <mi>W</mi> <mo>+</mo> <mi>B</mi><mi>A</mi></math></td>
-            </tr>
-            <tr>
-              <td>Trained shape</td>
-              <td>Bottleneck MLP with a non-linearity</td>
-              <td>Linear low-rank factorisation, no non-linearity</td>
-            </tr>
-            <tr>
-              <td>Trainable params</td>
-              <td>~1–5% of the base</td>
-              <td>Often &lt;1% of the base (tunable via <math><mi>r</mi></math>)</td>
-            </tr>
-            <tr>
-              <td>Task switching</td>
-              <td>Swap adapter weights in place</td>
-              <td>Swap by unmerging one <math><mi>B</mi><mi>A</mi></math> and merging another (or serve unmerged)</td>
-            </tr>
-          </tbody>
-        </table>
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Axis</th>
+                <th>Adapters</th>
+                <th>LoRA</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Where it sits</td>
+                <td><em>Inside</em> the block, after each sub-layer</td>
+                <td><em>Parallel to</em> chosen weight matrices (usually <math>
+                    <msub>
+                      <mi>W</mi>
+                      <mi>Q</mi>
+                    </msub>
+                  </math>, <math>
+                    <msub>
+                      <mi>W</mi>
+                      <mi>V</mi>
+                    </msub>
+                  </math>)</td>
+              </tr>
+              <tr>
+                <td>Placement in the graph</td>
+                <td><strong>Serial</strong> — the forward pass goes through it</td>
+                <td><strong>Parallel</strong> — added to the frozen matmul</td>
+              </tr>
+              <tr>
+                <td>Inference latency</td>
+                <td>Adds latency at every layer, both training and inference</td>
+                <td><em>Zero</em> extra latency at inference — the update <math>
+                    <mi>B</mi>
+                    <mi>A</mi>
+                  </math> can be <em class="term">merged</em> into <math>
+                    <mi>W</mi>
+                  </math>: <math>
+                    <msup>
+                      <mi>W</mi>
+                      <mo>&#8242;</mo>
+                    </msup>
+                    <mo>=</mo>
+                    <mi>W</mi>
+                    <mo>+</mo>
+                    <mi>B</mi>
+                    <mi>A</mi>
+                  </math></td>
+              </tr>
+              <tr>
+                <td>Trained shape</td>
+                <td>Bottleneck MLP with a non-linearity</td>
+                <td>Linear low-rank factorisation, no non-linearity</td>
+              </tr>
+              <tr>
+                <td>Trainable params</td>
+                <td>~1–5% of the base</td>
+                <td>Often &lt;1% of the base (tunable via <math>
+                    <mi>r</mi>
+                  </math>)</td>
+              </tr>
+              <tr>
+                <td>Task switching</td>
+                <td>Swap adapter weights in place</td>
+                <td>Swap by unmerging one <math>
+                    <mi>B</mi>
+                    <mi>A</mi>
+                  </math> and merging another (or serve unmerged)</td>
+              </tr>
+            </tbody>
+          </table>
 
-        <div class="callout How it works">
-          <div class="callout-label">How it works · why LoRA has zero inference cost</div>
-          <p>Because <math><mi>B</mi><mi>A</mi></math> and <math><mi>W</mi></math> have the same shape, they can be summed once, after training, into a single <math><msup><mi>W</mi><mo>&#8242;</mo></msup></math>. Inference then runs exactly the same matmul the original model did — one matrix multiply, no extra layers. Adapters cannot do this because the non-linearity <math><mi>&#963;</mi></math> between the down- and up-projections is not a linear operation, so there is nothing to fold back into the frozen weights.</p>
+          <div class="callout How it works">
+            <div class="callout-label">How it works · why LoRA has zero inference cost</div>
+            <p>Because <math>
+                <mi>B</mi>
+                <mi>A</mi>
+              </math> and <math>
+                <mi>W</mi>
+              </math> have the same shape, they can be summed once, after training, into a single <math>
+                <msup>
+                  <mi>W</mi>
+                  <mo>&#8242;</mo>
+                </msup>
+              </math>. Inference then runs exactly the same matmul the original model did — one matrix multiply, no
+              extra layers. Adapters cannot do this because the non-linearity <math>
+                <mi>&#963;</mi>
+              </math> between the down- and up-projections is not a linear operation, so there is nothing to fold back
+              into the frozen weights.</p>
+          </div>
+
+          <h4>Why each design exists</h4>
+
+          <p><strong>Adapters</strong> came first and are the more general recipe — the bottleneck can learn any
+            non-linear transformation, and the same trick generalises to inserting small modules anywhere in the graph.
+            Their weakness is that they add serial depth: every adapter is one more layer of forward computation the
+            request has to pass through, and stacking them across all 24 or 32 transformer blocks measurably slows
+            inference.</p>
+
+          <p><strong>LoRA</strong> takes a specific bet: the update <math>
+              <mi>&#916;</mi>
+              <mi>W</mi>
+            </math> that fine-tuning would learn is approximately low-rank, so it can be represented as <math>
+              <mi>B</mi>
+              <mi>A</mi>
+            </math> with very small <math>
+              <mi>r</mi>
+            </math>. In exchange for that assumption, LoRA gets three practical wins — fewer trained parameters, no
+            inference latency (thanks to mergeability), and effortless multi-task serving (keep <math>
+              <mi>W</mi>
+            </math>, keep a stack of small <math>
+              <mo>(</mo>
+              <mi>A</mi>
+              <mo>,</mo>
+              <mi>B</mi>
+              <mo>)</mo>
+            </math> pairs on disk, load the pair for the task you want).</p>
+
+          <div class="callout aha">
+            <div class="callout-label">✦ Key takeaway</div>
+            <p>The single sentence that captures the difference: <em>adapters make the network deeper, LoRA makes
+                selected weight matrices richer</em>. Because "deeper" costs inference latency and "richer via a
+              low-rank update" does not, LoRA has become the default parameter-efficient method for large models — every
+              serving stack from Hugging Face PEFT to vLLM has first-class LoRA support, and multi-tenant LoRA serving
+              is a real production pattern.</p>
+          </div>
         </div>
+      </section>
 
-        <h4>Why each design exists</h4>
-
-        <p><strong>Adapters</strong> came first and are the more general recipe — the bottleneck can learn any non-linear transformation, and the same trick generalises to inserting small modules anywhere in the graph. Their weakness is that they add serial depth: every adapter is one more layer of forward computation the request has to pass through, and stacking them across all 24 or 32 transformer blocks measurably slows inference.</p>
-
-        <p><strong>LoRA</strong> takes a specific bet: the update <math><mi>&#916;</mi><mi>W</mi></math> that fine-tuning would learn is approximately low-rank, so it can be represented as <math><mi>B</mi><mi>A</mi></math> with very small <math><mi>r</mi></math>. In exchange for that assumption, LoRA gets three practical wins — fewer trained parameters, no inference latency (thanks to mergeability), and effortless multi-task serving (keep <math><mi>W</mi></math>, keep a stack of small <math><mo>(</mo><mi>A</mi><mo>,</mo><mi>B</mi><mo>)</mo></math> pairs on disk, load the pair for the task you want).</p>
-
-        <div class="callout aha">
-          <div class="callout-label">✦ Key takeaway</div>
-          <p>The single sentence that captures the difference: <em>adapters make the network deeper, LoRA makes selected weight matrices richer</em>. Because "deeper" costs inference latency and "richer via a low-rank update" does not, LoRA has become the default parameter-efficient method for large models — every serving stack from Hugging Face PEFT to vLLM has first-class LoRA support, and multi-tenant LoRA serving is a real production pattern.</p>
-        </div>
+      <div class="pager">
+        <a class="prev" href="mid-2023.html">
+          <span class="dir">← back</span>
+          <span class="lbl">Mid Sem 2023 (PYQ)</span>
+        </a>
+        <a class="next" href="../index.html">
+          <span class="dir">next →</span>
+          <span class="lbl">Home</span>
+        </a>
       </div>
-    </section>
 
-    <div class="pager">
-      <a class="prev" href="mid-2023.html">
-        <span class="dir">← back</span>
-        <span class="lbl">Mid Sem 2023 (PYQ)</span>
-      </a>
-      <a class="next" href="../index.html">
-        <span class="dir">next →</span>
-        <span class="lbl">Home</span>
-      </a>
-    </div>
+      <footer class="foot">
+        <div>Mid Semester 2024 · PYQ · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
 
-    <footer class="foot">
-      <div>Mid Semester 2024 · PYQ · ANLP Monsoon '26</div>
-      <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank" rel="noopener">github ↗</a></div>
-    </footer>
-  </main>
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#paper">§1 the paper</a>
+        <a href="#q1">§2 Q1 · RNN dependencies</a>
+        <a href="#q2">§3 Q2 · seq2seq attention</a>
+        <a href="#q3">§4 Q3 · transformer encoder</a>
+        <a href="#q4">§5 Q4 · LoRA vs Adapters</a>
+      </div>
+    </aside>
+  </div>
 
-  <aside class="rail-right">
-    <div class="kicker">progress</div>
-    <div class="heatmap-rail" aria-hidden="true"></div>
-    <div class="kicker">sections</div>
-    <div class="rail-toc">
-      <a href="#paper">§1 the paper</a>
-      <a href="#q1">§2 Q1 · RNN dependencies</a>
-      <a href="#q2">§3 Q2 · seq2seq attention</a>
-      <a href="#q3">§4 Q3 · transformer encoder</a>
-      <a href="#q4">§5 Q4 · LoRA vs Adapters</a>
-    </div>
-  </aside>
-</div>
-
-<script src="../assets/js/site.js"></script>
+  <script src="../assets/js/site.js"></script>
 </body>
+
 </html>
