@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tutorial 2 · Talking Matrices — ANLP Study Guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Tutorial 2 of Advanced NLP, Monsoon 2026 IIIT-H: word embeddings, MLPs, RNNs, LSTMs, GRUs, attention, transformers, ELMo and BERT — the prerequisite tour.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../assets/css/site.css">
+</head>
+<body>
+<div class="shell">
+
+  <aside class="rail-left">
+    <div class="brand">
+      <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+      <small>ANLP · Monsoon '26</small>
+    </div>
+    <nav>
+      <div class="grp">On this page</div>
+      <a href="#deck">The deck at a glance</a>
+      <a href="#opener">§0 · the opener</a>
+      <a href="#beninging">§1 · ini di beninging</a>
+      <a href="#recurrence">§2 · recurrence</a>
+      <a href="#optimus">§3 · optimus prime</a>
+      <a href="#muppets">§4 · muppets</a>
+      <a href="#fin">§5 · fin</a>
+
+      <div class="grp">Elsewhere</div>
+      <a href="1-math-for-dl.html">← Tutorial 1</a>
+      <a href="../pyqs/mid-2023.html">Next: Mid 2023 →</a>
+      <a href="../index.html">Home</a>
+    </nav>
+  </aside>
+
+  <div class="topbar">
+    <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab notebook</em></a></div>
+    <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+  </div>
+
+  <main>
+    <section class="hero">
+      <div class="kicker">Tutorial 02 · 23 pages · August 8, 2026</div>
+      <h1>Talking Matrices — <em>from embeddings to BERT</em>.</h1>
+      <p class="lead">
+        This tutorial is the crash-course prerequisite for the rest of the
+        semester. In twenty-three deliberately terse slides it walks from
+        the earliest attempts to turn a word into a vector, through the
+        MLP, RNN, LSTM and GRU that dominated the 2010s, into attention
+        and the transformer, and finishes with the muppet family — ELMo,
+        BERT and their descendants. If any of these names still feel like
+        black boxes to you, this is the deck to sit with.
+      </p>
+      <div class="meta">
+        <span class="pill heat">Tutorial 02</span>
+        <span class="pill">23 pages</span>
+        <span class="pill">Aparajitha Allamraju</span>
+      </div>
+    </section>
+
+    <section id="deck">
+      <h2><span class="num">§0</span>The deck at a glance</h2>
+      <p class="section-intro">
+        The slide-deck's own navigation bar tells you the plan: four
+        sections, named <em class="term">ini di beninging</em>,
+        <em class="term">recurrence</em>, <em class="term">optimus prime</em>
+        and <em class="term">muppets</em>. Playful surface, serious spine.
+        Read it as: the era before neural nets, the era of recurrence, the
+        transformer takeover, and the pretrained encoder family that
+        followed. Each section is short. None of them is optional if you
+        want the next twenty lectures to make sense.
+      </p>
+    </section>
+
+    <hr class="soft">
+
+    <section id="opener">
+      <h2><span class="num">§0</span>The opener</h2>
+
+      <div class="slide" id="p1">
+        <div class="slide-frame">
+          <div class="tag">page 01 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-01.png" alt="Title slide: Talking matrices. And other prerequisites. aNLP M'26, August 8 2026, IIIT Hyderabad.">
+          <div class="slide-caption">page 01 · title</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The title slide. <strong>Talking Matrices — And other prerequisites</strong>, delivered on 8 August 2026 at IIIT Hyderabad.</p>
+          <h4>The idea</h4>
+          <p>The joke in the title is that all the neural machinery you will meet in this course is, at heart, matrices talking to matrices. A word becomes a row of numbers, a sentence becomes a stack of rows, a network is a chain of matrix multiplies with a nonlinearity between each pair, and training is the slow rearrangement of those numbers by gradient descent. Everything else — the diagrams, the exotic cell drawings, the muppet mascots — is just naming schemes over that same operation.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>Whenever a later slide looks intimidating, ask yourself: which matrices are being multiplied, and what shape is the result. That is almost always the whole story.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="beninging">
+      <h2><span class="num">§1</span>ini di beninging<span style="font-family:var(--font-mono);font-size:0.5em;color:var(--ink-3);margin-left:8px">(the early days)</span></h2>
+      <p class="section-intro">
+        Five slides on how NLP represented a word before deep learning
+        got good, and the little feed-forward network that everything
+        after this section is a variation on.
+      </p>
+
+      <div class="slide" id="p2">
+        <div class="slide-frame">
+          <div class="tag">page 02 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-02.png" alt="Section divider: Word Embeddings">
+          <div class="slide-caption">page 02 · section divider</div>
+        </div>
+        <div class="explain">
+          <p>A section divider. Everything until page 06 is about the pre-deep-learning question: <em>how do you turn a word into a vector at all?</em></p>
+        </div>
+      </div>
+
+      <div class="slide" id="p3">
+        <div class="slide-frame">
+          <div class="tag">page 03 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-03.png" alt="Word Embeddings bullets: deterministic methods treated each word as atomic, SVD had huge sparse matrices, Word2Vec: a word is known by the company it keeps.">
+          <div class="slide-caption">page 03 · a very short history</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>A three-beat history of word representation. Before neural nets, words were atoms — <em class="term">one-hot vectors</em> with no notion of similarity between "king" and "queen". People tried to fix this with count-based statistics and <em class="term">SVD</em> on a co-occurrence matrix, which worked in principle but produced enormous, mostly-zero matrices. Then Word2Vec (Mikolov, 2013) reframed the problem: learn a dense vector for each word by predicting its context.</p>
+          <h4>The idea</h4>
+          <p>The Firthian slogan on the last bullet — <strong>"a word is known by the company it keeps"</strong> — is the entire justification for distributional semantics. If two words show up in the same neighbourhoods (<em>doctor</em>, <em>nurse</em>) their meanings are close; if they never co-occur (<em>doctor</em>, <em>banana</em>) they are not. Every embedding technique from Word2Vec through GloVe to BERT's contextual embeddings is a refinement of this one bet.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">◆ mechanism</div>
+            <p>An SVD on a term-context matrix <math><mi>M</mi></math> gives you <math><mi>U</mi><mi>Σ</mi><msup><mi>V</mi><mi>T</mi></msup></math>; keep the top <math><mi>k</mi></math> singular values and each row of <math><mi>U</mi><msub><mi>Σ</mi><mi>k</mi></msub></math> is a <math><mi>k</mi></math>-dimensional word vector. Word2Vec ends up learning something startlingly similar — but stochastically, with a shallow network, and without ever materialising the giant matrix.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p4">
+        <div class="slide-frame">
+          <div class="tag">page 04 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-04.png" alt="Word2Vec: CBOW predicts target from surrounding words, SkipGram predicts surrounding words from target, Negative Sampling reduces computation.">
+          <div class="slide-caption">page 04 · Word2Vec, three moves</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The three ingredients that make Word2Vec work: two training objectives and one computational trick.</p>
+          <ul>
+            <li><strong>CBOW</strong> (Continuous Bag of Words): given the context words in a small window, predict the missing centre word. Averages the context embeddings and asks a softmax to name the target.</li>
+            <li><strong>SkipGram</strong>: flip it. Given the centre word, predict each context word independently. Empirically better for rare words because every occurrence teaches the model something.</li>
+            <li><strong>Negative sampling</strong>: the honest softmax over a 100K-word vocabulary is unaffordable. Replace it with a binary classifier — <em>is this a real (word, context) pair or a randomly sampled fake one?</em> — and you only touch a handful of vectors per update.</li>
+          </ul>
+          <h4>The idea</h4>
+          <p>Notice what Word2Vec is <em>not</em>: it is not a deep network. It is a shallow, essentially linear model whose only nonlinearity is the sigmoid on the final classifier. The magic is not in depth; it is in the objective. You train on billions of context windows and the geometry of the resulting embedding space starts to encode analogies — the famous <math><mi>king</mi><mo>−</mo><mi>man</mi><mo>+</mo><mi>woman</mi><mo>≈</mo><mi>queen</mi></math>.</p>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>These static embeddings are the input layer of every RNN and early transformer you will meet later. When the muppets arrive at page 20 the story shifts: embeddings become <em>contextual</em>, computed on the fly per sentence. Same idea, dialled up.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">page 05 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-05.png" alt="Section divider: MLP">
+          <div class="slide-caption">page 05 · section divider</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">page 06 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-06.png" alt="Multi-Layer Perceptron: input x, two hidden layers h(1) and h(2), output y-hat, fully connected arrows between every pair of adjacent nodes.">
+          <div class="slide-caption">page 06 · a Multi-Layer Perceptron</div>
+        </div>
+      </div>
+      <div class="slide">
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>A section divider and then the diagram everyone draws when they say "neural network": an input <math><mi>x</mi></math>, two fully-connected hidden layers <math><msup><mi>h</mi><mn>1</mn></msup></math> and <math><msup><mi>h</mi><mn>2</mn></msup></math>, and an output <math><mover><mi>y</mi><mo>^</mo></mover></math>. Every arrow is a weight; every circle applies a nonlinearity to the sum of its inputs.</p>
+          <h4>The idea</h4>
+          <p>An <em class="term">MLP</em> is a stack of affine transforms interleaved with nonlinearities. In matrix form:</p>
+          <p style="text-align:center;font-family:var(--font-mono);font-size:1.05em">
+            <math>
+              <msup><mi>h</mi><mn>1</mn></msup><mo>=</mo><mi>σ</mi><mo>(</mo><msub><mi>W</mi><mn>1</mn></msub><mi>x</mi><mo>+</mo><msub><mi>b</mi><mn>1</mn></msub><mo>)</mo>
+            </math>
+            <br>
+            <math>
+              <msup><mi>h</mi><mn>2</mn></msup><mo>=</mo><mi>σ</mi><mo>(</mo><msub><mi>W</mi><mn>2</mn></msub><msup><mi>h</mi><mn>1</mn></msup><mo>+</mo><msub><mi>b</mi><mn>2</mn></msub><mo>)</mo>
+            </math>
+            <br>
+            <math>
+              <mover><mi>y</mi><mo>^</mo></mover><mo>=</mo><mi>softmax</mi><mo>(</mo><msub><mi>W</mi><mn>3</mn></msub><msup><mi>h</mi><mn>2</mn></msup><mo>+</mo><msub><mi>b</mi><mn>3</mn></msub><mo>)</mo>
+            </math>
+          </p>
+          <p>That is the whole engine. A universal function approximator in principle. But look what it lacks: nothing in this picture cares that the input is a <em>sequence</em>. Feed it "the cat sat" and "sat cat the" as bags of one-hots and it will happily produce the same output. That defect is the reason the next section exists.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>The MLP is not a rival to the transformer. It <em>is</em> a component of the transformer — the feed-forward block inside every layer is exactly this two-layer MLP, applied position-wise. You never leave the MLP behind; you just wrap it in cleverer plumbing.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="recurrence">
+      <h2><span class="num">§2</span>recurrence<span style="font-family:var(--font-mono);font-size:0.5em;color:var(--ink-3);margin-left:8px">(RNNs and their kin)</span></h2>
+      <p class="section-intro">
+        Ten slides on the family of networks that dominated NLP between
+        about 2013 and 2017: the vanilla RNN, the LSTM and GRU that fixed
+        its gradient problems, the bidirectional trick, and Bahdanau's
+        attention — the crack in the wall through which the transformer
+        would soon walk.
+      </p>
+
+      <div class="slide" id="p7">
+        <div class="slide-frame">
+          <div class="tag">page 07 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-07.png" alt="Section divider: Recurrent Neural networks">
+          <div class="slide-caption">page 07 · section divider</div>
+        </div>
+        <div class="explain">
+          <p>A section divider. The next ten pages are the recurrent story.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="p8">
+        <div class="slide-frame">
+          <div class="tag">page 08 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-08.png" alt="Classic RNN: rolled cell on the left with self-loop, equal to unrolled chain h1 → h2 → ... → hT taking inputs x1..xT and emitting y-hat_1..y-hat_T.">
+          <div class="slide-caption">page 08 · rolled = unrolled</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The founding picture of the <em class="term">RNN</em>. On the left, a single cell with a loop from its hidden state back to itself. On the right, that same cell drawn out across time — <math><msub><mi>h</mi><mn>1</mn></msub><mo>,</mo><msub><mi>h</mi><mn>2</mn></msub><mo>,</mo><mo>…</mo><mo>,</mo><msub><mi>h</mi><mi>T</mi></msub></math> — with each step taking a new input <math><msub><mi>x</mi><mi>t</mi></msub></math> and emitting a prediction <math><msub><mover><mi>y</mi><mo>^</mo></mover><mi>t</mi></msub></math>.</p>
+          <h4>The idea</h4>
+          <p>The RNN's whole contribution is one word: <strong>share</strong>. Instead of an MLP with a separate weight matrix for each timestep, you have <em>one</em> matrix that gets applied over and over. Whatever the network learns about how to update its memory when it sees a verb at step 3, it also uses at step 47. That parameter sharing is what makes learning from sequences tractable at all.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="p9">
+        <div class="slide-frame">
+          <div class="tag">page 09 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-09.png" alt="'Classic MLP (Oops)': the unrolled RNN redrawn with disconnected h cells that no longer pass state between timesteps.">
+          <div class="slide-caption">page 09 · what an MLP would look like on a sequence</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The same picture as page 08 with one detail changed: the horizontal arrows between hidden states are gone. Now it is just a stack of independent MLPs, one per timestep.</p>
+          <h4>The idea</h4>
+          <p>This is what an MLP would do if you naively applied it word-by-word. Each step processes its input in isolation. Nothing carries forward. Feed it "not bad" and the "bad" step has no idea it was just negated. This is the <strong>context problem</strong>, and the horizontal arrow of the previous slide — the recurrence — is the whole answer.</p>
+          <div class="callout gotcha">
+            <div class="callout-label">⚠ common trap</div>
+            <p>"But couldn't you just widen the MLP's input to include a window of the last few words?" You can, and people did — the original <em class="term">n-gram neural language model</em> of Bengio et al. But a fixed window is not the same as unbounded memory. The RNN's promise, at least on paper, is that it can carry information forward as long as it needs to.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">page 10 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-10.png" alt="An RNN cell: h_{t-1} and x_t both flow into a tanh block whose output becomes h_t; y_hat_t is a projection of h_t.">
+          <div class="slide-caption">page 10 · the cell</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">page 11 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-11.png" alt="RNN update equation: h_t = tanh([x_t : h_{t-1}]).">
+          <div class="slide-caption">page 11 · the update rule</div>
+        </div>
+      </div>
+      <div class="slide">
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The vanilla RNN cell, opened up. The previous hidden state <math><msub><mi>h</mi><mrow><mi>t</mi><mo>-</mo><mn>1</mn></mrow></msub></math> and the current input <math><msub><mi>x</mi><mi>t</mi></msub></math> are concatenated, pushed through a single learned linear layer, and squashed by a <math><mi>tanh</mi></math>. The result is both the new hidden state <math><msub><mi>h</mi><mi>t</mi></msub></math> and (after one more projection) the output <math><msub><mover><mi>y</mi><mo>^</mo></mover><mi>t</mi></msub></math>.</p>
+          <h4>The idea</h4>
+          <p>The compact form is:</p>
+          <p style="text-align:center;font-family:var(--font-mono);font-size:1.1em">
+            <math>
+              <msub><mi>h</mi><mi>t</mi></msub><mo>=</mo><mi>tanh</mi><mo>(</mo>
+              <mi>W</mi>
+              <mo>[</mo><msub><mi>x</mi><mi>t</mi></msub><mo>;</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>-</mo><mn>1</mn></mrow></msub><mo>]</mo>
+              <mo>)</mo>
+            </math>
+          </p>
+          <p>Note what "concatenate then multiply by <math><mi>W</mi></math>" secretly is: <math><msub><mi>W</mi><mi>x</mi></msub><msub><mi>x</mi><mi>t</mi></msub><mo>+</mo><msub><mi>W</mi><mi>h</mi></msub><msub><mi>h</mi><mrow><mi>t</mi><mo>-</mo><mn>1</mn></mrow></msub></math>. Two matrices masquerading as one. Everyone writes it the concatenated way because it looks tidier on a slide.</p>
+          <div class="callout gotcha">
+            <div class="callout-label">⚠ common trap</div>
+            <p>Backpropagating through a chain of the same <math><mi>W</mi></math> multiplies gradients by the same Jacobian at every step. If its spectral radius is above 1, gradients blow up; below 1, they die. This is the <em class="term">vanishing / exploding gradient</em> problem, and it is exactly what LSTMs and GRUs were invented to fix.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">page 12 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-12.png" alt="An LSTM cell: cell state c_{t-1} is modified by a forget gate f_t and an input gate i_t times a candidate c-tilde_t, giving c_t; hidden state h_t = o_t · tanh(c_t).">
+          <div class="slide-caption">page 12 · the LSTM cell</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">page 13 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-13.png" alt="LSTM equations: f, i, o are sigmoid gates on the concatenation of x_t and h_{t-1}; c-tilde is a tanh candidate; c_t = c_{t-1}·f_t + i_t·c-tilde; h_t = o_t · tanh(c_t).">
+          <div class="slide-caption">page 13 · the LSTM equations</div>
+        </div>
+      </div>
+      <div class="slide">
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The <em class="term">Long Short-Term Memory</em> cell (Hochreiter &amp; Schmidhuber, 1997), a vanilla RNN's better-behaved cousin. It carries two states, not one: an internal <em>cell state</em> <math><msub><mi>c</mi><mi>t</mi></msub></math> that runs along the top of the diagram like a conveyor belt, and the usual hidden state <math><msub><mi>h</mi><mi>t</mi></msub></math>. Three sigmoid gates decide what to do with the belt:</p>
+          <ul>
+            <li><strong>Forget gate</strong> <math><msub><mi>f</mi><mi>t</mi></msub></math> — multiplies the old cell state elementwise. Zero means forget, one means keep.</li>
+            <li><strong>Input gate</strong> <math><msub><mi>i</mi><mi>t</mi></msub></math> — decides how much of the new candidate <math><msub><mover><mi>c</mi><mo>~</mo></mover><mi>t</mi></msub></math> to add.</li>
+            <li><strong>Output gate</strong> <math><msub><mi>o</mi><mi>t</mi></msub></math> — decides how much of the (tanh'd) cell state to expose as the new hidden state.</li>
+          </ul>
+          <h4>The idea</h4>
+          <p>The magic is the top wire: the cell state passes through only additive updates and elementwise multiplications by a sigmoid. There is no repeated matrix multiply on that path. So when you backpropagate along the belt, gradients survive across dozens of timesteps rather than vanishing after five. That, and nothing else, is why LSTMs beat vanilla RNNs on real sequence tasks for two decades.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">◆ mechanism</div>
+            <p>Each gate is its own tiny MLP: <math><msub><mi>f</mi><mi>t</mi></msub><mo>=</mo><mi>σ</mi><mo>(</mo><msub><mi>W</mi><mi>f</mi></msub><mo>[</mo><msub><mi>x</mi><mi>t</mi></msub><mo>;</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>-</mo><mn>1</mn></mrow></msub><mo>]</mo><mo>)</mo></math>, and similarly for <math><mi>i</mi><mo>,</mo><mi>o</mi><mo>,</mo><mover><mi>c</mi><mo>~</mo></mover></math>. Four gates, four weight matrices, one cell. Roughly 4× the parameters of a vanilla RNN.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p14">
+        <div class="slide-frame">
+          <div class="tag">page 14 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-14.png" alt="A GRU cell: reset gate r_t and update gate z_t decide how the previous hidden state combines with a tanh candidate h-tilde_t to produce h_t. No separate cell state.">
+          <div class="slide-caption">page 14 · the GRU cell</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The <em class="term">Gated Recurrent Unit</em> (Cho et al., 2014), the LSTM stripped down. Two gates instead of three, and no separate cell state at all — the hidden state doubles as the memory.</p>
+          <ul>
+            <li><strong>Reset gate</strong> <math><msub><mi>r</mi><mi>t</mi></msub></math> — decides how much of the old hidden state feeds into the candidate.</li>
+            <li><strong>Update gate</strong> <math><msub><mi>z</mi><mi>t</mi></msub></math> — a single knob that interpolates between "keep old" and "take new". The diagram's <math><mn>1</mn><mo>-</mo></math> block is what makes this a convex mixture.</li>
+          </ul>
+          <h4>The idea</h4>
+          <p>Formally: <math><msub><mi>h</mi><mi>t</mi></msub><mo>=</mo><mo>(</mo><mn>1</mn><mo>-</mo><msub><mi>z</mi><mi>t</mi></msub><mo>)</mo><mo>⊙</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>-</mo><mn>1</mn></mrow></msub><mo>+</mo><msub><mi>z</mi><mi>t</mi></msub><mo>⊙</mo><msub><mover><mi>h</mi><mo>~</mo></mover><mi>t</mi></msub></math>. Fewer parameters than an LSTM, comparable performance on most tasks, faster to train. The empirical answer to "do we really need three separate gates?" turned out to be: often, no.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>The playful title "Steal the Moon!" refers to the LSTM's cell state going away — the GRU quietly absorbs it into the hidden state. Less machinery, same gradient-preserving trick, because the update gate lets the model choose to just copy <math><msub><mi>h</mi><mrow><mi>t</mi><mo>-</mo><mn>1</mn></mrow></msub></math> forward unchanged.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p15">
+        <div class="slide-frame">
+          <div class="tag">page 15 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-15.png" alt="Bidirectional RNN: forward hidden states h→_1..h→_T and backward hidden states h←_1..h←_T are concatenated per timestep to produce y-hat_1..y-hat_T.">
+          <div class="slide-caption">page 15 · bidirectional</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>A <em class="term">bidirectional RNN</em>. Two independent recurrent passes over the same input: one left-to-right (<math><msub><mover><mi>h</mi><mo>→</mo></mover><mi>t</mi></msub></math>) and one right-to-left (<math><msub><mover><mi>h</mi><mo>←</mo></mover><mi>t</mi></msub></math>). At each timestep the two are concatenated before predicting <math><msub><mover><mi>y</mi><mo>^</mo></mover><mi>t</mi></msub></math>.</p>
+          <h4>The idea</h4>
+          <p>A unidirectional RNN's hidden state at step <math><mi>t</mi></math> knows about the past but not the future. That is fine when you are generating, one token at a time. It is a real limitation when you are <em>tagging</em> — labelling every word in a sentence — because "bank" in "river bank" needs the word "river" to disambiguate, and "river" comes <em>after</em> in some dialects of the same idea. The bidirectional variant fixes this at the cost of doubling the compute and forbidding streaming inference.</p>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>ELMo, the first muppet on page 20, is essentially a two-layer bidirectional LSTM. And BERT, on page 21, generalises the same "read both directions" instinct to attention.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p16">
+        <div class="slide-frame">
+          <div class="tag">page 16 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-16.png" alt="Bahdanau attention diagram: encoder produces bi-directional hidden states h_1..h_T; decoder step t computes attention weights α_{t,i} over them; the weighted sum c_t is fed into the decoder hidden state h'_t.">
+          <div class="slide-caption">page 16 · Bahdanau attention</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The single most important slide in this section. Bahdanau, Cho and Bengio's 2015 attention mechanism, drawn over an encoder-decoder architecture. The encoder is a BiRNN. The decoder, at each step <math><mi>t</mi></math>, does not receive a single fixed context vector; it receives a <em>weighted sum</em> <math><msub><mi>c</mi><mi>t</mi></msub><mo>=</mo><munder><mo>∑</mo><mi>i</mi></munder><msub><mi>α</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub><msub><mi>h</mi><mi>i</mi></msub></math> of the encoder hidden states, where the weights <math><msub><mi>α</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub></math> are computed on the fly.</p>
+          <h4>The idea</h4>
+          <p>Before Bahdanau, the entire source sentence in a neural translation model was squeezed into one fixed-size vector. Long sentences failed because you cannot cram a paragraph into 512 floats without loss. Attention broke the bottleneck: at every decoder step, the model gets to <em>look at</em> the encoder states directly and decide which ones matter for the word it is about to emit. The weights <math><mi>α</mi></math> are a soft version of "which source word am I translating right now".</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>This is the moment the transformer becomes almost inevitable. Once you have attention, the recurrence is doing less and less useful work — it is just providing an ordering. Vaswani et al. (2017) will remove the recurrence entirely and keep only the attention. That is the next section.</p>
+          </div>
+          <div class="callout mechanism">
+            <div class="callout-label">◆ mechanism</div>
+            <p>The alignment score <math><msub><mi>e</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub><mo>=</mo><mi>a</mi><mo>(</mo><msubsup><mi>h</mi><mrow><mi>t</mi><mo>-</mo><mn>1</mn></mrow><mo>′</mo></msubsup><mo>,</mo><msub><mi>h</mi><mi>i</mi></msub><mo>)</mo></math> is passed through a softmax to get <math><msub><mi>α</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub></math>. In Bahdanau's paper <math><mi>a</mi></math> is a small MLP; in Luong's follow-up it is just a dot product. The dot-product version is the seed of scaled dot-product attention.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="optimus">
+      <h2><span class="num">§3</span>optimus prime<span style="font-family:var(--font-mono);font-size:0.5em;color:var(--ink-3);margin-left:8px">(the transformer takes over)</span></h2>
+      <p class="section-intro">
+        Two slides that compress the whole <em>Attention Is All You
+        Need</em> paper into six equations. Deliberately terse: the full
+        transformer lecture is still to come.
+      </p>
+
+      <div class="slide" id="p17">
+        <div class="slide-frame">
+          <div class="tag">page 17 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-17.png" alt="Section divider: Transformers and Attention">
+          <div class="slide-caption">page 17 · section divider</div>
+        </div>
+        <div class="explain">
+          <p>A section divider. The recurrence is gone; attention is the whole engine now.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="p18">
+        <div class="slide-frame">
+          <div class="tag">page 18 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-18.png" alt="Attention equations: q_i = x_i W_Q, k_i = x_i W_K, v_i = x_i W_V; Attention = softmax(qk / sqrt(d_k)); o_i = Attention × v_i.">
+          <div class="slide-caption">page 18 · scaled dot-product attention</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The attention operation in six lines. Each input vector <math><msub><mi>x</mi><mi>i</mi></msub></math> is projected three ways into a <em class="term">query</em> <math><msub><mi>q</mi><mi>i</mi></msub></math>, a <em class="term">key</em> <math><msub><mi>k</mi><mi>i</mi></msub></math> and a <em class="term">value</em> <math><msub><mi>v</mi><mi>i</mi></msub></math> by three learned matrices <math><msub><mi>W</mi><mi>Q</mi></msub><mo>,</mo><msub><mi>W</mi><mi>K</mi></msub><mo>,</mo><msub><mi>W</mi><mi>V</mi></msub></math>. The attention weights are:</p>
+          <p style="text-align:center;font-family:var(--font-mono);font-size:1.1em">
+            <math>
+              <mi>Attention</mi><mo>=</mo><mi>softmax</mi><mo>(</mo>
+              <mfrac><mrow><mi>q</mi><mo>·</mo><mi>k</mi></mrow><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></mfrac>
+              <mo>)</mo>
+            </math>
+          </p>
+          <p>And the output at position <math><mi>i</mi></math> is the corresponding weighted sum of value vectors.</p>
+          <h4>The idea</h4>
+          <p>The database metaphor is exact: every position gets to <em>query</em> every other position, matches its query against those positions' <em>keys</em>, and pulls back a soft-lookup of the corresponding <em>values</em>. The <math><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></math> in the denominator is not decorative: without it, at large <math><msub><mi>d</mi><mi>k</mi></msub></math> the dot products grow, the softmax saturates, gradients vanish, and training stalls. Vaswani et al. discovered this scaling empirically and it is now folklore.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>Notice what is missing. No recurrence. No convolution. The only interaction between positions is this one softmax over dot products. Every position in a sequence talks directly to every other position in one layer, at the price of <math><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math> memory. Almost everything that happens later in the course — Flash Attention, sparse attention, state space models — is a reaction to that quadratic cost.</p>
+          </div>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>The full architecture — multi-head attention, positional encodings, residual connections, layer norm, the feed-forward block — is expanded in Lecture 3. This slide is the seed.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="muppets">
+      <h2><span class="num">§4</span>muppets<span style="font-family:var(--font-mono);font-size:0.5em;color:var(--ink-3);margin-left:8px">(BERT and friends)</span></h2>
+      <p class="section-intro">
+        Four slides on the family of pretrained encoders that inherited
+        the earth after 2018. Called "muppets" because the naming
+        convention started with ELMo and BERT and stayed there
+        (ERNIE, KERMIT, ROBERTA, and so on).
+      </p>
+
+      <div class="slide" id="p19">
+        <div class="slide-frame">
+          <div class="tag">page 19 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-19.png" alt="Section divider: Some popular embedding models">
+          <div class="slide-caption">page 19 · section divider</div>
+        </div>
+        <div class="explain">
+          <p>A section divider. From this page on, "embedding model" means <em>contextual</em> embedding: the vector for a word depends on the sentence it sits in.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="p20">
+        <div class="slide-frame">
+          <div class="tag">page 20 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-20.png" alt="ELMo diagram from jalammar.github.io/illustrated-bert: three-step composition — concatenate hidden layers from forward and backward LMs, multiply each vector by a task-learned weight, sum them.">
+          <div class="slide-caption">page 20 · ELMo, a BiLSTM in disguise</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p><em class="term">ELMo</em> (Embeddings from Language Models, Peters et al. 2018) built on top of a two-layer bidirectional LSTM language model. For any word in a sentence, it stacks the forward and backward LSTM hidden states at every layer, weighs them by task-learned scalars <math><msub><mi>s</mi><mn>0</mn></msub><mo>,</mo><msub><mi>s</mi><mn>1</mn></msub><mo>,</mo><msub><mi>s</mi><mn>2</mn></msub></math>, and sums the result into one contextual vector.</p>
+          <h4>The idea</h4>
+          <p>Word2Vec gave you one vector per word, forever. ELMo gave you a different vector for "bank" depending on whether it appeared next to "river" or next to "loan". That single shift — from a lookup table to a function of the sentence — is what made the muppet era possible.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">◆ mechanism</div>
+            <p>The task-learned weights <math><msub><mi>s</mi><mi>ℓ</mi></msub></math> are the point. Different downstream tasks care about different layers: syntactic tasks lean on the lower layer, semantic tasks on the upper. Letting the task pick its own mixture is why ELMo dominated the GLUE benchmarks in 2018.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">page 21 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-21.png" alt="BERT? illustration: a yellow BERT box taking 512 input tokens ([CLS], Help, Prince, Mayuko, ...) and producing 512 output vectors.">
+          <div class="slide-caption">page 21 · BERT, the black box</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">page 22 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-22.png" alt="BERT... illustration: the same 512-in / 512-out story, box opened up to reveal 12 stacked Transformer Encoder blocks.">
+          <div class="slide-caption">page 22 · BERT, opened up</div>
+        </div>
+      </div>
+      <div class="slide">
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Two views of the same object. First, BERT as a friendly yellow blob: 512 tokens go in, 512 contextual vectors come out. Then, the blob opened up to reveal 12 identical <em class="term">transformer encoder</em> blocks stacked on top of each other. (BERT-large uses 24.)</p>
+          <h4>The idea</h4>
+          <p><em class="term">BERT</em> (Devlin et al., 2018) is what you get when you take the transformer encoder from section §3, throw away the decoder entirely, and pretrain the encoder on two self-supervised objectives on a mountain of text:</p>
+          <ul>
+            <li><strong>Masked Language Modelling</strong>. Randomly hide 15% of the input tokens and ask the encoder to guess them back. Because attention is bidirectional inside an encoder, the model gets to look both left and right — the muppet update of ELMo's core trick.</li>
+            <li><strong>Next Sentence Prediction</strong>. Given two segments, decide whether the second one follows the first. Later work (RoBERTa) showed this objective barely helps; the MLM does most of the heavy lifting.</li>
+          </ul>
+          <p>Once pretraining is done, you attach a tiny task-specific head to the <math><mo>[</mo><mi>CLS</mi><mo>]</mo></math> vector (for classification) or to the per-token outputs (for tagging) and fine-tune. That is the whole recipe.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>The single most striking thing about BERT is how ordinary the architecture is. It is <em>literally</em> a stack of the encoder blocks defined on page 18. The revolution was the <em>training objective</em> and the <em>scale</em>, not the model. Every "encoder-only" descendant — RoBERTa, DeBERTa, ELECTRA — is a variation on which mask, which loss, and how much data.</p>
+          </div>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>The [CLS] token, WordPiece tokenisation, positional embeddings and the specifics of BERT's pretraining will come back on the transformer lectures and in the mid-sem exam. The 2023 mid-sem paper leans on this material heavily.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="fin">
+      <h2><span class="num">§5</span>fin</h2>
+
+      <div class="slide" id="p23">
+        <div class="slide-frame">
+          <div class="tag">page 23 / 23</div>
+          <img src="../assets/tutorials/T2-matrices/page-23.png" alt="A dark slide with a single serifed word: Fin.">
+          <div class="slide-caption">page 23 · end</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The end card. <em>Fin</em>. From atomic one-hot vectors to a stack of twelve transformer encoder blocks, in twenty-two slides.</p>
+          <h4>The idea</h4>
+          <p>If you sat with every page here you now have the whole ladder in view: Word2Vec teaches you that words can live in a geometry; the MLP teaches you what a learned function looks like; the RNN teaches you why sequence order matters and why plain backprop through time is a nightmare; LSTM/GRU teach you the additive-path trick that saves gradients; attention teaches you that you can just <em>look</em> instead of remember; the transformer removes the crutch of recurrence entirely; and BERT shows that once you have a good encoder, all of NLP starts to look like fine-tuning one big pretrained model. The rest of this course is what happened next.</p>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>Straight into the mid-sem papers. The <a class="xref" href="../pyqs/mid-2023.html">2023 mid-sem</a> is essentially a comprehension test on the material of this tutorial.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="pager">
+      <a class="prev" href="1-math-for-dl.html">
+        <span class="dir">← back</span>
+        <span class="lbl">01 · Math for DL</span>
+      </a>
+      <a class="next" href="../pyqs/mid-2023.html">
+        <span class="dir">next →</span>
+        <span class="lbl">Mid-Sem 2023</span>
+      </a>
+    </div>
+
+    <footer class="foot">
+      <div>Tutorial 02 · Talking Matrices · ANLP Monsoon '26</div>
+      <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank" rel="noopener">github ↗</a></div>
+    </footer>
+  </main>
+
+  <aside class="rail-right">
+    <div class="kicker">progress</div>
+    <div class="heatmap-rail" aria-hidden="true"></div>
+    <div class="kicker">sections</div>
+    <div class="rail-toc">
+      <a href="#deck">at a glance</a>
+      <a href="#opener">§0 opener</a>
+      <a href="#beninging">§1 ini di beninging</a>
+      <a href="#recurrence">§2 recurrence</a>
+      <a href="#optimus">§3 optimus prime</a>
+      <a href="#muppets">§4 muppets</a>
+      <a href="#fin">§5 fin</a>
+    </div>
+  </aside>
+</div>
+
+<script src="../assets/js/site.js"></script>
+</body>
+</html>

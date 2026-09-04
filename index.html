@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ANLP · An Attention Lab Notebook</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A slide-by-slide study companion for Advanced NLP, Monsoon 2026, IIIT Hyderabad. Every lecture, tutorial, and past-year question — embedded and explained from first principles.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+<div class="shell">
+
+  <!-- Left rail -->
+  <aside class="rail-left">
+    <div class="brand">
+      an attention<br><em>lab notebook</em>
+      <small>ANLP · Monsoon '26</small>
+    </div>
+    <nav>
+      <div class="grp">Start here</div>
+      <a href="#about">About this guide</a>
+      <a href="#how">How to use it</a>
+
+      <div class="grp">Lectures</div>
+      <a href="lectures/1-logistics.html">1 · Logistics</a>
+      <a href="lectures/2-transformers.html">2 · Transformers</a>
+      <a href="lectures/3-tokenization.html">3 · Tokenization</a>
+      <a href="lectures/4-positional-encoding.html">4 · Positional Encoding</a>
+      <a href="lectures/5-attention.html">5 · Attention</a>
+      <a href="lectures/6-more-attention.html">6 · More Attention</a>
+
+      <div class="grp">Tutorials</div>
+      <a href="tutorials/1-math-for-dl.html">T1 · Math for DL</a>
+      <a href="tutorials/2-matrices-to-transformers.html">T2 · Matrices → Transformers</a>
+
+      <div class="grp">Assignments</div>
+      <a href="assignments/1-transformers-from-scratch.html">A1 · Transformers from Scratch</a>
+
+      <div class="grp">PYQs</div>
+      <a href="pyqs/mid-2023.html">Mid 2023</a>
+      <a href="pyqs/mid-2024.html">Mid 2024</a>
+
+      <div class="grp">Meta</div>
+      <a href="#credits">Credits</a>
+      <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <!-- Mobile topbar -->
+  <div class="topbar">
+    <div class="brand">an attention <em>lab notebook</em></div>
+    <button class="theme-toggle" onclick="__toggleTheme()" aria-label="Toggle theme">◑ dark</button>
+  </div>
+
+  <!-- Main -->
+  <main>
+    <section class="hero">
+      <div class="kicker">M23CS7.501 · IIIT Hyderabad · Monsoon 2026</div>
+      <h1>An <em>attention</em> lab notebook.</h1>
+      <p class="lead">
+        A slide-by-slide companion for the Advanced NLP course — every lecture,
+        every tutorial page, and every past-year question, embedded verbatim
+        and explained from first principles for someone who has never seen the
+        material before.
+      </p>
+      <div class="meta">
+        <span class="pill heat">6 lectures</span>
+        <span class="pill">240 slides</span>
+        <span class="pill">2 tutorials</span>
+        <span class="pill">3 PYQs</span>
+        <span class="pill">public · MIT</span>
+      </div>
+
+      <!-- Decorative attention arc -->
+      <svg class="attention-arc" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="ag" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stop-color="#7c3aed" stop-opacity=".9"/>
+            <stop offset=".5" stop-color="#ec4899" stop-opacity=".9"/>
+            <stop offset="1" stop-color="#f59e0b" stop-opacity=".9"/>
+          </linearGradient>
+        </defs>
+        <g fill="none" stroke="url(#ag)" stroke-width="1.2" stroke-linecap="round">
+          <path d="M 20 40 Q 100 -20 180 40"/>
+          <path d="M 20 60 Q 100 20 180 60"/>
+          <path d="M 20 80 Q 100 60 180 80"/>
+          <path d="M 20 100 Q 100 100 180 100"/>
+          <path d="M 20 120 Q 100 140 180 120"/>
+          <path d="M 20 140 Q 100 180 180 140"/>
+          <path d="M 20 160 Q 100 220 180 160"/>
+        </g>
+        <g fill="url(#ag)">
+          <circle cx="20" cy="40" r="3"/><circle cx="180" cy="40" r="3"/>
+          <circle cx="20" cy="60" r="3"/><circle cx="180" cy="60" r="3"/>
+          <circle cx="20" cy="80" r="3"/><circle cx="180" cy="80" r="3"/>
+          <circle cx="20" cy="100" r="3"/><circle cx="180" cy="100" r="3"/>
+          <circle cx="20" cy="120" r="3"/><circle cx="180" cy="120" r="3"/>
+          <circle cx="20" cy="140" r="3"/><circle cx="180" cy="140" r="3"/>
+          <circle cx="20" cy="160" r="3"/><circle cx="180" cy="160" r="3"/>
+        </g>
+      </svg>
+    </section>
+
+    <section>
+      <h2 id="about"><span class="num">§1</span>What this is</h2>
+      <p>
+        The Advanced NLP course at IIIT Hyderabad is dense. Six lecture decks,
+        two tutorial decks, and a growing tail of past-year questions cover
+        everything from linear-algebra warm-ups to Flash Attention. If you're
+        new to the material — which is exactly the case this guide was built
+        for — the volume alone is intimidating.
+      </p>
+      <p>
+        This site is a <em class="term">reader's companion</em>: every slide
+        image appears exactly as it does in the deck, and every image is
+        followed by a plain-language explanation. The explanations are the
+        point. They aren't a paraphrase of the bullets on the slide — they're
+        the paragraph the lecturer would say if you asked "wait, why does that
+        matter?"
+      </p>
+
+      <div class="callout link">
+        <div class="callout-label">→ how to read this</div>
+        <p>
+          Open a lecture page and scroll. Each "Polaroid" is one slide.
+          Click any slide to see it full-size. The prose underneath is
+          written so you can understand the slide without ever having seen
+          the lecture. Callouts flag the aha-moments, the traps, and the
+          math worth pausing on.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="chapters"><span class="num">§2</span>The material</h2>
+      <p class="section-intro">
+        Six lectures, two tutorials, three past exam papers. The lectures and
+        tutorials are from Monsoon '26; PYQs are pulled from the community
+        <a class="xref" href="https://github.com/VijayrajS/iiitprevpapers" target="_blank" rel="noopener">iiitprevpapers</a>
+        repository.
+      </p>
+
+      <h3>Lectures</h3>
+      <div class="chapter-grid">
+        <a class="chapter-card" href="lectures/1-logistics.html">
+          <div class="kicker">Lecture 01 · 16 slides</div>
+          <h3>Logistics</h3>
+          <p>Course structure, grading, the reading list, and the shape of the semester ahead.</p>
+          <div class="foot"><span>syllabus</span><span>references</span></div>
+        </a>
+        <a class="chapter-card" href="lectures/2-transformers.html">
+          <div class="kicker">Lecture 02 · 90 slides</div>
+          <h3>Transformers</h3>
+          <p>The big one. From "why did we leave RNNs" to the encoder-decoder block, layer-norm, residuals, and training.</p>
+          <div class="foot"><span>architecture</span><span>training</span></div>
+        </a>
+        <a class="chapter-card" href="lectures/3-tokenization.html">
+          <div class="kicker">Lecture 03 · 34 slides</div>
+          <h3>Tokenization</h3>
+          <p>BPE, WordPiece, SentencePiece, Unigram — how raw text becomes model input, and why the choice matters more than it looks.</p>
+          <div class="foot"><span>BPE</span><span>WordPiece</span><span>Unigram</span></div>
+        </a>
+        <a class="chapter-card" href="lectures/4-positional-encoding.html">
+          <div class="kicker">Lecture 04 · 29 slides</div>
+          <h3>Positional Encoding</h3>
+          <p>Sinusoidal, learned, RoPE, ALiBi — the surprisingly subtle problem of telling attention where in the sequence a token lives.</p>
+          <div class="foot"><span>sinusoidal</span><span>RoPE</span><span>ALiBi</span></div>
+        </a>
+        <a class="chapter-card" href="lectures/5-attention.html">
+          <div class="kicker">Lecture 05 · 50 slides</div>
+          <h3>Attention</h3>
+          <p>The mechanism itself. Queries, keys, values, softmax, multi-head, complexity, masking — with worked matrix shapes.</p>
+          <div class="foot"><span>self-attention</span><span>multi-head</span></div>
+        </a>
+        <a class="chapter-card" href="lectures/6-more-attention.html">
+          <div class="kicker">Lecture 06 · 21 slides</div>
+          <h3>More Attention</h3>
+          <p>Variants that fix the O(n²) problem: Flash, sparse, linear attention, and how each trades accuracy for speed.</p>
+          <div class="foot"><span>flash</span><span>sparse</span><span>linear</span></div>
+        </a>
+      </div>
+
+      <h3>Tutorials</h3>
+      <div class="chapter-grid">
+        <a class="chapter-card" href="tutorials/1-math-for-dl.html">
+          <div class="kicker">Tutorial 01 · 82 pages</div>
+          <h3>Math for Deep Learning</h3>
+          <p>Prereq refresher: linear algebra, calculus, and the specific slices of each that appear in DL. Vectors, matrices, derivatives.</p>
+          <div class="foot"><span>linear algebra</span><span>calculus</span></div>
+        </a>
+        <a class="chapter-card" href="tutorials/2-matrices-to-transformers.html">
+          <div class="kicker">Tutorial 02 · 23 pages</div>
+          <h3>Talking Matrices</h3>
+          <p>Word embeddings, SVD, Word2Vec, RNNs, transformers, and the BERT-family — the "how did we get here" tour.</p>
+          <div class="foot"><span>embeddings</span><span>RNNs</span><span>BERT</span></div>
+        </a>
+      </div>
+
+      <h3>Assignments</h3>
+      <div class="chapter-grid">
+        <a class="chapter-card" href="assignments/1-transformers-from-scratch.html">
+          <div class="kicker">Assignment 01 · due 2 Sep 2026</div>
+          <h3>Transformers from Scratch</h3>
+          <p>A full encoder–decoder built from <code>nn.Linear</code>, then a five-way ablation across positional encoding, attention, normalisation, and tokenisation. Code walkthrough, cross-references, and a viva question bank.</p>
+          <div class="foot"><span>MHA · GQA</span><span>RoPE · RMSNorm</span><span>BLT</span></div>
+        </a>
+      </div>
+
+      <h3>Past-year questions</h3>
+      <div class="chapter-grid">
+        <a class="chapter-card" href="pyqs/mid-2023.html">
+          <div class="kicker">Sep 22, 2023 · 3 questions</div>
+          <h3>Mid Semester · 2023</h3>
+          <p>Long-distance dependencies, ELMo, and encoder-decoder attention. Includes the official handwritten key for comparison.</p>
+          <div class="foot"><span>RNN/LSTM/GRU</span><span>ELMo</span><span>seq2seq</span></div>
+        </a>
+        <a class="chapter-card" href="pyqs/mid-2024.html">
+          <div class="kicker">Sep 23, 2024 · 4 questions</div>
+          <h3>Mid Semester · 2024</h3>
+          <p>RNN dependencies, attention in seq2seq, transformer encoder block, and LoRA vs Adapter finetuning.</p>
+          <div class="foot"><span>attention</span><span>transformer</span><span>LoRA</span></div>
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="how"><span class="num">§3</span>How the pages read</h2>
+
+      <p>
+        Each lecture and tutorial page follows the same shape. A short intro
+        frames the deck. Then, one slide at a time:
+      </p>
+
+      <div class="callout mechanism">
+        <div class="callout-label">the shape of each slide entry</div>
+        <p><strong>The Polaroid.</strong> The exact slide image. Click to zoom.</p>
+        <p><strong>What this shows.</strong> A one-line factual summary — for glancing.</p>
+        <p><strong>The idea.</strong> Two to four sentences, plain language, the actual teaching.</p>
+        <p><strong>Why it matters.</strong> Where this fits in the arc of the topic.</p>
+        <p>And, where useful, a math box or a "common misunderstanding" flag.</p>
+      </div>
+
+      <p>
+        Slides that only make sense as a pair — a two-panel diagram, a
+        before/after code snippet — are grouped into a strip and explained
+        together. Otherwise it's one image, one paragraph.
+      </p>
+
+      <div class="callout aha">
+        <div class="callout-label">✦ callout legend</div>
+        <p><strong>Aha moments</strong> — a sticky-note that flags the key insight worth taking away.</p>
+      </div>
+      <div class="callout gotcha">
+        <div class="callout-label">⚠ common trap</div>
+        <p>A red-taped box for the mistake a first-time reader is most likely to make here.</p>
+      </div>
+      <div class="callout mechanism">
+        <div class="callout-label">⚙ mechanism</div>
+        <p>The math or the exact algorithm, boxed off so you can skim past on a first read and dive in on a second.</p>
+      </div>
+      <div class="callout link">
+        <div class="callout-label">→ cross-reference</div>
+        <p>Where a concept was introduced earlier in the guide, so you can jump back if you missed it.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="credits"><span class="num">§4</span>Credits &amp; attribution</h2>
+      <p>
+        Course material — the lecture slides and tutorial decks — is the work
+        of <strong>Prof. Manish Shrivastava</strong> and TA
+        <strong>Aparajitha Allamraju</strong> for the Advanced NLP course
+        (M23CS7.501) at IIIT Hyderabad, Monsoon 2026. Slide images are
+        reproduced here for study purposes only.
+      </p>
+      <p>
+        Past-year exam papers are sourced from the community
+        <a class="xref" href="https://github.com/VijayrajS/iiitprevpapers/tree/master/Electives/BouquetAI/ANLP-Advanced%20NLP" target="_blank" rel="noopener">VijayrajS/iiitprevpapers</a>
+        repository.
+      </p>
+      <p>
+        Explanations are written by <a class="xref" href="https://arihant25.github.io" target="_blank" rel="noopener">Arihant Tripathy</a>
+        as a study aid. Mistakes are mine; if you spot one,
+        <a class="xref" href="https://github.com/Arihant25/anlp-study-guide/issues" target="_blank" rel="noopener">open an issue</a>.
+      </p>
+    </section>
+
+    <footer class="foot">
+      <div>ANLP Study Guide · Monsoon '26 · IIIT Hyderabad</div>
+      <div>
+        <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank" rel="noopener">github ↗</a>
+      </div>
+    </footer>
+  </main>
+
+  <!-- Right rail -->
+  <aside class="rail-right">
+    <div class="kicker">progress</div>
+    <div class="heatmap-rail" aria-hidden="true"></div>
+    <div class="kicker">on this page</div>
+    <div class="rail-toc">
+      <a href="#about">§1 · what this is</a>
+      <a href="#chapters">§2 · the material</a>
+      <a href="#how">§3 · how it reads</a>
+      <a href="#credits">§4 · credits</a>
+    </div>
+  </aside>
+</div>
+
+<script src="assets/js/site.js"></script>
+</body>
+</html>

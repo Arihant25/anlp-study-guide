@@ -1,0 +1,1217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tutorial 1 · Mathematics for Deep Learning — ANLP Study Guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Tutorial 1 of Advanced NLP, Monsoon 2026 IIIT-H: the math you need for deep learning — vectors, matrices, low-rank tricks, partial derivatives, Jacobians, Hessians, gradient descent, and the chain rule that becomes backprop.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../assets/css/site.css">
+</head>
+<body>
+<div class="shell">
+
+  <aside class="rail-left">
+    <div class="brand">
+      <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+      <small>ANLP · Monsoon '26</small>
+    </div>
+    <nav>
+      <div class="grp">On this page</div>
+      <a href="#deck">The tutorial at a glance</a>
+      <a href="#early">§1 · Early days</a>
+      <a href="#linalg">§2 · Linear algebra</a>
+      <a href="#calculus">§3 · Calculus</a>
+      <a href="#deeplearning">§4 · Deep learning</a>
+
+      <div class="grp">Elsewhere</div>
+      <a href="../index.html">← Home</a>
+      <a href="../lectures/6-more-attention.html">Prev: More Attention</a>
+      <a href="2-matrices-to-transformers.html">Next: Matrices → Transformers →</a>
+    </nav>
+  </aside>
+
+  <div class="topbar">
+    <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab notebook</em></a></div>
+    <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+  </div>
+
+  <main>
+    <section class="hero">
+      <div class="kicker">Tutorial 01 · 82 pages · August 7, 2026</div>
+      <h1>Mathematics for Deep Learning — <em>and other abstract nonsense</em>.</h1>
+      <p class="lead">
+        Before the transformer, before attention, before any of the machinery
+        the rest of the course spends the semester on, there is a very small
+        pile of math you cannot get away with not knowing. This tutorial is
+        that pile. It walks from what a vector <em>is</em> to why the last
+        layer of a language model is a softmax, and it does so in eighty-two
+        deliberately slow pages. Read it once now. Come back to it whenever
+        a later slide has a matrix in it and you find yourself squinting.
+      </p>
+      <div class="meta">
+        <span class="pill heat">Tutorial 01</span>
+        <span class="pill">82 pages</span>
+        <span class="pill">math prerequisites</span>
+      </div>
+    </section>
+
+    <section id="deck">
+      <h2><span class="num">§0</span>The tutorial at a glance</h2>
+      <p class="section-intro">
+        The deck is organised into four sweeps, tracked by the four dot-rows
+        along the top of every page. <strong>Early days</strong> is a one-slide
+        confession about prerequisites. <strong>Linear algebra</strong> takes
+        you from vectors to LoRA in eight pages. <strong>Calculus</strong>
+        spends the most time in the room, because every hard idea in deep
+        learning is either a derivative or an update built from one — partials,
+        gradients, Jacobians, Hessians, gradient descent, Newton-Raphson, and
+        a hint of the SVD trick that powers modern optimisers. Finally
+        <strong>Deep learning</strong> assembles all of the above into a
+        parametrised function, argues from the Universal Approximation Theorem
+        that it is enough, then walks the chain rule back through the layers
+        to build backpropagation, SGD, Adam, and eventually softmax over a
+        vocabulary. That last step is where NLP starts.
+      </p>
+    </section>
+
+    <hr class="soft">
+
+    <section id="early">
+      <h2><span class="num">§1</span>Early days</h2>
+      <p class="section-intro">
+        Two pages of ground-clearing. A cover slide, and a very honest
+        prerequisites list.
+      </p>
+
+      <div class="slide" id="p1">
+        <div class="slide-frame">
+          <div class="tag">Page 01 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-01.png" alt="Title slide: Mathematics for Deep Learning — And other abstract nonsense, aNLP M'26, August 7 2026, IIIT Hyderabad.">
+          <div class="slide-caption">page 01 · title</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p><strong>Mathematics for Deep Learning — And other abstract nonsense.</strong> A tutorial slot, not a lecture, delivered on August 7, 2026, one week into the semester.</p>
+          <h4>The idea</h4>
+          <p>The subtitle is doing a lot of work. "Abstract nonsense" is a fond mathematician's phrase for category-theoretic hand-waving — the kind of reasoning that pushes symbols around at a level so general that it forgets what it started with. The joke is that deep learning does exactly this: it takes clean linear-algebra objects, stacks them, differentiates them with respect to millions of parameters, and shrugs when the resulting update doesn't quite make geometric sense. The tutorial's promise is to keep the abstract nonsense down to a working amount.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="p2">
+        <div class="slide-frame">
+          <div class="tag">Page 02 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-02.png" alt="Prereqs page: basic linear algebra (idea of a vector and a matrix), basic calculus (derivatives), or barebones intuition — alternatively, a 3Blue1Brown subscription.">
+          <div class="slide-caption">page 02 · """"prereqs""""</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The quote-marks around "Prereqs" are load-bearing. The list is short: know what a vector is, know what a matrix is, know what a derivative is. Or — and this is the honest fallback — have watched enough 3Blue1Brown that you can <em>picture</em> those objects even if you cannot manipulate them yet.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">◉ how to read this tutorial</div>
+            <p>Everything past page 3 assumes you can nod along at the sentence "<em class="term">a matrix is a function that eats a vector and returns another vector</em>". If that sentence feels foreign, watch <em>Essence of Linear Algebra</em> chapter 3 before proceeding. If it feels obvious, skim quickly — the tutorial builds slowly on purpose.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="linalg">
+      <h2><span class="num">§2</span>Linear algebra — <em>vectors to LoRA in eight pages</em></h2>
+      <p class="section-intro">
+        Eight pages. The route: definition of a vector space, matrices as
+        maps between them, two families of "nice" matrices (diagonal and
+        orthogonal), eigenvectors as invariant directions, and finally the
+        outer-product / low-rank story that gives us LoRA. If the last
+        page reads like a magic trick, that is the whole point of the six
+        pages leading up to it.
+      </p>
+
+      <div class="slide" id="p3">
+        <div class="slide-frame">
+          <div class="tag">Page 03 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-03.png" alt="Section divider: Linear Algebra Foundations.">
+          <div class="slide-caption">page 03 · section divider</div>
+        </div>
+        <div class="explain">
+          <p>A section divider. Everything from here to page 10 is linear algebra.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="p4">
+        <div class="slide-frame">
+          <div class="tag">Page 04 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-04.png" alt="Vector spaces, bases, linear combinations, span.">
+          <div class="slide-caption">page 04 · vectors, spaces, bases</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Four definitions stacked on top of each other: <em class="term">vector space</em>, <em class="term">basis</em>, <em class="term">linear combination</em>, and <em class="term">span</em>.</p>
+          <h4>The idea</h4>
+          <p>Forget the axioms for a second. A vector space is any collection of things you can <strong>add together</strong> and <strong>scale by numbers</strong> without leaving the collection. Arrows in the plane qualify. Polynomials of degree at most 5 qualify. So do functions from ℝ to ℝ. A <em class="term">basis</em> is a smallest set of these things such that every other one is a unique recipe of "add this much of the first, then this much of the second". The recipe itself is called the linear combination; the set of all possible recipes is the span.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>The whole reason we get to talk about "coordinates" — <math><mrow><mi>v</mi><mo>=</mo><mo>(</mo><mn>3</mn><mo>,</mo><mn>−</mn><mn>1</mn><mo>,</mo><mn>4</mn><mo>)</mo></mrow></math> — is that a basis exists. The numbers are the recipe. Change the basis, change the recipe, but not the underlying arrow.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p5">
+        <div class="slide-frame">
+          <div class="tag">Page 05 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-05.png" alt="Matrices as linear transformations. A ∈ ℝ^{m×n} defines T: ℝ^n → ℝ^m. Columns of A tell you where the standard basis vectors land.">
+          <div class="slide-caption">page 05 · matrices as maps</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>A matrix <math><mi>A</mi></math> of shape <math><mrow><mi>m</mi><mo>×</mo><mi>n</mi></mrow></math> is not a number-grid, it is a <em class="term">linear transformation</em> — a function that eats an <math><mi>n</mi></math>-vector and hands you back an <math><mi>m</mi></math>-vector.</p>
+          <h4>The idea</h4>
+          <p>The most useful thing to know about any matrix is this: <strong>its columns tell you where the standard basis vectors go</strong>. Column 1 is where <math><mrow><mi>e</mi><mo>=</mo><mo>(</mo><mn>1</mn><mo>,</mo><mn>0</mn><mo>,</mo><mo>…</mo><mo>)</mo></mrow></math> lands after the transformation, column 2 where <math><mrow><mi>e</mi><mn>2</mn></mrow></math> lands, and so on. Everything else — matrix-vector product, matrix-matrix product, determinant — falls out of this one fact.</p>
+          <p>Two consequences of linearity worth internalising: grid lines stay straight and parallel after the transformation, and the origin never moves. If either fails, you are not looking at a linear map.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">◉ mental model</div>
+            <p>When you see <math><mrow><mi>y</mi><mo>=</mo><mi>A</mi><mi>x</mi></mrow></math>, read it as "y is a linear combination of A's columns, weighted by the entries of x." Every matrix product you meet for the rest of the course is a version of this sentence.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p6">
+        <div class="slide-frame">
+          <div class="tag">Page 06 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-06.png" alt="Primitive spatial transformations: diagonal matrices scale along axes; orthogonal matrices Q^T Q = QQ^T = I are rotations or reflections and preserve lengths and angles.">
+          <div class="slide-caption">page 06 · diagonal &amp; orthogonal</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Two families of "clean" matrices: <em class="term">diagonal</em> matrices, which stretch each axis independently, and <em class="term">orthogonal</em> matrices, which rotate or reflect but preserve every length and every angle.</p>
+          <h4>The idea</h4>
+          <p>These are the atoms out of which every other linear transformation is built. The Singular Value Decomposition — which will haunt us later — says that <strong>any</strong> matrix, no matter how ugly, factors into <em>rotate</em>, then <em>scale along the axes</em>, then <em>rotate again</em>. That is <math><mrow><mi>A</mi><mo>=</mo><mi>U</mi><mi>Σ</mi><msup><mi>V</mi><mi>T</mi></msup></mrow></math>. When we hit low-rank matrices in two pages, this is why the picture is so clean.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p><math><mrow><mi>det</mi><mo>(</mo><mi>Q</mi><mo>)</mo><mo>=</mo><mo>±</mo><mn>1</mn></mrow></math> is not a formula, it is a geometric fact: orthogonal matrices preserve volume. Positive determinant means a pure rotation, negative means there is a reflection in there too.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p7">
+        <div class="slide-frame">
+          <div class="tag">Page 07 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-07.png" alt="Eigenvalues and eigenvectors: Av = λv means v is an invariant direction under A. Characteristic equation det(A − λI) = 0 finds the λs.">
+          <div class="slide-caption">page 07 · invariant directions</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>An <em class="term">eigenvector</em> is a non-zero vector <math><mi>v</mi></math> that the matrix <math><mi>A</mi></math> does not rotate — it only stretches or shrinks. The stretch factor <math><mi>λ</mi></math> is the <em class="term">eigenvalue</em>.</p>
+          <h4>The idea</h4>
+          <p>Most vectors, when you multiply them by a matrix, get pushed off in some new direction. Eigenvectors are the exception: they lie along axes the transformation "believes in", and along those axes it behaves like plain multiplication. Finding them reduces to solving a polynomial — the <em class="term">characteristic equation</em>.</p>
+          <div class="eq boxed">
+            <math display="block">
+              <mrow>
+                <mi>A</mi><mi>v</mi><mo>=</mo><mi>λ</mi><mi>v</mi>
+                <mspace width="1em"/><mo>⇔</mo><mspace width="1em"/>
+                <mo>(</mo><mi>A</mi><mo>−</mo><mi>λ</mi><mi>I</mi><mo>)</mo><mi>v</mi><mo>=</mo><mn>0</mn>
+              </mrow>
+            </math>
+          </div>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>Eigenvectors of symmetric matrices are orthogonal, and their eigenvalues are the squared singular values of the SVD. So every time later slides say "singular values", they mean "square roots of the eigenvalues of <math><mrow><msup><mi>A</mi><mi>T</mi></msup><mi>A</mi></mrow></math>." Keep this in your back pocket for page 40.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p8">
+        <div class="slide-frame">
+          <div class="tag">Page 08 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-08.png" alt="Low-rank matrices via outer products. uv^T has rank 1. Sum of r rank-1 matrices = BA with B (d×r) and A (r×k), r ≪ min(d,k). Parameter cost r(d+k) instead of d·k.">
+          <div class="slide-caption">page 08 · outer products &amp; rank</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Take two vectors <math><mi>u</mi></math> and <math><mi>v</mi></math>. Their <em class="term">outer product</em> <math><mrow><mi>u</mi><msup><mi>v</mi><mi>T</mi></msup></mrow></math> is a matrix — but a very poor matrix, in the sense that <strong>every column is a scalar multiple of <math><mi>u</mi></math></strong>. It has rank 1. Sum <math><mi>r</mi></math> of these and you get a matrix of rank at most <math><mi>r</mi></math>.</p>
+          <h4>The idea</h4>
+          <p>A dense <math><mrow><mi>d</mi><mo>×</mo><mi>k</mi></mrow></math> matrix stores <math><mrow><mi>d</mi><mi>k</mi></mrow></math> numbers. If we know in advance that the matrix has rank <math><mi>r</mi></math>, we can factor it as <math><mrow><mi>B</mi><mi>A</mi></mrow></math> with <math><mi>B</mi></math> tall-and-thin and <math><mi>A</mi></math> short-and-wide, and pay only <math><mrow><mi>r</mi><mo>(</mo><mi>d</mi><mo>+</mo><mi>k</mi><mo>)</mo></mrow></math> numbers. When <math><mrow><mi>r</mi><mo>≪</mo><mi>min</mi><mo>(</mo><mi>d</mi><mo>,</mo><mi>k</mi><mo>)</mo></mrow></math>, that is a huge saving. This is the entire reason low-rank adaptation exists.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p9">
+          <div class="slide-frame">
+            <div class="tag">Page 09 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-09.png" alt="The LLM fine-tuning bottleneck. Full fine-tuning updates W = W0 + ΔW; ΔW has d·k parameters per matrix; intrinsic rank hypothesis says the essential update lives in a low-dim subspace.">
+            <div class="slide-caption">page 09 · the bottleneck</div>
+          </div>
+        </div>
+        <div class="slide" id="p10">
+          <div class="slide-frame">
+            <div class="tag">Page 10 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-10.png" alt="LoRA. Parameterise ΔW = BA with B (d×r), A (r×k). Freeze W0, train only A and B. Eckart–Young / SVD justifies why a low-rank ΔW is enough.">
+            <div class="slide-caption">page 10 · LoRA</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What these show</h4>
+        <p>The problem: a modern language model's weight matrix <math><msub><mi>W</mi><mn>0</mn></msub></math> is huge — think <math><mrow><mn>4096</mn><mo>×</mo><mn>4096</mn></mrow></math> — and updating it directly means training sixteen million parameters per matrix, per task. The <em class="term">intrinsic rank hypothesis</em> observes empirically that the <em>update</em> <math><mrow><mi>Δ</mi><mi>W</mi></mrow></math> a task needs is nowhere near that rich. It lives in a much smaller subspace.</p>
+        <h4>The idea behind LoRA</h4>
+        <p>Freeze <math><msub><mi>W</mi><mn>0</mn></msub></math>. Parameterise the update as <math><mrow><mi>Δ</mi><mi>W</mi><mo>=</mo><mi>B</mi><mi>A</mi></mrow></math> with rank <math><mi>r</mi></math> (typically 4, 8, or 16). Train only <math><mi>A</mi></math> and <math><mi>B</mi></math>. Parameter count drops from <math><mrow><mi>d</mi><mo>·</mo><mi>k</mi></mrow></math> to <math><mrow><mi>r</mi><mo>(</mo><mi>d</mi><mo>+</mo><mi>k</mi><mo>)</mo></mrow></math>, which is more than 99% savings for realistic sizes. The theoretical cover is the <em class="term">Eckart–Young theorem</em>: for any matrix, the best rank-<math><mi>r</mi></math> approximation is given by keeping the top <math><mi>r</mi></math> singular components of its SVD. So if the true update was low-rank all along, we lose essentially nothing.</p>
+        <div class="callout aha">
+          <div class="callout-label">✦ the aha</div>
+          <p>Every fact about linear algebra you have accumulated across pages 4–8 is deployed on this one page. Vectors and their outer products (page 8) give you the rank-1 pieces; SVD (page 6, one line about "rotate–scale–rotate") tells you those pieces are optimal; the intrinsic-rank observation says nature is being generous. LoRA is not clever, it is just <strong>reading linear algebra correctly</strong>.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="calculus">
+      <h2><span class="num">§3</span>Calculus — <em>from derivatives to Muon</em></h2>
+      <p class="section-intro">
+        Thirty-three pages, and every one of them earns its space. The move
+        is escalation: scalar functions of one variable (page 12), then many
+        variables (17), then vector-valued functions (25), then second
+        derivatives that live in a matrix (29). Once we have the machinery
+        we spend the rest of the section using it — first to walk downhill
+        (gradient descent), then to walk downhill more cleverly
+        (Newton-Raphson), then to hint at a very modern optimizer that uses
+        the SVD trick from §2. If you only take one section of this tutorial
+        seriously, take this one.
+      </p>
+
+      <div class="slide" id="p11">
+        <div class="slide-frame">
+          <div class="tag">Page 11 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-11.png" alt="Section divider: Calculus.">
+          <div class="slide-caption">page 11 · section divider</div>
+        </div>
+        <div class="explain">
+          <p>The second big sweep of the tutorial opens.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p12">
+          <div class="slide-frame">
+            <div class="tag">Page 12 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-12.png" alt="Why would you differentiate matrices? First principles: limit as Δx→0 of (f(x+Δx)−f(x))/Δx.">
+            <div class="slide-caption">page 12 · first principles</div>
+          </div>
+        </div>
+        <div class="slide" id="p13">
+          <div class="slide-frame">
+            <div class="tag">Page 13 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-13.png" alt="Fair enough: derivative of a matrix of scalar functions is the matrix of derivatives, entrywise.">
+            <div class="slide-caption">page 13 · differentiate entrywise</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What these show</h4>
+        <p>A gentle onboarding to the section's central question — <em>how do we differentiate a matrix?</em> Page 12 reminds you what a derivative is at all: the limit of a rise-over-run as the run goes to zero. Page 13 gives the honest, boring answer to the matrix question: if a matrix's entries are all scalar functions <math><mrow><msub><mi>a</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>(</mo><mi>x</mi><mo>)</mo></mrow></math>, then its derivative is just the matrix whose entries are the individual derivatives <math><mrow><mfrac><mrow><mi>d</mi><msub><mi>a</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub></mrow><mrow><mi>d</mi><mi>x</mi></mrow></mfrac></mrow></math>.</p>
+        <h4>Why start here</h4>
+        <p>The rest of the tutorial is going to bend the definition of "derivative" in progressively weirder directions — with respect to a vector, then with respect to a matrix, then with respect to a whole neural network's parameter tensor <math><mi>Θ</mi></math>. If the very first move (differentiating a matrix of scalar functions elementwise) doesn't sit comfortably, the later moves won't either.</p>
+      </div>
+
+      <h3><em>"Why are there so many variables?"</em> — partial derivatives</h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p14">
+          <div class="slide-frame">
+            <div class="tag">Page 14 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-14.png" alt="How would you differentiate a multivariable function?">
+            <div class="slide-caption">page 14 · the question</div>
+          </div>
+        </div>
+        <div class="slide" id="p15">
+          <div class="slide-frame">
+            <div class="tag">Page 15 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-15.png" alt="Example: f(x,y) = x² + y² + 2xy.">
+            <div class="slide-caption">page 15 · the example</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p16">
+          <div class="slide-frame">
+            <div class="tag">Page 16 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-16.png" alt="Naive intuition says df/dx = 2x + 2y; 12th-grade calculus, treating y as a function of x, says df/dx = (2x+2y)(1 + dy/dx).">
+            <div class="slide-caption">page 16 · the paradox</div>
+          </div>
+        </div>
+        <div class="slide" id="p17">
+          <div class="slide-frame">
+            <div class="tag">Page 17 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-17.png" alt="The resolution: partial derivatives.">
+            <div class="slide-caption">page 17 · the resolution</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide" id="p18">
+        <div class="slide-frame">
+          <div class="tag">Page 18 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-18.png" alt="∂f/∂x is the derivative when every other variable is held constant.">
+          <div class="slide-caption">page 18 · the definition</div>
+        </div>
+        <div class="explain">
+          <h4>What this build shows</h4>
+          <p>The five slides pose the same puzzle and then pull the rabbit out. If <math><mrow><mi>f</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo><mo>=</mo><msup><mi>x</mi><mn>2</mn></msup><mo>+</mo><msup><mi>y</mi><mn>2</mn></msup><mo>+</mo><mn>2</mn><mi>x</mi><mi>y</mi></mrow></math>, is <math><mrow><mfrac><mrow><mi>d</mi><mi>f</mi></mrow><mrow><mi>d</mi><mi>x</mi></mrow></mfrac></mrow></math> equal to <math><mrow><mn>2</mn><mi>x</mi><mo>+</mo><mn>2</mn><mi>y</mi></mrow></math>, or does it need a <math><mrow><mi>d</mi><mi>y</mi><mo>/</mo><mi>d</mi><mi>x</mi></mrow></math> correction? The two 12th-grade instincts disagree.</p>
+          <h4>The idea</h4>
+          <p>They disagree because <math><mrow><mi>d</mi><mi>f</mi><mo>/</mo><mi>d</mi><mi>x</mi></mrow></math> is an underspecified question when there are two independent variables. The fix is the <em class="term">partial derivative</em> <math><mrow><mo>∂</mo><mi>f</mi><mo>/</mo><mo>∂</mo><mi>x</mi></mrow></math>: differentiate with respect to <math><mi>x</mi></math> while <em>pretending every other variable is a constant</em>. For our <math><mi>f</mi></math>, that gives <math><mrow><mo>∂</mo><mi>f</mi><mo>/</mo><mo>∂</mo><mi>x</mi><mo>=</mo><mn>2</mn><mi>x</mi><mo>+</mo><mn>2</mn><mi>y</mi></mrow></math>. Cleanly.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">◉ mental model</div>
+            <p>Picture <math><mrow><mi>f</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo></mrow></math> as a hilly landscape over the <math><mrow><mi>x</mi><mo>−</mo><mi>y</mi></mrow></math> plane. <math><mrow><mo>∂</mo><mi>f</mi><mo>/</mo><mo>∂</mo><mi>x</mi></mrow></math> is the slope you would feel if you took a step in the pure <math><mi>x</mi></math> direction. <math><mrow><mo>∂</mo><mi>f</mi><mo>/</mo><mo>∂</mo><mi>y</mi></mrow></math> is the slope in the pure <math><mi>y</mi></math> direction. Each partial ignores the other axis on purpose.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3><em>"Dear Lord, it's Physics!"</em> — the gradient</h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p19">
+          <div class="slide-frame">
+            <div class="tag">Page 19 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-19.png" alt="It makes sense to consider components of a derivative along the coordinate axes.">
+            <div class="slide-caption">page 19 · components</div>
+          </div>
+        </div>
+        <div class="slide" id="p20">
+          <div class="slide-frame">
+            <div class="tag">Page 20 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-20.png" alt="Each component must be ∂f/∂x_i.">
+            <div class="slide-caption">page 20 · the components are partials</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide" id="p21">
+        <div class="slide-frame">
+          <div class="tag">Page 21 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-21.png" alt="Voilà: ∇f = [∂f/∂x_i]^T, or, for physicists, ∇f = Σ ∂f/∂x_i · x̂_i.">
+          <div class="slide-caption">page 21 · the gradient</div>
+        </div>
+        <div class="explain">
+          <h4>What this build shows</h4>
+          <p>Package all the partial derivatives of a scalar-valued <math><mrow><mi>f</mi><mo>:</mo><msup><mi>ℝ</mi><mi>n</mi></msup><mo>→</mo><mi>ℝ</mi></mrow></math> into a single object. The result is a vector.</p>
+          <h4>The idea</h4>
+          <p>That vector is the <em class="term">gradient</em> <math><mrow><mo>∇</mo><mi>f</mi></mrow></math>. It has one entry per input coordinate, and each entry is the partial derivative along that coordinate. Geometrically it points <strong>uphill in the steepest direction</strong>, and its length is the steepness of that steepest ascent.</p>
+          <div class="eq boxed">
+            <math display="block">
+              <mrow>
+                <mo>∇</mo><mi>f</mi><mo>=</mo>
+                <msup>
+                  <mfenced open="[" close="]">
+                    <mfrac><mrow><mo>∂</mo><mi>f</mi></mrow><mrow><mo>∂</mo><msub><mi>x</mi><mn>1</mn></msub></mrow></mfrac>
+                    <mfrac><mrow><mo>∂</mo><mi>f</mi></mrow><mrow><mo>∂</mo><msub><mi>x</mi><mn>2</mn></msub></mrow></mfrac>
+                    <mo>⋯</mo>
+                    <mfrac><mrow><mo>∂</mo><mi>f</mi></mrow><mrow><mo>∂</mo><msub><mi>x</mi><mi>n</mi></msub></mrow></mfrac>
+                  </mfenced>
+                  <mi>T</mi>
+                </msup>
+              </mrow>
+            </math>
+          </div>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>The title's joke is real. Physicists write the same object as <math><mrow><mo>∇</mo><mi>f</mi><mo>=</mo><munder><mo>∑</mo><mi>i</mi></munder><mfrac><mrow><mo>∂</mo><mi>f</mi></mrow><mrow><mo>∂</mo><msub><mi>x</mi><mi>i</mi></msub></mrow></mfrac><msub><mover><mi>x</mi><mo>^</mo></mover><mi>i</mi></msub></mrow></math>, using unit-vector notation. Mathematicians stack the components in a column and call it a day. Same beast either way.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3><em>"Corn on the Jacob"</em> — the Jacobian</h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p22">
+          <div class="slide-frame">
+            <div class="tag">Page 22 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-22.png" alt="For f: ℝ^n → ℝ^m, how would you deal with df/dx?">
+            <div class="slide-caption">page 22 · the question</div>
+          </div>
+        </div>
+        <div class="slide" id="p23">
+          <div class="slide-frame">
+            <div class="tag">Page 23 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-23.png" alt="You need derivatives of every output y_i wrt every input x_j.">
+            <div class="slide-caption">page 23 · every-with-every</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p24">
+          <div class="slide-frame">
+            <div class="tag">Page 24 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-24.png" alt="That is mn possible values.">
+            <div class="slide-caption">page 24 · mn possibilities</div>
+          </div>
+        </div>
+        <div class="slide" id="p25">
+          <div class="slide-frame">
+            <div class="tag">Page 25 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-25.png" alt="Assemble them into the Jacobian matrix J = [∂y_i / ∂x_j].">
+            <div class="slide-caption">page 25 · the Jacobian</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>The gradient handled a scalar output. What if the output is itself a vector? Then a single "derivative" is not enough — you need one number for every combination of <em>output</em> and <em>input</em> coordinate. That is <math><mrow><mi>m</mi><mo>×</mo><mi>n</mi></mrow></math> numbers.</p>
+        <h4>The idea</h4>
+        <p>Stack them in a matrix. The <em class="term">Jacobian</em> <math><mi>J</mi></math> has one row per output coordinate — that row is the gradient (transposed) of that output. It has one column per input coordinate. Entry <math><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math> is <math><mrow><mo>∂</mo><msub><mi>y</mi><mi>i</mi></msub><mo>/</mo><mo>∂</mo><msub><mi>x</mi><mi>j</mi></msub></mrow></math>. If you feed the Jacobian a small displacement <math><mrow><mi>δ</mi><mi>x</mi></mrow></math>, it hands you back the best linear estimate of the resulting <math><mrow><mi>δ</mi><mi>y</mi></mrow></math>. The Jacobian <em>is</em> the derivative, generalised.</p>
+        <div class="callout mechanism">
+          <div class="callout-label">◉ dimensions cheat sheet</div>
+          <p>Given <math><mrow><mi>f</mi><mo>:</mo><msup><mi>ℝ</mi><mi>n</mi></msup><mo>→</mo><msup><mi>ℝ</mi><mi>m</mi></msup></mrow></math>: the Jacobian is <math><mrow><mi>m</mi><mo>×</mo><mi>n</mi></mrow></math>. If <math><mrow><mi>m</mi><mo>=</mo><mn>1</mn></mrow></math> (scalar output), <math><mi>J</mi></math> collapses to <math><mrow><mo>(</mo><mo>∇</mo><mi>f</mi><msup><mo>)</mo><mi>T</mi></msup></mrow></math>. If <math><mrow><mi>n</mi><mo>=</mo><mn>1</mn></mrow></math> (scalar input), it collapses to the ordinary derivative vector. Every subsequent Jacobian in this course will fall into one of these two shapes.</p>
+        </div>
+      </div>
+
+      <h3><em>"We've had one breakfast, yes…"</em> — the Hessian</h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p26">
+          <div class="slide-frame">
+            <div class="tag">Page 26 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-26.png" alt="What about second derivatives? Useful for finding extrema, and for one more thing later.">
+            <div class="slide-caption">page 26 · second breakfast</div>
+          </div>
+        </div>
+        <div class="slide" id="p27">
+          <div class="slide-frame">
+            <div class="tag">Page 27 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-27.png" alt="For scalar f, we saw ∇f: ℝ^n → ℝ^n.">
+            <div class="slide-caption">page 27 · gradient is vector-valued</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p28">
+          <div class="slide-frame">
+            <div class="tag">Page 28 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-28.png" alt="So take its Jacobian: J∇f = [∂²f/(∂x_j ∂x_i)].">
+            <div class="slide-caption">page 28 · Jacobian of the gradient</div>
+          </div>
+        </div>
+        <div class="slide" id="p29">
+          <div class="slide-frame">
+            <div class="tag">Page 29 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-29.png" alt="By convention, use the transpose: H = (J∇f)^T. This is the Hessian.">
+            <div class="slide-caption">page 29 · the Hessian</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>Second derivatives. For a scalar-valued <math><mi>f</mi></math>, the first derivative is a vector (the gradient); the derivative of that vector is a matrix — the <em class="term">Hessian</em> <math><mi>H</mi></math>. Entry <math><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo></mrow></math> is <math><mrow><msup><mo>∂</mo><mn>2</mn></msup><mi>f</mi><mo>/</mo><mo>∂</mo><msub><mi>x</mi><mi>i</mi></msub><mo>∂</mo><msub><mi>x</mi><mi>j</mi></msub></mrow></math> — the sensitivity of the <math><mi>i</mi></math>-th partial to a wiggle in the <math><mi>j</mi></math>-th input.</p>
+        <h4>The idea</h4>
+        <p>Second derivatives tell you about <em>curvature</em>. In 1D, positive <math><msup><mi>f</mi><mo>′′</mo></msup></math> means the graph is cupping upward — you are near a minimum, not a maximum. In many variables the same information lives in the eigenvalues of <math><mi>H</mi></math>: all-positive means a local min, all-negative means a local max, mixed signs means a saddle. Second derivatives are also the "one other thing" hinted at — they will show up in Newton-Raphson two pages later.</p>
+        <div class="callout aha">
+          <div class="callout-label">✦ the aha</div>
+          <p>The convention <math><mrow><mi>H</mi><mo>=</mo><mo>(</mo><mi>J</mi><mo>∇</mo><mi>f</mi><msup><mo>)</mo><mi>T</mi></msup></mrow></math> is not arbitrary. Because mixed partials commute for nice functions (Clairaut / Schwarz), <math><mi>H</mi></math> is symmetric — a fact that will save your life every time you want to invert one.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="p30">
+        <div class="slide-frame">
+          <div class="tag">Page 30 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-30.png" alt="Consider being on a hill wanting to reach the lowest point. A local minimum will do. You can only see where you are and the local shape of the ground. How do you get down?">
+          <div class="slide-caption">page 30 · the hill</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The core parable of optimisation. You are somewhere on a landscape, blindfolded except for a small patch of ground around your feet. Your job is to get to the lowest point you can. What do you do?</p>
+          <h4>The idea</h4>
+          <p>Feel the slope, take a step downhill, repeat. This is <em class="term">gradient descent</em>. Formally, if the landscape's height is <math><mrow><mi>f</mi><mo>(</mo><mi>x</mi><mo>)</mo></mrow></math>, the direction of <em>fastest ascent</em> is <math><mrow><mo>∇</mo><mi>f</mi></mrow></math>, so the direction of fastest descent is <math><mrow><mo>−</mo><mo>∇</mo><mi>f</mi></mrow></math>. Step size is a hyperparameter you get to pick.</p>
+          <div class="eq boxed">
+            <math display="block">
+              <mrow>
+                <msub><mi>x</mi><mrow><mi>k</mi><mo>+</mo><mn>1</mn></mrow></msub>
+                <mo>=</mo>
+                <msub><mi>x</mi><mi>k</mi></msub>
+                <mo>−</mo>
+                <mi>η</mi><mo>·</mo><mo>∇</mo><mi>f</mi><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>)</mo>
+              </mrow>
+            </math>
+          </div>
+          <div class="callout gotcha">
+            <div class="callout-label">⚠ common trap</div>
+            <p>The phrase "a local minimum will do (for now)" is doing enormous work. Gradient descent finds <em>a</em> minimum, not <em>the</em> minimum. The whole reason deep-learning practitioners obsess over initialisation, learning-rate schedules, and momentum is that the local minimum you land in depends on where you started and how you walked.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Newton-Raphson — <em>walking downhill using curvature</em></h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p31">
+          <div class="slide-frame">
+            <div class="tag">Page 31 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-31.png" alt="Given f: ℝ→ℝ, iteratively compute the minima.">
+            <div class="slide-caption">page 31 · the problem</div>
+          </div>
+        </div>
+        <div class="slide" id="p32">
+          <div class="slide-frame">
+            <div class="tag">Page 32 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-32.png" alt="Construct a sequence {x_i} converging to argmin f.">
+            <div class="slide-caption">page 32 · a sequence</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p33">
+          <div class="slide-frame">
+            <div class="tag">Page 33 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-33.png" alt="Second-order Taylor: f(x_k + t) ≈ f(x_k) + f'(x_k)t + ½ f''(x_k) t².">
+            <div class="slide-caption">page 33 · Taylor around x_k</div>
+          </div>
+        </div>
+        <div class="slide" id="p34">
+          <div class="slide-frame">
+            <div class="tag">Page 34 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-34.png" alt="Minimize this local approximation — set its derivative to zero.">
+            <div class="slide-caption">page 34 · set derivative to zero</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p35">
+          <div class="slide-frame">
+            <div class="tag">Page 35 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-35.png" alt="0 = f'(x_k) + f''(x_k) t.">
+            <div class="slide-caption">page 35 · solve for t</div>
+          </div>
+        </div>
+        <div class="slide" id="p36">
+          <div class="slide-frame">
+            <div class="tag">Page 36 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-36.png" alt="x_{k+1} = x_k − f'(x_k)/f''(x_k). Newton-Raphson.">
+            <div class="slide-caption">page 36 · the update</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide" id="p37">
+        <div class="slide-frame">
+          <div class="tag">Page 37 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-37.png" alt="For f: ℝ^n → ℝ, the update is x_{k+1} = x_k − ∇f · H^{−1}.">
+          <div class="slide-caption">page 37 · multivariate Newton</div>
+        </div>
+        <div class="explain">
+          <h4>What this whole build shows</h4>
+          <p>A more principled hill-descent than gradient descent. Instead of just following the slope, we build a <strong>quadratic model</strong> of the landscape at our current point — using the value, the slope, and the curvature — and jump directly to that model's minimum. Iterate.</p>
+          <h4>The idea</h4>
+          <p>Second-order Taylor says <math><mrow><mi>f</mi><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>+</mo><mi>t</mi><mo>)</mo><mo>≈</mo><mi>f</mi><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>)</mo><mo>+</mo><msup><mi>f</mi><mo>′</mo></msup><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>)</mo><mi>t</mi><mo>+</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><msup><mi>f</mi><mo>″</mo></msup><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>)</mo><msup><mi>t</mi><mn>2</mn></msup></mrow></math>. Minimise the right-hand side in <math><mi>t</mi></math>: differentiate, set to zero, solve. You get the Newton-Raphson step <math><mrow><msub><mi>x</mi><mrow><mi>k</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo><msub><mi>x</mi><mi>k</mi></msub><mo>−</mo><msup><mi>f</mi><mo>′</mo></msup><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>)</mo><mo>/</mo><msup><mi>f</mi><mo>″</mo></msup><mo>(</mo><msub><mi>x</mi><mi>k</mi></msub><mo>)</mo></mrow></math>.</p>
+          <p>In many variables the same story becomes <math><mrow><msub><mi>x</mi><mrow><mi>k</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo><msub><mi>x</mi><mi>k</mi></msub><mo>−</mo><msup><mi>H</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup><mo>·</mo><mo>∇</mo><mi>f</mi></mrow></math> — you pre-multiply the gradient by the inverse of the Hessian.</p>
+          <div class="callout gotcha">
+            <div class="callout-label">⚠ why nobody uses this at scale</div>
+            <p>The multivariate update needs <math><msup><mi>H</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup></math>. For a modern network with <math><mrow><mi>N</mi><mo>=</mo><mn>10</mn><msup><mn>10</mn><mo> </mo></msup></mrow></math> parameters, the Hessian is <math><mrow><mi>N</mi><mo>×</mo><mi>N</mi></mrow></math>. Storing it is a nonstarter; inverting it is science fiction. This is exactly why the next few pages are about first-order tricks that <em>approximate</em> curvature without ever writing <math><mi>H</mi></math> down.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3><em>"If at first you don't succeed…"</em> — a preview of Muon</h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p38">
+          <div class="slide-frame">
+            <div class="tag">Page 38 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-38.png" alt="Modern methods use linear transformations that parallelise well (thanks, Vaswani et al!).">
+            <div class="slide-caption">page 38 · parallelisable</div>
+          </div>
+        </div>
+        <div class="slide" id="p39">
+          <div class="slide-frame">
+            <div class="tag">Page 39 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-39.png" alt="For reasons, we can try to push a matrix's nonzero singular values towards 1.">
+            <div class="slide-caption">page 39 · nudge singular values → 1</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p40">
+          <div class="slide-frame">
+            <div class="tag">Page 40 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-40.png" alt="Odd polynomials commute with the SVD: p(UΣV^T) = U p(Σ) V^T.">
+            <div class="slide-caption">page 40 · SVD-commuting</div>
+          </div>
+        </div>
+        <div class="slide" id="p41">
+          <div class="slide-frame">
+            <div class="tag">Page 41 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-41.png" alt="There exist odd polynomials p: ℝ→ℝ with lim_{n→∞} p^n(x) = sgn(x), at least near 0.">
+            <div class="slide-caption">page 41 · p^n(x) → sgn(x)</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p42">
+          <div class="slide-frame">
+            <div class="tag">Page 42 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-42.png" alt="So picking the right coefficients gives a good enough approximation.">
+            <div class="slide-caption">page 42 · pick coefficients</div>
+          </div>
+        </div>
+        <div class="slide" id="p43">
+          <div class="slide-frame">
+            <div class="tag">Page 43 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-43.png" alt="This is a surprise tool which will help us later.">
+            <div class="slide-caption">page 43 · a surprise tool</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>A six-slide teaser for something that will land, in full, at the end of §4. The story: modern optimisers need updates that <em>are</em> matrices, and those updates would be more well-behaved if the matrix had all singular values equal to 1 — that is, if it were pushed toward an <strong>orthogonal</strong> matrix (recall page 6). How do you do that on a GPU without ever calling the SVD?</p>
+        <h4>The trick</h4>
+        <p>Odd polynomials — think <math><mrow><mi>p</mi><mo>(</mo><mi>x</mi><mo>)</mo><mo>=</mo><mn>3</mn><mi>x</mi><mo>−</mo><mn>3</mn><msup><mi>x</mi><mn>3</mn></msup><mo>+</mo><msup><mi>x</mi><mn>5</mn></msup></mrow></math> — have a magical property: <math><mrow><mi>p</mi><mo>(</mo><mi>U</mi><mi>Σ</mi><msup><mi>V</mi><mi>T</mi></msup><mo>)</mo><mo>=</mo><mi>U</mi><mi>p</mi><mo>(</mo><mi>Σ</mi><mo>)</mo><msup><mi>V</mi><mi>T</mi></msup></mrow></math>. Applying the polynomial to the whole matrix is the same as applying it to each singular value in isolation. So if we can find a polynomial <math><mi>p</mi></math> such that iterating <math><mi>p</mi></math> on any real number in <math><mo>(</mo><mn>0</mn><mo>,</mo><mn>∞</mn><mo>)</mo></math> converges to 1, then iterating <math><mi>p</mi></math> on any matrix will drive all its singular values to 1 — <strong>without ever computing the SVD explicitly</strong>. Only matrix multiplies, which GPUs adore.</p>
+        <div class="callout link">
+          <div class="callout-label">→ payoff at page 75</div>
+          <p>This is called <em class="term">Newton-Schulz iteration</em>, and it is the beating heart of the <strong>Muon</strong> optimizer, which shows up at the very end of the deep-learning section. When you get there, remember these six pages — they are the whole reason Muon works at all.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="deeplearning">
+      <h2><span class="num">§4</span>Deep learning — <em>assembling the machine</em></h2>
+      <p class="section-intro">
+        Thirty-nine pages, and the payoff for everything before. Deep learning
+        is now defined in one sentence: pick a parametrised function and tune
+        the parameters until it does what you want. The section justifies why
+        such a function even exists (Universal Approximation), gives it teeth
+        (classification, softmax), and then explains how to actually find the
+        parameters using every tool from §3 (loss functions, chain rule,
+        backprop, SGD, Adam, and finally Muon). By the last page you have
+        built a language model from first principles.
+      </p>
+
+      <div class="slide" id="p44">
+        <div class="slide-frame">
+          <div class="tag">Page 44 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-44.png" alt="Section divider: Deep Learning.">
+          <div class="slide-caption">page 44 · section divider</div>
+        </div>
+        <div class="explain">
+          <p>The final and longest sweep.</p>
+        </div>
+      </div>
+
+      <h3><em>"Nearly there"</em> — deep learning in one sentence</h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p45">
+          <div class="slide-frame">
+            <div class="tag">Page 45 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-45.png" alt="Most functions we encounter are nonlinear (sorry LA folks).">
+            <div class="slide-caption">page 45 · reality is nonlinear</div>
+          </div>
+        </div>
+        <div class="slide" id="p46">
+          <div class="slide-frame">
+            <div class="tag">Page 46 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-46.png" alt="We can learn to approximate some functions.">
+            <div class="slide-caption">page 46 · approximate them</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p47">
+          <div class="slide-frame">
+            <div class="tag">Page 47 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-47.png" alt="Deep learning: pick a parameterised f̂(x; Θ) approximating the true f(x).">
+            <div class="slide-caption">page 47 · the definition</div>
+          </div>
+        </div>
+        <div class="slide" id="p48">
+          <div class="slide-frame">
+            <div class="tag">Page 48 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-48.png" alt="Methods for finding the right Θ will be seen soon.">
+            <div class="slide-caption">page 48 · finding Θ, later</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>The definition of deep learning, unpacked slowly. The world is full of functions we care about — from images to labels, from English to French, from prompt to next token — and most of them are not linear. So we pick a family of parametrised functions <math><mrow><mover><mi>f</mi><mo>^</mo></mover><mo>(</mo><mi>x</mi><mo>;</mo><mi>Θ</mi><mo>)</mo></mrow></math>, flexible enough to plausibly contain a good approximation of the target <math><mrow><mi>f</mi><mo>(</mo><mi>x</mi><mo>)</mo></mrow></math>, and we search over <math><mi>Θ</mi></math> for the setting that best fits the data.</p>
+        <div class="callout mechanism">
+          <div class="callout-label">◉ what Θ actually is</div>
+          <p><math><mi>Θ</mi></math> is <em>every</em> tunable number in the network — all the weight matrices <math><msub><mi>A</mi><mi>i</mi></msub></math>, all the bias vectors <math><msub><mi>b</mi><mi>i</mi></msub></math>, all the layer-norm scale factors, all the embedding entries. For a 7B model that is seven billion numbers. Section §3 is going to earn its rent here.</p>
+        </div>
+      </div>
+
+      <h3>Classification — <em>slicing space with hyperplanes</em></h3>
+
+      <div class="slide" id="p49">
+        <div class="slide-frame">
+          <div class="tag">Page 49 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-49.png" alt="Treat n-way classification as f: ℝ^m → ℝ^n where outputs form a probability distribution over classes.">
+          <div class="slide-caption">page 49 · classification as a function</div>
+        </div>
+        <div class="explain">
+          <p>The first concrete instance of the parametrised-function view: <em class="term">classification</em>. Input an <math><mi>m</mi></math>-dimensional feature vector, output an <math><mi>n</mi></math>-dimensional vector of class probabilities. Whichever entry is largest, that is the model's prediction.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p50">
+          <div class="slide-frame">
+            <div class="tag">Page 50 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-50.png" alt="Equivalently: draw (n−1) (m−1)-hyperplanes that split m-space into n pieces.">
+            <div class="slide-caption">page 50 · hyperplanes as decision surfaces</div>
+          </div>
+        </div>
+        <div class="slide" id="p51">
+          <div class="slide-frame">
+            <div class="tag">Page 51 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-51.png" alt="Grid of red and green dots with a horizontal line separating them. Caption: pretty straightforward to slice.">
+            <div class="slide-caption">page 51 · easy case</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p52">
+          <div class="slide-frame">
+            <div class="tag">Page 52 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-52.png" alt="Grid with a diagonal split still separating red and green. Caption: still straightforward to slice.">
+            <div class="slide-caption">page 52 · still easy</div>
+          </div>
+        </div>
+        <div class="slide" id="p53">
+          <div class="slide-frame">
+            <div class="tag">Page 53 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-53.png" alt="XOR pattern of red and green points: no single line separates them. Caption: oh no.">
+            <div class="slide-caption">page 53 · XOR: oh no</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>The geometry of classification. Splitting an <math><mi>m</mi></math>-dimensional input space into <math><mi>n</mi></math> class regions is the same as drawing <math><mrow><mi>n</mi><mo>−</mo><mn>1</mn></mrow></math> hyperplanes (lines in 2D, planes in 3D, etc). For "nice" data — the first two grids — one straight line does it. Then comes XOR: red at NE and SW, green at NW and SE. No single straight line separates them.</p>
+        <div class="callout aha">
+          <div class="callout-label">✦ the aha</div>
+          <p>This "oh no" moment is exactly why the field spent a decade after 1969 in the neural-net winter. Minsky and Papert showed that a single-layer perceptron cannot solve XOR. The fix, hinted at on the very next pages, is <strong>composition with a nonlinearity</strong>: bend the input space before you try to cut it, and the problem becomes linearly separable in the bent space.</p>
+        </div>
+      </div>
+
+      <h3><em>"Ain't linear no mo"</em> — why we need nonlinearities</h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p54">
+          <div class="slide-frame">
+            <div class="tag">Page 54 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-54.png" alt="Consider A_1(A_2(⋯) + b_2) + b_1 — a composition of affine maps.">
+            <div class="slide-caption">page 54 · composing affine maps</div>
+          </div>
+        </div>
+        <div class="slide" id="p55">
+          <div class="slide-frame">
+            <div class="tag">Page 55 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-55.png" alt="But that just equals A' x + b' for some A', b'. Composing affine gives you affine.">
+            <div class="slide-caption">page 55 · still affine</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide" id="p56">
+        <div class="slide-frame">
+          <div class="tag">Page 56 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-56.png" alt="Introduce a nonlinearity: f_i(x) = f(A_i x + b_i), then compose f_1(f_2(f_3(⋯))).">
+          <div class="slide-caption">page 56 · add σ, get real</div>
+        </div>
+        <div class="explain">
+          <h4>What this build shows</h4>
+          <p>Why simply stacking linear layers is useless, and what fixes it. Composing two affine maps <math><mrow><mi>x</mi><mo>↦</mo><msub><mi>A</mi><mn>1</mn></msub><mo>(</mo><msub><mi>A</mi><mn>2</mn></msub><mi>x</mi><mo>+</mo><msub><mi>b</mi><mn>2</mn></msub><mo>)</mo><mo>+</mo><msub><mi>b</mi><mn>1</mn></msub></mrow></math> collapses algebraically to a single affine map <math><mrow><msup><mi>A</mi><mo>′</mo></msup><mi>x</mi><mo>+</mo><msup><mi>b</mi><mo>′</mo></msup></mrow></math>. A hundred layers deep, still one affine map. XOR still unsolvable.</p>
+          <p>The fix: sandwich a pointwise <em class="term">nonlinearity</em> <math><mi>σ</mi></math> between the layers. Now the composition <math><mrow><msub><mi>f</mi><mn>1</mn></msub><mo>∘</mo><msub><mi>f</mi><mn>2</mn></msub><mo>∘</mo><msub><mi>f</mi><mn>3</mn></msub><mo>∘</mo><mo>⋯</mo></mrow></math> is a genuinely new function that cannot be flattened. This is why every deep network — from a 1990s MLP to a 2026 transformer — has ReLU, GELU, SiLU, or some other pointwise squish between its linear layers.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="p57">
+        <div class="slide-frame">
+          <div class="tag">Page 57 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-57.png" alt="Universal Approximation Theorem: for any continuous f: K → ℝ^m on compact K and any ε>0, there exist A_1, A_2, b such that sup_{x∈K} ‖f(x) − A_2 σ(A_1 x + b)‖ < ε.">
+          <div class="slide-caption">page 57 · Universal Approximation</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The <em class="term">Universal Approximation Theorem</em>, stated formally. In plain English: given <em>any</em> continuous function on a bounded region, and <em>any</em> tolerance you like, there exists a two-layer network — one linear layer, one nonlinearity, one more linear layer — that agrees with your target function everywhere in the region to within that tolerance.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">◉ what the theorem does and does not promise</div>
+            <p><strong>Does promise:</strong> such a network exists. <strong>Does not promise:</strong> you can find its weights with gradient descent, or that the required width <math><mi>k</mi></math> is small, or that the network generalises to unseen data. UAT is an existence result, not a training guarantee.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p58">
+          <div class="slide-frame">
+            <div class="tag">Page 58 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-58.png" alt="Universal Approximation Theorem (abridged): any continuous function can be approximated by a 2-layer perceptron with arbitrary precision.">
+            <div class="slide-caption">page 58 · UAT, abridged</div>
+          </div>
+        </div>
+        <div class="slide" id="p59">
+          <div class="slide-frame">
+            <div class="tag">Page 59 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-59.png" alt="Universal Approximation Theorem (proof): a cartoon of a unicorn.">
+            <div class="slide-caption">page 59 · uhhhh here's a unicorn</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What these two show</h4>
+        <p>The abridged theorem strips off the epsilons and just says: <em>any continuous function can be approximated by a two-layer network as closely as you like</em>. The next slide, mock-titled "proof", presents a unicorn.</p>
+        <div class="callout aha">
+          <div class="callout-label">✦ the aha (the joke)</div>
+          <p>The joke is that the actual proof (Cybenko 1989, Hornik 1991) is a densely functional-analytic argument involving the Hahn–Banach theorem and the Riesz representation theorem. Nobody wants to reproduce that on a tutorial slide. The unicorn stands in for a proof exactly the way "left as an exercise for the reader" does in textbooks — with the added candour of admitting that it exists more in the imagination than in your notebook right now.</p>
+        </div>
+      </div>
+
+      <h3><em>"Begging the question 101"</em> — the loss</h3>
+
+      <div class="slide" id="p60">
+        <div class="slide-frame">
+          <div class="tag">Page 60 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-60.png" alt="So far we've assumed the correct weights are chosen by some oracle. How do we get them IRL?">
+          <div class="slide-caption">page 60 · but who picks Θ?</div>
+        </div>
+        <div class="explain">
+          <p>Universal approximation guarantees the right <math><mi>Θ</mi></math> exists. It says nothing about how to find it. That is the question the rest of the section answers.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p61">
+          <div class="slide-frame">
+            <div class="tag">Page 61 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-61.png" alt="We know what we want and what the model gives — find a metric to compare them.">
+            <div class="slide-caption">page 61 · we need a metric</div>
+          </div>
+        </div>
+        <div class="slide" id="p62">
+          <div class="slide-frame">
+            <div class="tag">Page 62 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-62.png" alt="Cross-entropy loss: L(f̂(x;Θ), f(x)) = − Σ y_i log(ŷ_i).">
+            <div class="slide-caption">page 62 · cross-entropy loss</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>Define a <em class="term">loss function</em> <math><mi>L</mi></math> that measures how wrong the model is. The <em class="term">cross-entropy loss</em>, the standard for classification and language modelling:</p>
+        <div class="eq boxed">
+          <math display="block">
+            <mrow>
+              <mi>L</mi><mo>(</mo><mover><mi>f</mi><mo>^</mo></mover><mo>(</mo><mi>x</mi><mo>;</mo><mi>Θ</mi><mo>)</mo><mo>,</mo><mi>f</mi><mo>(</mo><mi>x</mi><mo>)</mo><mo>)</mo>
+              <mo>=</mo>
+              <mo>−</mo>
+              <munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>0</mn></mrow><mi>n</mi></munderover>
+              <msub><mi>y</mi><mi>i</mi></msub>
+              <mi>log</mi>
+              <mo>(</mo>
+              <msub><mover><mi>y</mi><mo>^</mo></mover><mi>i</mi></msub>
+              <mo>)</mo>
+            </mrow>
+          </math>
+        </div>
+        <p>where <math><msub><mi>y</mi><mi>i</mi></msub></math> is 1 for the correct class and 0 otherwise, and <math><msub><mover><mi>y</mi><mo>^</mo></mover><mi>i</mi></msub></math> is the model's predicted probability for class <math><mi>i</mi></math>. When the model is confident and right, <math><mrow><mi>log</mi><mo>(</mo><mover><mi>y</mi><mo>^</mo></mover><mo>)</mo></mrow></math> is close to 0 and the loss is small. When it is confident and wrong, <math><mrow><mi>log</mi><mo>(</mo><mover><mi>y</mi><mo>^</mo></mover><mo>)</mo></mrow></math> heads to <math><mrow><mo>−</mo><mo>∞</mo></mrow></math> and the loss explodes. That asymmetry — being punished more for being confidently wrong than for being timidly wrong — is the whole point.</p>
+        <div class="callout link">
+          <div class="callout-label">→ where this goes</div>
+          <p>Training the model = choosing <math><mi>Θ</mi></math> to minimise <math><mrow><mi>L</mi><mo>(</mo><mi>Θ</mi><mo>)</mo></mrow></math>. That is a many-variable minimisation problem. §3 has already taught you how to attack it — gradient descent needs <math><mrow><msub><mo>∇</mo><mi>Θ</mi></msub><mi>L</mi></mrow></math>. The next five pages compute that gradient.</p>
+        </div>
+      </div>
+
+      <h3>Chain rule — <em>the same slides twice, once for chain rule and once for backprop</em></h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p63">
+          <div class="slide-frame">
+            <div class="tag">Page 63 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-63.png" alt="Chain rule clutch, as always. Θ is not a matrix — how do we differentiate wrt each parameter?">
+            <div class="slide-caption">page 63 · the setup</div>
+          </div>
+        </div>
+        <div class="slide" id="p64">
+          <div class="slide-frame">
+            <div class="tag">Page 64 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-64.png" alt="For a 1D perceptron f̂ = f(ax+b), ∂L/∂a = (∂L/∂f̂)(∂f̂/∂(ax+b))(∂(ax+b)/∂a).">
+            <div class="slide-caption">page 64 · one perceptron, one weight</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p65">
+          <div class="slide-frame">
+            <div class="tag">Page 65 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-65.png" alt="Similarly obtain ∂L/∂x and ∂L/∂b.">
+            <div class="slide-caption">page 65 · same idea for x, b</div>
+          </div>
+        </div>
+        <div class="slide" id="p66">
+          <div class="slide-frame">
+            <div class="tag">Page 66 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-66.png" alt="More than one layer: reuse ∂L/∂x with x = output of the previous layer. Chain rule applies again.">
+            <div class="slide-caption">page 66 · deeper networks</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide" id="p67">
+        <div class="slide-frame">
+          <div class="tag">Page 67 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-67.png" alt="This scales over perceptron dimensions (verify!).">
+          <div class="slide-caption">page 67 · and over widths</div>
+        </div>
+        <div class="explain">
+          <h4>What this build shows</h4>
+          <p>How the <em class="term">chain rule</em>, learned in high school, is enough to compute the gradient of the loss with respect to every parameter in a network — no matter how deep, no matter how wide.</p>
+          <h4>The idea</h4>
+          <p>For a single-perceptron model <math><mrow><mover><mi>f</mi><mo>^</mo></mover><mo>=</mo><mi>f</mi><mo>(</mo><mi>a</mi><mi>x</mi><mo>+</mo><mi>b</mi><mo>)</mo></mrow></math>, the loss depends on <math><mi>a</mi></math> through a chain of three steps: <math><mi>a</mi></math> enters the pre-activation <math><mrow><mi>a</mi><mi>x</mi><mo>+</mo><mi>b</mi></mrow></math>, which passes through the nonlinearity <math><mi>f</mi></math> to produce <math><mover><mi>f</mi><mo>^</mo></mover></math>, which enters <math><mi>L</mi></math>. Multiply the three local derivatives together. Same argument works for <math><mi>x</mi></math> and <math><mi>b</mi></math>. And for deeper networks: the <math><mrow><mo>∂</mo><mi>L</mi><mo>/</mo><mo>∂</mo><mi>x</mi></mrow></math> you just computed is exactly the "loss gradient" the previous layer needs — plug it in as the starting point of a fresh chain-rule expansion.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">◉ why "chain rule" and "backprop" are the same slides</div>
+            <p>Because they are the same idea, phrased twice. Chain rule tells you the mathematical fact; backprop tells you how to <em>compute</em> it efficiently — right-to-left, layer by layer, reusing the downstream gradient as you go. The next five slides restate the same content under the label "Backpropagation" to hammer this home.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Backpropagation — <em>the same idea, with a computer in mind</em></h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p68">
+          <div class="slide-frame">
+            <div class="tag">Page 68 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-68.png" alt="Backpropagation setup.">
+            <div class="slide-caption">page 68 · restatement</div>
+          </div>
+        </div>
+        <div class="slide" id="p69">
+          <div class="slide-frame">
+            <div class="tag">Page 69 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-69.png" alt="Backprop for a 1D perceptron.">
+            <div class="slide-caption">page 69 · one perceptron</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p70">
+          <div class="slide-frame">
+            <div class="tag">Page 70 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-70.png" alt="Backprop wrt x and b.">
+            <div class="slide-caption">page 70 · same for x, b</div>
+          </div>
+        </div>
+        <div class="slide" id="p71">
+          <div class="slide-frame">
+            <div class="tag">Page 71 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-71.png" alt="Backprop through more layers.">
+            <div class="slide-caption">page 71 · deeper</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide" id="p72">
+        <div class="slide-frame">
+          <div class="tag">Page 72 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-72.png" alt="Backprop scales over perceptron dimensions (verify!).">
+          <div class="slide-caption">page 72 · and wider</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The exact same five slides, one word swapped: "chain rule" → "backpropagation". The deliberate repetition <em>is</em> the pedagogy.</p>
+          <h4>The idea</h4>
+          <p><em class="term">Backpropagation</em> is what you get when you commit to computing the chain-rule gradients in a specific order: start at the loss (the top of the network), compute <math><mrow><mo>∂</mo><mi>L</mi><mo>/</mo><mo>∂</mo><mo>(</mo><mi>output</mi><mo>)</mo></mrow></math>, and walk backwards through the layers, at each step turning "gradient with respect to this layer's output" into "gradient with respect to this layer's parameters" and "gradient with respect to this layer's input". The second output becomes the first input for the layer below.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>Nothing is happening here that wasn't already in the chain rule. What backprop adds is <strong>dynamic programming</strong>: instead of re-deriving the gradient from scratch for every parameter, you compute the shared intermediate quantities once and reuse them. On a modern network with a billion parameters, this is the difference between minutes and centuries.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Optimisers — <em>from SGD to Muon</em></h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p73">
+          <div class="slide-frame">
+            <div class="tag">Page 73 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-73.png" alt="Stochastic gradient descent minimises L wrt Θ: θ_{k+1} = θ_k − η · ∇_θ L.">
+            <div class="slide-caption">page 73 · SGD</div>
+          </div>
+        </div>
+        <div class="slide" id="p74">
+          <div class="slide-frame">
+            <div class="tag">Page 74 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-74.png" alt="SGD with Momentum, Adam and AdamW are better approaches to the same principle.">
+            <div class="slide-caption">page 74 · momentum, Adam, AdamW</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>Everything from §3 crystallises into one line:</p>
+        <div class="eq boxed">
+          <math display="block">
+            <mrow>
+              <msub><mi>θ</mi><mrow><mi>k</mi><mo>+</mo><mn>1</mn></mrow></msub>
+              <mo>=</mo>
+              <msub><mi>θ</mi><mi>k</mi></msub>
+              <mo>−</mo>
+              <mi>η</mi><mo>·</mo>
+              <msub><mo>∇</mo><mi>θ</mi></msub>
+              <mi>L</mi>
+            </mrow>
+          </math>
+        </div>
+        <p>Note the subscript: the gradient is with respect to <math><mi>θ</mi></math>, not <math><mi>x</mi></math>. Data is fixed; parameters are what we tune. The "S" in SGD is <em class="term">stochastic</em> — we approximate the full gradient by averaging over a random mini-batch of examples at each step, which is faster and, surprisingly, often finds better minima than the exact full-batch version.</p>
+        <h4>Why the family grew</h4>
+        <p>Plain SGD is fine but sensitive to the learning rate and slow in valleys where the loss curves gently along one direction and steeply along another. <em class="term">Momentum</em> adds inertia so you barrel through shallow directions. <em class="term">Adam</em> and <em class="term">AdamW</em> track per-parameter statistics of the gradient's mean and variance and adapt the step size accordingly — think of it as approximating the diagonal of the Hessian on the cheap. All of them are trying to buy Newton-Raphson-style curvature information without paying the Newton-Raphson-style price.</p>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p75">
+          <div class="slide-frame">
+            <div class="tag">Page 75 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-75.png" alt="Newton-Schulz has also been back in the spotlight because of the Muon optimizer.">
+            <div class="slide-caption">page 75 · Newton-Schulz returns</div>
+          </div>
+        </div>
+        <div class="slide" id="p76">
+          <div class="slide-frame">
+            <div class="tag">Page 76 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-76.png" alt="Algorithm 2 Muon: init B_0=0; for t=1,…: G_t ← ∇_θ L_t(θ_{t-1}); B_t ← μ B_{t-1} + G_t; O_t ← NewtonSchulz5(B_t); θ_t ← θ_{t-1} − η O_t.">
+            <div class="slide-caption">page 76 · the Muon algorithm</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>The payoff for the six-page teaser on pages 38–43. The <strong>Muon</strong> optimizer, in five lines:</p>
+        <ol>
+          <li>Compute the usual gradient <math><msub><mi>G</mi><mi>t</mi></msub></math>.</li>
+          <li>Maintain a momentum buffer <math><mrow><msub><mi>B</mi><mi>t</mi></msub><mo>=</mo><mi>μ</mi><msub><mi>B</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>+</mo><msub><mi>G</mi><mi>t</mi></msub></mrow></math>.</li>
+          <li>Run a Newton-Schulz iteration on <math><msub><mi>B</mi><mi>t</mi></msub></math> to <em>orthogonalise</em> it — pushing all its singular values to 1.</li>
+          <li>Take the resulting matrix <math><msub><mi>O</mi><mi>t</mi></msub></math> as the actual update direction.</li>
+          <li>Update <math><mrow><msub><mi>θ</mi><mi>t</mi></msub><mo>=</mo><msub><mi>θ</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>−</mo><mi>η</mi><msub><mi>O</mi><mi>t</mi></msub></mrow></math>.</li>
+        </ol>
+        <div class="callout aha">
+          <div class="callout-label">✦ the aha</div>
+          <p>Muon literally uses the fact from §2 that any matrix factors as <math><mrow><mi>U</mi><mi>Σ</mi><msup><mi>V</mi><mi>T</mi></msup></mrow></math>, plus the fact from §3 that odd polynomials commute with this factorisation, to produce an update that is closer to an orthogonal matrix than plain-gradient methods would give. Every idea in this five-line algorithm was introduced earlier in the tutorial. That is the whole point of ordering the material this way.</p>
+        </div>
+      </div>
+
+      <h3><em>"Pulling up to the function — the function is English"</em></h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p77">
+          <div class="slide-frame">
+            <div class="tag">Page 77 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-77.png" alt="Modern NLP methods treat language as a function: input a tokenised, embedded prompt; output the next token. This is autoregressive LM.">
+            <div class="slide-caption">page 77 · language as a function</div>
+          </div>
+        </div>
+        <div class="slide" id="p78">
+          <div class="slide-frame">
+            <div class="tag">Page 78 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-78.png" alt="But aren't we approximating functions over Euclidean spaces?">
+            <div class="slide-caption">page 78 · but Euclidean, though?</div>
+          </div>
+        </div>
+      </div>
+      <div class="explain">
+        <h4>What this build shows</h4>
+        <p>The moment the tutorial finally says the word "language". Everything we have built — parametrised functions, cross-entropy loss, gradient descent — is deployed on the problem of predicting the next token given a prompt. That prediction problem, chained one token at a time, is <em class="term">autoregressive language modelling</em>. Every LLM you have used is this.</p>
+        <p>Page 78 raises the obvious objection: our machinery approximates functions on <math><msup><mi>ℝ</mi><mi>n</mi></msup></math>. Words are discrete. What gives?</p>
+      </div>
+
+      <h3><em>"Sike! It's maths all the way down"</em></h3>
+
+      <div class="slide-strip cols-2">
+        <div class="slide" id="p79">
+          <div class="slide-frame">
+            <div class="tag">Page 79 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-79.png" alt="Outputting embeddings and discretising to the vocabulary is quite weak.">
+            <div class="slide-caption">page 79 · embeddings, discretised — weak</div>
+          </div>
+        </div>
+        <div class="slide" id="p80">
+          <div class="slide-frame">
+            <div class="tag">Page 80 / 82</div>
+            <img src="../assets/tutorials/T1-math/page-80.png" alt="Instead the output can be a |V|-dimensional vector whose entries are probabilities over the vocabulary — must sum to 1.">
+            <div class="slide-caption">page 80 · probability vector over V</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide" id="p81">
+        <div class="slide-frame">
+          <div class="tag">Page 81 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-81.png" alt="Softmax: softmax(x)_i = e^{-x_i} / Σ_j e^{-x_j}. Applied as the last-layer activation, it forces outputs to be a valid probability distribution.">
+          <div class="slide-caption">page 81 · softmax</div>
+        </div>
+        <div class="explain">
+          <h4>What this build shows</h4>
+          <p>The resolution to page 78's objection. Instead of the network outputting a discrete token (which breaks differentiability), we have it output a <math><mrow><mo>|</mo><mi>V</mi><mo>|</mo></mrow></math>-dimensional vector — one number per token in the vocabulary — that we <em>interpret</em> as a probability distribution over what comes next. Sample from it, or just take the arg-max, whenever you actually need a token.</p>
+          <h4>Enforcing the "probability" part</h4>
+          <p>The output vector has to have non-negative entries that sum to 1. The <em class="term">softmax</em> function is the standard way to enforce both:</p>
+          <div class="eq boxed">
+            <math display="block">
+              <mrow>
+                <mi>softmax</mi><mo>(</mo><mi>x</mi><msub><mo>)</mo><mi>i</mi></msub>
+                <mo>=</mo>
+                <mfrac>
+                  <msup><mi>e</mi><msub><mi>x</mi><mi>i</mi></msub></msup>
+                  <mrow>
+                    <munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mrow><mo>|</mo><mi>V</mi><mo>|</mo></mrow></munderover>
+                    <msup><mi>e</mi><msub><mi>x</mi><mi>j</mi></msub></msup>
+                  </mrow>
+                </mfrac>
+              </mrow>
+            </math>
+          </div>
+          <p>Exponentiate everything to force positivity; divide by the total to force normalisation. Combined with cross-entropy loss (page 62), this is the entire output stage of essentially every language model built in the last decade.</p>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>The very first thing the next tutorial (<a class="xref" href="2-matrices-to-transformers.html">Matrices → Transformers</a>) does is build the middle layers — attention, MLP blocks, layer norm — that sit between the input embedding and the softmax we just introduced. If this page makes sense, you have all the pre-requisite machinery to follow that next tutorial without pausing.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="p82">
+        <div class="slide-frame">
+          <div class="tag">Page 82 / 82</div>
+          <img src="../assets/tutorials/T1-math/page-82.png" alt="Fin.">
+          <div class="slide-caption">page 82 · fin</div>
+        </div>
+        <div class="explain">
+          <p><strong>Fin.</strong> Eighty-two pages, four sections, one loop closed. You started with the definition of a vector space; you ended with the softmax layer of a language model. Every idea in between was in service of that trip, and every idea in the rest of the course either uses or extends what this tutorial set up.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="pager">
+      <a class="prev" href="../lectures/6-more-attention.html">
+        <span class="dir">← back</span>
+        <span class="lbl">06 · More Attention</span>
+      </a>
+      <a class="next" href="2-matrices-to-transformers.html">
+        <span class="dir">next →</span>
+        <span class="lbl">T2 · Matrices → Transformers</span>
+      </a>
+    </div>
+
+    <footer class="foot">
+      <div>Tutorial 01 · Mathematics for Deep Learning · ANLP Monsoon '26</div>
+      <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank" rel="noopener">github ↗</a></div>
+    </footer>
+  </main>
+
+  <aside class="rail-right">
+    <div class="kicker">progress</div>
+    <div class="heatmap-rail" aria-hidden="true"></div>
+    <div class="kicker">sections</div>
+    <div class="rail-toc">
+      <a href="#deck">at a glance</a>
+      <a href="#early">§1 early days</a>
+      <a href="#linalg">§2 linear algebra</a>
+      <a href="#calculus">§3 calculus</a>
+      <a href="#deeplearning">§4 deep learning</a>
+    </div>
+  </aside>
+</div>
+
+<script src="../assets/js/site.js"></script>
+</body>
+</html>

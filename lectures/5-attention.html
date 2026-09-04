@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lecture 5 · Attention — ANLP Study Guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Lecture 5 of Advanced NLP, Monsoon 2026 IIIT-H: attention from first principles — scaled dot-product, multi-head, the KV cache, and the family of variants (Longformer, MQA, GQA, MLA) that shrink it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../assets/css/site.css">
+</head>
+<body>
+<div class="shell">
+
+  <aside class="rail-left">
+    <div class="brand">
+      <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+      <small>ANLP · Monsoon '26</small>
+    </div>
+    <nav>
+      <div class="grp">On this page</div>
+      <a href="#deck">The deck at a glance</a>
+      <a href="#where">§1 · Where attention sits</a>
+      <a href="#core">§2 · Attention as invented</a>
+      <a href="#kvcache">§3 · The KV cache</a>
+      <a href="#longformer">§4 · Longformer</a>
+      <a href="#mqa-gqa">§5 · MQA &amp; GQA</a>
+      <a href="#mla">§6 · Multi-head latent</a>
+      <a href="#landed">§7 · Where the field landed</a>
+
+      <div class="grp">Elsewhere</div>
+      <a href="4-positional-encoding.html">← Prev: Positional Encoding</a>
+      <a href="6-more-attention.html">Next: More Attention →</a>
+      <a href="../index.html">Home</a>
+    </nav>
+  </aside>
+
+  <div class="topbar">
+    <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab notebook</em></a></div>
+    <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+  </div>
+
+  <main>
+    <section class="hero">
+      <div class="kicker">Lecture 05 · 50 slides · August 20, 2026</div>
+      <h1>Attention — <em>the mechanism itself</em>.</h1>
+      <p class="lead">
+        This is the deck the whole course pivots on. Fifty slides that start
+        with the two-line formula for scaled dot-product attention, take it
+        apart to see why the <em class="term">KV cache</em> exists, and then
+        walk through the four families of tweaks the field invented to
+        stop that cache from eating your GPU: sparsifying the attention
+        matrix (<strong>Longformer</strong>), sharing key/value projections
+        across query heads (<strong>MQA</strong> and <strong>GQA</strong>),
+        and finally compressing the cache into a low-rank latent
+        (<strong>MLA</strong>).
+      </p>
+      <div class="meta">
+        <span class="pill heat">Lecture 05</span>
+        <span class="pill">50 slides</span>
+        <span class="pill">Aparajitha · Manish Shrivastava</span>
+      </div>
+    </section>
+
+    <section id="deck">
+      <h2><span class="num">§0</span>The deck at a glance</h2>
+      <p class="section-intro">
+        Fifty slides in seven moves. First a short "where are we" reminder —
+        the attention block is the tan rectangle sitting between the residuals
+        in a transformer layer, and even a modest 1B model spends ~29% of its
+        parameters on it. Then the core math: <em class="term">scaled
+        dot-product attention</em> written out as
+        <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>softmax</mi><mo>(</mo><mi>Q</mi><msup><mi>K</mi><mo>⊤</mo></msup><mo>/</mo><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt><mo>)</mo><mi>V</mi></math>,
+        and the <em class="term">multi-head</em> wrapper around it. Then
+        five slides on the <strong>KV cache</strong> — what it stores, why
+        it matters, and why every optimisation in the rest of the deck is
+        a way to make it smaller. The remaining thirty slides are that
+        family of optimisations, ending on a summary table of which mainstream
+        model uses which variant.
+      </p>
+    </section>
+
+    <hr class="soft">
+
+    <section id="where">
+      <h2><span class="num">§1</span>Where attention sits in the transformer</h2>
+      <p class="section-intro">
+        Before the math, a quick coordinate check. Attention is one specific
+        block inside a much bigger stack, and the parameter budget it consumes
+        is the reason nobody can just ignore it and move on. Three slides do
+        the framing.
+      </p>
+
+      <div class="slide" id="s1">
+        <div class="slide-frame">
+          <div class="tag">Slide 01 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-01.png" alt="Title slide: Attention, Advanced NLP M26, Aparajitha and Manish Shrivastava, August 20 2026, IIIT Hyderabad">
+          <div class="slide-caption">slide 01 · title</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Title card for Lecture 5 of Advanced NLP, Monsoon '26. Delivered by <strong>Aparajitha</strong> and <strong>Manish Shrivastava</strong> on August 20, 2026.</p>
+          <h4>The idea behind it</h4>
+          <p>The word on the slide is just <em>Attention</em>. Not "self-attention", not "the transformer" — the whole lecture treats attention as a mechanism you can take apart and modify, not as one particular fixed formula. That framing matters, because half of the deck is a tour of models that <em>changed</em> the mechanism while still calling it attention.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s2">
+        <div class="slide-frame">
+          <div class="tag">Slide 02 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-02.png" alt="The Vaswani transformer diagram with the encoder's Multi-Head Attention block circled in red and labeled 'Attention'.">
+          <div class="slide-caption">slide 02 · where are we</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The original Vaswani et al. (2017) transformer diagram with the encoder's <strong>Multi-Head Attention</strong> block circled in red. It is one of three attention blocks in the whole architecture — the other two are the <em class="term">masked</em> multi-head attention at the bottom of the decoder (which stops a token from looking at its own future) and the <em class="term">cross</em> multi-head attention above it (which lets the decoder look back at the encoder). All three are the same mechanism with different inputs.</p>
+          <h4>The idea behind it</h4>
+          <p>Reading the diagram vertically: token embeddings enter at the bottom, get an additive positional signal (that was <a class="xref" href="4-positional-encoding.html">Lecture 4</a>), then flow up through <em>N</em> identical layers. Each layer does the same two things — an attention sub-layer followed by a feed-forward sub-layer — with a residual connection and a layer-norm around each. So when we say "the attention lecture", we mean the tan rectangle. Everything else in the diagram is scaffolding around it.</p>
+          <div class="callout link">
+            <div class="callout-label">→ crossref</div>
+            <p>Lecture 2 covered the whole transformer at a survey level; this lecture zooms into just the tan box. Later lectures will replace it with different things (sliding, sparse, state-space) — but the diagram stays the same shape.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s3">
+        <div class="slide-frame">
+          <div class="tag">Slide 03 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-03.png" alt="Parameter count table for a ~1B model. V=32000, d=2048, n=2048, dq=128, h=16, l=16. Token embedding 65M (6.95%), positional embedding 4.2M (0.44%), Attention 268M (28.63%), FFNN 536M (57.37%), Decoding 65M (6.95%), Bias+LayerNorm 0.3M (0.03%), Total 935.8M.">
+          <div class="slide-caption">slide 03 · parameter budget for a 1B model</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>A back-of-envelope parameter count for a ~1B-parameter model with vocab 32k, embedding dim <code>d</code> = 2048, context <code>n</code> = 2048, per-head dim <code>d<sub>q</sub></code> = 128, and 16 heads across 16 layers. The right-hand column is the fraction of the whole model each component takes:</p>
+          <table class="tbl">
+            <thead><tr><th>Component</th><th>Calc</th><th>Params</th><th>%</th></tr></thead>
+            <tbody>
+              <tr><td>Token embedding</td><td><code>V·d</code></td><td>65M</td><td>6.95</td></tr>
+              <tr><td>Positional embedding</td><td><code>n·d</code></td><td>4.2M</td><td>0.44</td></tr>
+              <tr><td>Attention</td><td><code>4·d<sub>q</sub>·d·h·l</code></td><td>268M</td><td>28.63</td></tr>
+              <tr><td>FFN</td><td><code>2·d·4d·l</code></td><td>536M</td><td>57.37</td></tr>
+              <tr><td>Output head</td><td><code>d·V</code></td><td>65M</td><td>6.95</td></tr>
+              <tr><td>Bias &amp; LayerNorm</td><td>—</td><td>~0.3M</td><td>0.03</td></tr>
+            </tbody>
+          </table>
+          <h4>The idea behind it</h4>
+          <p>The attention block is <strong>29% of the parameters</strong> of a modern LM. The four in <code>4·d<sub>q</sub>·d·h·l</code> is the four projection matrices per layer — <em class="term">W<sub>Q</sub></em>, <em class="term">W<sub>K</sub></em>, <em class="term">W<sub>V</sub></em>, and the output projection <em class="term">W<sub>O</sub></em>. Multiply by heads <em>h</em> and layers <em>l</em> and you get 268M for a single-billion-parameter model.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>Attention is not the biggest component — the feed-forward network is, at 57%. But attention is the one that scales quadratically with sequence length at <em>inference</em> time, and its per-token memory (the <em class="term">KV cache</em>, §3) is what actually breaks when you try to run these models on real workloads. That is why the field spends so much effort making attention smaller, and almost none making the FFN smaller.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="core">
+      <h2><span class="num">§2</span>Attention as it was invented</h2>
+      <p class="section-intro">
+        Four slides. The scaled dot-product formula, the multi-head wrapper
+        around it, and an honest accounting of what those two constructions
+        buy you and what they cost. Every variant in the rest of the deck is
+        pushing on one of these three levers — the projections, the softmax,
+        or the number of heads.
+      </p>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 04 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-04.png" alt="Self Attention: Scaled Dot-Product Attention diagram — Q and K enter a MatMul, then Scale, then optional Mask, then SoftMax, then a second MatMul with V. Cites Vaswani et al. 2017.">
+          <div class="slide-caption">slide 04 · scaled dot-product attention</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 05 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-05.png" alt="Multi-Head Attention diagram — V, K, Q each pass through h parallel Linear projections, feed into h Scaled Dot-Product Attention modules, whose outputs are concatenated and passed through a final Linear.">
+          <div class="slide-caption">slide 05 · multi-head attention</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>The two diagrams from the <em>Attention Is All You Need</em> paper, side by side. Slide 4 is one <em class="term">attention head</em>: three inputs called <strong>Q</strong> (query), <strong>K</strong> (key) and <strong>V</strong> (value), a matrix-multiply that computes similarity between every query and every key, a division by <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></math> (the "scale"), an optional mask (used in the decoder), a row-wise softmax, and a final matrix-multiply that mixes the value vectors according to those weights. Slide 5 is the multi-head wrapper — the same operation done <em>h</em> times in parallel with different learned projections, then concatenated and mixed by one more linear.</p>
+          <h4>The idea behind it</h4>
+          <p>Every token gets to project itself into three roles at once. Its <em class="term">query</em> is what it is <em>looking for</em>. Its <em class="term">key</em> is a label saying what it <em>is</em>. Its <em class="term">value</em> is the payload it will contribute if a query decides it is relevant. The whole operation, for a batch of <em>n</em> tokens, collapses to one equation:</p>
+          <div class="eq boxed">
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+              <mi>Attention</mi><mo>(</mo><mi>Q</mi><mo>,</mo><mi>K</mi><mo>,</mo><mi>V</mi><mo>)</mo>
+              <mo>=</mo>
+              <mi>softmax</mi>
+              <mrow><mo>(</mo>
+                <mfrac>
+                  <mrow><mi>Q</mi><msup><mi>K</mi><mo>⊤</mo></msup></mrow>
+                  <msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt>
+                </mfrac>
+              <mo>)</mo></mrow>
+              <mspace width="0.2em"/>
+              <mi>V</mi>
+            </math>
+          </div>
+          <p>The <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>Q</mi><msup><mi>K</mi><mo>⊤</mo></msup></math> matrix is <em>n</em> × <em>n</em>: entry (<em>i</em>, <em>j</em>) is the dot product of query <em>i</em> with key <em>j</em>. Softmax turns each row into a probability distribution over tokens, and that distribution reweights the values. The division by <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msqrt><msub><mi>d</mi><mi>k</mi></msub></msqrt></math> keeps the pre-softmax logits from growing large with the dimension of the key vectors, which would push the softmax into a near-argmax and kill gradients.</p>
+          <h4>Why multi-head</h4>
+          <p>The multi-head version splits the <code>d</code>-dimensional embedding into <em>h</em> smaller <code>d/h</code>-dimensional slices and runs the same attention operation on each slice with its own Q, K, V projections. Then the outputs are concatenated back and multiplied by <em class="term">W<sub>O</sub></em>. Each head can specialise: one might attend to the previous token, another to the subject-verb agreement, another to the discourse antecedent. The final linear lets the model mix those specialists back into a single stream.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">⚙ the shape of one head</div>
+            <p>Given input <em>X</em> of shape (<em>n</em>, <em>d</em>): <em>Q</em> = <em>X W<sub>Q</sub></em>, <em>K</em> = <em>X W<sub>K</sub></em>, <em>V</em> = <em>X W<sub>V</sub></em>, each of shape (<em>n</em>, <em>d<sub>k</sub></em>). The attention output is (<em>n</em>, <em>d<sub>v</sub></em>). In the paper <em>d<sub>k</sub></em> = <em>d<sub>v</sub></em> = <em>d</em>/<em>h</em>, so the concat of <em>h</em> heads has shape (<em>n</em>, <em>d</em>) again — and <em>W<sub>O</sub></em> is (<em>d</em>, <em>d</em>). The multi-head block preserves the input shape.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s6">
+        <div class="slide-frame">
+          <div class="tag">Slide 06 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-06.png" alt="Multi Head Attention — Gains: Parallelization; Long distance dependency.">
+          <div class="slide-caption">slide 06 · gains</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Two things multi-head attention buys you.</p>
+          <ul>
+            <li><strong>Parallelization.</strong> The whole (<em>n</em>, <em>n</em>) attention matrix is one dense matrix multiply on the GPU. Every query in the sequence can look at every key at the same time. Contrast this with a recurrent network, which has to process token 1, then token 2, then token 3, sequentially.</li>
+            <li><strong>Long distance dependency.</strong> The path length between any two tokens is exactly 1 attention operation — a query at position 1000 can attend to a key at position 1 in a single layer. A recurrent network needs 999 update steps to move information across that same span, and information decays along the way.</li>
+          </ul>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>The transformer beat the LSTM on machine translation not because attention was <em>smarter</em>, but because attention <em>parallelises</em>. Every token in a batch computes its output in one GPU-friendly matrix multiply, so you can throw hardware at it and train on much more data in the same wall-clock time.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s7">
+        <div class="slide-frame">
+          <div class="tag">Slide 07 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-07.png" alt="Multi Head Attention — Drawbacks: Quadratic computation in self-attention, high compute and memory costs O(n^2); Redundant heads; Slow inference; Extremely large KV cache.">
+          <div class="slide-caption">slide 07 · drawbacks</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Three ways the default multi-head attention costs you, and they are exactly the three problems the rest of the deck tries to fix.</p>
+          <ul>
+            <li><strong>Quadratic compute and memory in <em>n</em>.</strong> The <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>Q</mi><msup><mi>K</mi><mo>⊤</mo></msup></math> matrix has <em>n</em>² entries. Double the sequence length, and both the FLOPs to compute it and the memory to store it go up by 4×. This is the reason a plain transformer chokes on a 100k-token context.</li>
+            <li><strong>Redundant heads.</strong> Empirical analyses (Michel et al. 2019; Voita et al. 2019) show that most heads in a trained model can be pruned without hurting performance. You are paying for capacity that is not doing distinct work.</li>
+            <li><strong>Slow inference &amp; extremely large KV cache.</strong> At inference time, you regenerate one token at a time, and you need to keep the keys and values of every previous token in memory. For long contexts and large models that <em class="term">KV cache</em> is enormous — bigger than the model itself in some regimes.</li>
+          </ul>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>The quadratic-cost problem is answered by <strong>Longformer</strong> (§4) and, more ambitiously, by state-space models and Flash Attention in <a class="xref" href="6-more-attention.html">Lecture 6</a>. The KV-cache-size problem is answered by <strong>MQA</strong>, <strong>GQA</strong> and <strong>MLA</strong> (§§5–6).</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="kvcache">
+      <h2><span class="num">§3</span>The KV cache — <em>why every optimisation targets it</em></h2>
+      <p class="section-intro">
+        Six slides on the single most consequential engineering detail in
+        modern LLM inference. When a decoder-only transformer generates text
+        one token at a time, it does not need to re-compute keys and values
+        for the tokens it has already seen — those are functions of the input
+        only, and they don't change. Caching them turns generation from
+        <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math>
+        per-token compute into
+        <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>n</mi><mo>)</mo></math>.
+        The catch is memory: that cache <em>is</em> the working state of the
+        model at inference, and it grows every time you emit a token.
+      </p>
+
+      <div class="slide" id="s8">
+        <div class="slide-frame">
+          <div class="tag">Slide 08 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-08.png" alt="KV Computation: QK^T shown as a 4x4 matrix of dot products q_i · k_j, alongside V as a column of value vectors v_0..v_3.">
+          <div class="slide-caption">slide 08 · what attention actually computes</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The (<em>n</em>, <em>n</em>) similarity matrix <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>Q</mi><msup><mi>K</mi><mo>⊤</mo></msup></math> written out for a 4-token sequence. Row <em>i</em> is the dot products of query <em>q<sub>i</sub></em> against every key <em>k<sub>0</sub></em>, <em>k<sub>1</sub></em>, <em>k<sub>2</sub></em>, <em>k<sub>3</sub></em>. Below it, the value matrix <em>V</em> stacked as one row per token.</p>
+          <h4>The idea behind it</h4>
+          <p>Two observations sit under this innocuous-looking picture. First, every entry of the matrix costs one dot product, so the matrix costs <em>n</em>² dot products. Second — and this is the one that motivates the cache — the keys <em>k<sub>0</sub></em>…<em>k<sub>3</sub></em> and values <em>v<sub>0</sub></em>…<em>v<sub>3</sub></em> are computed from the input tokens by fixed projections, so they don't change once the token has been seen. Only the last row of the matrix (the queries from the newest token) is genuinely new work.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s9">
+        <div class="slide-frame">
+          <div class="tag">Slide 09 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-09.png" alt="KV Cache — Motivation: Optimization for compute efficiency; Store intermediate K and V computations for reuse during inference; caching mechanism that stores previously generated key and value vectors; Avoid unnecessary re-computations.">
+          <div class="slide-caption">slide 09 · why cache</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The rationale in one bullet list: at inference, we should store the previously computed K and V vectors and reuse them, rather than recomputing the whole prefix every step.</p>
+          <h4>The idea behind it</h4>
+          <p>Autoregressive generation is the loop: <em>given tokens 1…t, produce token t+1</em>. Naively that means running the whole transformer on the growing prefix each time — a lot of duplicated work. But the K and V for tokens 1…<em>t</em> are the same whether you are generating token <em>t</em>+1 or <em>t</em>+2. So we compute them once, park them in GPU memory, and on the next step we only compute K and V for the single new token and append them.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">⚙ the loop, per layer, per step</div>
+            <p>New token <em>x<sub>t</sub></em> comes in → project it to <em>q<sub>t</sub></em>, <em>k<sub>t</sub></em>, <em>v<sub>t</sub></em>. Append <em>k<sub>t</sub></em>, <em>v<sub>t</sub></em> to the cache. Attention output for position <em>t</em> is <em>q<sub>t</sub></em> against every cached key, softmax-weighted mix of every cached value. New work: one row of the attention matrix, not the full matrix.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s10">
+        <div class="slide-frame">
+          <div class="tag">Slide 10 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-10.png" alt="Diagram from Sebastian Raschka's KV cache blog: two rows showing token-by-token attention for 'Time flies' and then 'Time flies fast'. The k/v vectors for 'Time' and 'flies' are identical between the two rows, marked as 'Repeated computations'; only the k/v/q for 'fast' is new.">
+          <div class="slide-caption">slide 10 · repeated computation, visualised</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>A visualisation borrowed from Sebastian Raschka's KV-cache write-up. The top row generates one step of "<em>Time flies</em>". The bottom row generates the next step, "<em>Time flies fast</em>". Notice that the key and value vectors for "<em>Time</em>" (red circle) and "<em>flies</em>" (blue circle) are literally the same numbers in both rows — the projections don't depend on anything downstream. Only the vectors for the new token "<em>fast</em>" are genuinely new.</p>
+          <h4>The idea behind it</h4>
+          <p>If you were doing this without a cache, you would recompute those red and blue circles every single step of generation. For a 4k-token output that means computing <em>k</em><sub>0</sub> about 4000 times. The KV cache is the observation that you can just save them.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s11">
+        <div class="slide-frame">
+          <div class="tag">Slide 11 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-11.png" alt="KV Cache: the same 4x4 QK^T matrix as slide 8, but with the top three rows greyed out and only the last row (q_3 against every k) drawn in solid black. V is shown alongside.">
+          <div class="slide-caption">slide 11 · only the last row is new</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The same 4-token attention matrix from slide 8, but with the first three rows drawn in grey and only the last row — <em>q<sub>3</sub></em> against <em>k<sub>0</sub></em>, <em>k<sub>1</sub></em>, <em>k<sub>2</sub></em>, <em>k<sub>3</sub></em> — drawn in black. That black row is what the model actually computes when it is emitting the 4th token, given the cache.</p>
+          <h4>The idea behind it</h4>
+          <p>The grey rows already happened, in earlier steps. They are baked into the outputs the model has already emitted. From the current step's point of view they are history — you never need them again. This is why the cache stores K and V (needed to be multiplied against future queries) but does not need to store past Q, and does not need to store the past attention matrix itself.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>The KV cache is <em>the</em> reason inference cost per token stays linear in context length even though training cost is quadratic. Every 1000-token completion you get from a chatbot is riding on this trick.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s12">
+        <div class="slide-frame">
+          <div class="tag">Slide 12 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-12.png" alt="KV Cache — Drawbacks: Complex to the code; Increased memory requirements; Can't be used during training. Bottom in blue: 'Inference speed-ups are often worth the trade-offs in production'.">
+          <div class="slide-caption">slide 12 · what the cache costs</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Three real costs of the cache, and a one-line verdict.</p>
+          <ul>
+            <li><strong>Code complexity.</strong> Every layer needs a place to stash the growing cache, and the attention kernel needs a "prefill" mode (compute the whole prefix at once, populate the cache) and a "decode" mode (one token at a time, append to the cache).</li>
+            <li><strong>Memory.</strong> The cache <em>is</em> a per-request working buffer sitting in GPU memory. It scales with <em>context length × layers × heads × head-dim</em> — and we will do the actual arithmetic on slide 13.</li>
+            <li><strong>Training.</strong> Training uses <em>teacher forcing</em> — the whole sequence is present at once, so the model computes attention for every position in parallel and there is nothing to cache. The KV cache is an inference-only optimisation.</li>
+          </ul>
+          <h4>Why we accept those costs</h4>
+          <p>The blue bottom line says it: at inference, the speed-up is enormous — you go from <em>O</em>(<em>n</em>) work per token to <em>O</em>(1) work per token for the K/V projections, and from re-running the whole prefix through the model to just the new token. Every production LLM serving stack uses it.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s13">
+        <div class="slide-frame">
+          <div class="tag">Slide 13 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-13.png" alt="MHA Parameter Counts for a 1B model. K: d_h*d*h*l = 4M/layer, 67M total, 256 MB. Q: same. V: 2*d_h*d*h*l = 8M/layer, 134M, 512 MB. KV Cache: n*l*2*d_h*h = 8M/layer, 134M, 512 MB. Note: 4 bytes at FP32, 2 at FP16/BF16, 1 at FP8/INT8.">
+          <div class="slide-caption">slide 13 · MHA cache footprint on a 1B model</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The <em>numbers</em>. For our reference 1B model (<code>d</code> = 2048, <code>n</code> = 2048, <code>d<sub>h</sub></code> = 128, 16 heads, 16 layers):</p>
+          <ul>
+            <li><em>W<sub>K</sub></em> and <em>W<sub>Q</sub></em> — 67M parameters each, 256 MB each in FP16.</li>
+            <li><em>W<sub>V</sub></em> (bundled with <em>W<sub>O</sub></em>, hence the 2×) — 134M parameters, 512 MB.</li>
+            <li><strong>KV cache</strong> for a full 2048-token context — 134M elements, <strong>512 MB</strong> per request in FP16.</li>
+          </ul>
+          <h4>The idea behind it</h4>
+          <p>Read that last line again. For a single 1B model serving a single 2k-context request, the cache is <em>half a gigabyte</em>. Scale to a 70B model with 128k context and dozens of concurrent users and the KV cache becomes the dominant memory user on the GPU — bigger than the model weights themselves. Every optimisation from §4 onwards in this lecture is a different attempt to make that number smaller without hurting quality.</p>
+          <div class="callout gotcha">
+            <div class="callout-label">⚠ per request</div>
+            <p>The model weights are shared across all users on a GPU. The KV cache is <em>not</em> — every concurrent request gets its own. So multi-user serving multiplies the KV cost, not the weight cost. This is why cache-size optimisations are the highest-leverage change you can make to a serving stack.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="longformer">
+      <h2><span class="num">§4</span>Longformer — <em>sparsifying the attention matrix</em></h2>
+      <p class="section-intro">
+        The first attack on the <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math>
+        cost is the simplest: don't compute every entry of the attention
+        matrix. Longformer (Beltagy, Peters &amp; Cohan, 2020) picks a
+        <em class="term">pattern</em> of cells that are worth computing and
+        zeros out the rest. Seven slides walk through the roadmap slide first,
+        then the three patterns Longformer combines.
+      </p>
+
+      <div class="slide" id="s14">
+        <div class="slide-frame">
+          <div class="tag">Slide 14 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-14.png" alt="Attention Alternatives / Research: Mechanism Changes — Longformer, Grouped Query Attention (LLaMA, Qwen), Multi Head Latent Attention (DeepSeek, Kimi), Linear Attention, Scaled Attention, Scaled Delta Nets. Compute Optimization — Flash Attention, Ring Attention.">
+          <div class="slide-caption">slide 14 · the whole roadmap</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The taxonomy for the rest of the deck (and much of the next lecture). Two buckets:</p>
+          <ul>
+            <li><strong>Mechanism changes</strong> — Longformer (sparse pattern), Grouped Query Attention (LLaMA, Qwen), Multi Head Latent Attention (DeepSeek, Kimi), Linear Attention, Scaled Attention, Scaled Delta Nets. These change what attention <em>is</em>.</li>
+            <li><strong>Compute optimisation</strong> — Flash Attention, Ring Attention. These leave the math untouched and just execute it more cleverly on the GPU (Flash) or across multiple GPUs (Ring).</li>
+          </ul>
+          <h4>How to read this slide</h4>
+          <p>The rest of Lecture 5 covers the top three in the left column: Longformer, MQA/GQA and MLA. The compute-optimisation bucket and Flash/Ring specifically are the subject of <a class="xref" href="6-more-attention.html">Lecture 6</a>. Linear Attention and Scaled Delta Nets will appear in the alternate-architectures block later in the semester.</p>
+          <div class="callout link">
+            <div class="callout-label">→ crossref</div>
+            <p>Grouped Query Attention is listed under "LLaMA, Qwen" because those model families made it standard. MLA under "DeepSeek, Kimi" for the same reason — you can trust the model tag as a hint about which family invented or popularised each variant.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 15 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-15.png" alt="Section divider titled 'Longformer Attention' on white background.">
+          <div class="slide-caption">slide 15 · section divider</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 16 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-16.png" alt="Longformer — Motivation: Solve quadratic scaling of self-attention; Introduce attention mechanism that linearly scales with sequence length; Useful for long documents; Sparsify the full self-attention matrix according to an 'attention pattern'; Local windowed attention with task-specific global attention. Cites Beltagy, Peters & Cohan 2020.">
+          <div class="slide-caption">slide 16 · Longformer motivation</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>A section-header slide and the paper's elevator pitch. Longformer is the "long-document transformer" — a variant of the transformer whose attention scales <em>linearly</em> in sequence length instead of quadratically, by <em class="term">sparsifying</em> the attention matrix according to a fixed <em class="term">attention pattern</em>. The pattern combines <em class="term">local windowed attention</em> (each token looks at its neighbours) with a small amount of <em class="term">task-specific global attention</em> (a few designated tokens look at everything).</p>
+          <h4>The idea behind it</h4>
+          <p>The <em>n</em>² cost comes from filling every cell of the attention matrix. But intuitively you don't need every cell — most tokens in a long document are irrelevant to any given other token. If we restrict the matrix to a sparse set of cells, we cut the cost. The design question is: <em>which</em> cells to keep. Longformer's answer is three overlapping patterns, coming on the next three slides.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s17">
+        <div class="slide-frame">
+          <div class="tag">Slide 17 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-17.png" alt="Longformer — Sliding Window pattern: fixed window size w, each token attends to 1/2 w tokens on each side, O(n×w) complexity, may use different w per layer, similar to CNN. Diagram shows a banded diagonal green stripe on a black-outlined square attention matrix.">
+          <div class="slide-caption">slide 17 · sliding window</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The first Longformer pattern. Each token attends only to a window of width <em>w</em> around it (<em>w</em>/2 to the left, <em>w</em>/2 to the right). The picture is the attention matrix with a green band along the diagonal — all cells outside that band are zeroed out.</p>
+          <h4>The idea behind it</h4>
+          <p>Cost drops from <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math> to <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>n</mi><mi>w</mi><mo>)</mo></math>, which is <strong>linear in <em>n</em></strong> when <em>w</em> is fixed. The "similar to CNN" note is the honest defence of the design: a single sliding-window layer only reaches <em>w</em>/2 neighbours, but stacking <em>L</em> layers gives you a <em class="term">receptive field</em> of <em>L</em>·<em>w</em>/2 — the way a stack of 3×3 convolutions can eventually see the whole image. Distant tokens can still influence each other, just indirectly, over several layers.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">⚙ layer-varying <em>w</em></div>
+            <p>Longformer sometimes uses small <em>w</em> in the lower layers (focus on local context) and larger <em>w</em> in the higher layers (broader synthesis). The receptive-field argument still works, just with a variable stride.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s18">
+        <div class="slide-frame">
+          <div class="tag">Slide 18 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-18.png" alt="Longformer — Dilated Sliding Window: window has gaps of size dilation d, different dilation configurations per head — without dilation to focus on local, with dilation for longer context, improved performance. Diagram shows a striped diagonal with gaps.">
+          <div class="slide-caption">slide 18 · dilated sliding window</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The second pattern. The window still slides along the diagonal, but with <em class="term">gaps</em> of size <em>d</em> between attended cells — like the dilated convolutions in WaveNet. Different heads use different dilations: some without dilation for local context, some with large dilation for far-reaching context, all in the same layer.</p>
+          <h4>The idea behind it</h4>
+          <p>A dense window of width <em>w</em> covers a stretch of <em>w</em> tokens. A dilated window of width <em>w</em> with dilation <em>d</em> covers a stretch of <em>w</em>·<em>d</em> tokens (but only sees <em>w</em> of them, at strides of <em>d</em>). So for the same compute budget, dilation extends the receptive field. Making different heads use different dilations means a single layer can simultaneously reason about local and long-range structure.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s19">
+        <div class="slide-frame">
+          <div class="tag">Slide 19 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-19.png" alt="Longformer — Global Attention: local attention not flexible enough to learn task-specific representations; global attention on few pre-selected inputs — attends to all tokens across the sequence, all tokens attend to it. Examples: Classification uses [CLS] token, QA uses all question tokens. Diagram shows band diagonal plus two full cross-shaped rows and columns.">
+          <div class="slide-caption">slide 19 · global attention</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The third pattern. A small number of <em>pre-selected</em> tokens get <em>global attention</em>: they attend to every token in the sequence, and every token attends to them. In the picture, that shows up as two full rows and two full columns of green on top of the band.</p>
+          <h4>The idea behind it</h4>
+          <p>Local patterns can miss the point of a task. For classification, the <code>[CLS]</code> token needs to look at the whole document to produce a summary — a band around <code>[CLS]</code> is not enough. For extractive question-answering, every candidate answer span needs to attend to <em>every question token</em>. So Longformer lets you nominate a handful of tokens as "global" per task, and pays for those extra rows and columns. The cost stays <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>O</mi><mo>(</mo><mi>n</mi><mo>)</mo></math> because the number of global tokens is a small constant.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>This is where Longformer stops being a pure architecture and becomes task-aware. You <em>choose</em> which tokens are global based on the task you are training for. That is unusual — most transformer variants are task-agnostic.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 20 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-20.png" alt="Longformer — Gains: O(n) complexity on combined local and global attentions.">
+          <div class="slide-caption">slide 20 · gains</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 21 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-21.png" alt="Longformer — Drawbacks: Potential for information loss (small windows in lower layers, larger in higher; top layers may learn higher-level rep while lower ones capture local information); Task specific global attention studied only for QA, coreference resolution, document classification; May not have significant improvement in tasks that need shorter local context.">
+          <div class="slide-caption">slide 21 · drawbacks</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>Gains: linear complexity in <em>n</em>. Drawbacks: three, worth reading carefully.</p>
+          <ul>
+            <li><strong>Information loss.</strong> A narrow window can starve the lower layers of context. The paper's recipe is to use small <em>w</em> low in the stack (local features) and larger <em>w</em> high in the stack (whole-sequence synthesis), on the analogy of CNN receptive fields.</li>
+            <li><strong>Task-specific global attention.</strong> Longformer has only been carefully studied for QA, coreference resolution and document classification. For a new task, the "which tokens are global?" question is a modelling decision you have to make yourself.</li>
+            <li><strong>May not help short-context tasks.</strong> If your inputs comfortably fit in 512 tokens, a plain transformer is fine and Longformer's overhead may not pay off.</li>
+          </ul>
+          <div class="callout link">
+            <div class="callout-label">→ crossref</div>
+            <p>Longformer is the archetype of the sliding-window family. <a class="xref" href="6-more-attention.html">Lecture 6</a> generalises this to a whole taxonomy of sparse patterns — BigBird, GPT-2's local attention, and so on — all of which are variants on "which cells of the matrix do we compute".</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="mqa-gqa">
+      <h2><span class="num">§5</span>MQA and GQA — <em>fewer keys and values</em></h2>
+      <p class="section-intro">
+        The KV cache is big because there are <em>many heads</em> and each head
+        has its own K and V. What if several query heads shared a single K
+        and V? That is <em class="term">multi-query attention</em>
+        (Shazeer 2019). And what if we tuned the sharing ratio, so it was
+        less aggressive? That is <em class="term">grouped-query attention</em>
+        (Ainslie et al. 2023). Fifteen slides walk through both.
+      </p>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 22 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-22.png" alt="Section divider titled 'Multi Query Attention' on white background.">
+          <div class="slide-caption">slide 22 · section divider</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 23 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-23.png" alt="Multi Query Attention — Motivation: Slow incremental inference (not parallelizable) — repeated loading of key and value tensors; Reduce size of Key and Value tensors. Cites Shazeer 2019.">
+          <div class="slide-caption">slide 23 · MQA motivation</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>Section header, then the motivation for Shazeer's <em>Fast Transformer Decoding: One write-head is all you need</em> (2019). Two problems the paper is trying to solve:</p>
+          <ul>
+            <li><strong>Slow incremental inference.</strong> During generation you emit one token at a time. That is inherently serial (each token depends on the previous one). And every step re-loads the K and V tensors from memory to compute new attention — that memory bandwidth becomes the bottleneck.</li>
+            <li><strong>Big K/V tensors.</strong> The KV cache is <em>h</em> × per-head-size × sequence-length. Bring <em>h</em> down and the cache shrinks proportionally.</li>
+          </ul>
+          <h4>Why "one write-head"</h4>
+          <p>The paper's title is metaphorical: in MHA every head "writes" its own K and V. Shazeer's paper says only <em>one</em> write-head is needed — many query heads can share the same K and V. Hence <em class="term">Multi-Query Attention</em>.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 24 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-24.png" alt="Multi Query Attention — Approach: Multiple Query Heads; Single Key and Value shared across heads.">
+          <div class="slide-caption">slide 24 · MQA approach</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 25 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-25.png" alt="Multi Query Attention diagram: one single blue k rectangle and one orange v rectangle at the top, sitting above four red q rectangles at the bottom, with lines from k down to each q.">
+          <div class="slide-caption">slide 25 · one K, one V, many Qs</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>Slide 24 states the recipe: keep <em>h</em> query heads (so each still has its own <em>W<sub>Q<sub>i</sub></sub></em>), but collapse to a <em>single</em> pair of <em>W<sub>K</sub></em> and <em>W<sub>V</sub></em> shared by all heads. Slide 25 is the picture: four <em>q</em> boxes at the bottom, one shared <em>k</em> and one shared <em>v</em> at the top.</p>
+          <h4>The idea behind it</h4>
+          <p>Nothing in the attention math requires that the K and V be per-head. If every query head asks its questions in a slightly different way but the answers all come from the same knowledge, you can share the answer store. Each head still does its own softmax and its own weighted sum — it is only the K and V projections that are shared.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">⚙ the arithmetic saving</div>
+            <p>MHA cache scales as <em>2 · h · d<sub>h</sub> · n · l</em> (factor of 2 for K and V). MQA cache scales as <em>2 · d<sub>h</sub> · n · l</em> — the <em>h</em> is gone. For our 1B model with <em>h</em> = 16, that is a 16× reduction in KV memory.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s26">
+        <div class="slide-frame">
+          <div class="tag">Slide 26 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-26.png" alt="MQA parameter counts for 1B model. K: d_h*d*l = 0.26M/layer, 4M total, 16 MB. Q: unchanged, 67M, 256 MB. V: 2*d_h*d*l = 0.52M/layer, 8M, 32 MB. KV Cache: n*l*2*d_h = 0.524M/layer, 8M, 32 MB.">
+          <div class="slide-caption">slide 26 · MQA parameter footprint</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Same 1B model, but with MQA. Compare against MHA (slide 13):</p>
+          <table class="tbl">
+            <thead><tr><th>Component</th><th>MHA</th><th>MQA</th><th>Ratio</th></tr></thead>
+            <tbody>
+              <tr><td><em>W<sub>K</sub></em> params</td><td>67M</td><td>4M</td><td>1/16</td></tr>
+              <tr><td><em>W<sub>Q</sub></em> params</td><td>67M</td><td>67M</td><td>1</td></tr>
+              <tr><td><em>W<sub>V</sub></em> params</td><td>134M</td><td>8M</td><td>1/16</td></tr>
+              <tr><td><strong>KV cache</strong></td><td><strong>512 MB</strong></td><td><strong>32 MB</strong></td><td><strong>1/16</strong></td></tr>
+            </tbody>
+          </table>
+          <h4>Why the numbers are so much smaller</h4>
+          <p>Any factor that was multiplied by <em>h</em> for K and V — the projection matrices and the cache — divides by <em>h</em>. The query projection <em>W<sub>Q</sub></em> is unchanged because we still have <em>h</em> query heads. In FP16 the KV cache for a 2k-context request goes from 512 MB to 32 MB. That is a serving-scale difference.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 27 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-27.png" alt="MQA — Gains: Much lower memory-bandwidth requirements in the incremental setting.">
+          <div class="slide-caption">slide 27 · MQA gains</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 28 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-28.png" alt="MQA — Drawbacks: Issues with using MQA for training — reduced quality and capacity due to shared K,V; maybe too simplified to learn and find optimal parameters. Address only reloading key-value during inference. Train a model just for faster inference?">
+          <div class="slide-caption">slide 28 · MQA drawbacks</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>The trade. Gains: memory-bandwidth in incremental (single-token) decoding drops dramatically, because the loaded K and V tensors are 16× smaller. Drawbacks:</p>
+          <ul>
+            <li><strong>Reduced quality.</strong> One shared K/V pair may not be expressive enough. Different heads had different learned Ks and Vs for a reason.</li>
+            <li><strong>Only helps inference.</strong> Training does not use the KV cache, so training-time compute is barely affected. That leads to an uncomfortable question: <em>should we train a model in a way that hurts training quality just to speed up inference?</em></li>
+          </ul>
+          <p>The paper's own answer is "yes, if the quality loss is small enough". But the field's answer, a few years later, was "no — do <strong>grouped</strong>-query instead". That is the next block of slides.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 29 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-29.png" alt="Section divider titled 'Grouped Query Attention'.">
+          <div class="slide-caption">slide 29 · section divider</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 30 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-30.png" alt="Grouped Query Attention — Motivation: Mitigate quality degradation of MQA; Achieve quality close to MHA and speed to MQA. Bottom in script: 'Interpolation between multi-head and multi-query attention with single key and value heads per subgroup of query heads.' Cites Ainslie et al. 2023.">
+          <div class="slide-caption">slide 30 · GQA motivation</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>Section header, then the motivation for Grouped-Query Attention (Ainslie et al. 2023). GQA is explicitly an <em class="term">interpolation</em> between MHA and MQA: MHA has one K and V per head, MQA has one K and V shared across all heads, GQA has one K and V per <em>group</em> of heads. Choose the group count and you slide between the two extremes.</p>
+          <h4>The idea behind it</h4>
+          <p>The design goal is "quality close to MHA, speed close to MQA". Empirically the paper (and every LLaMA release since) shows that a small number of groups — 4 or 8 — gets you most of the way to MHA quality while keeping most of MQA's memory savings.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 31 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-31.png" alt="Grouped Query Attention — Approach: MHA — every head has own set of keys and values. GQA — multiple heads share same key and value projections. Convert a multi-head checkpoint into a multi-query checkpoint. Divide query heads into G groups, each of which shares a single key head and value head.">
+          <div class="slide-caption">slide 31 · GQA approach</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 32 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-32.png" alt="Grouped Query Attention diagram: eight blue query heads at the bottom, grouped in pairs (four pairs), each pair connecting up to one red key head; four red key heads above and four orange value heads at the top. Caption: 'Grouped-query attention shares single key and value heads for each group of query heads.'">
+          <div class="slide-caption">slide 32 · GQA structure</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>The concrete recipe. Divide the <em>h</em> query heads into <em>G</em> groups (where 1 ≤ <em>G</em> ≤ <em>h</em>). Each group of <em>h</em>/<em>G</em> queries shares a single K head and a single V head. In the picture, 8 blue query heads are grouped into 4 pairs, each pair mapping to one red K head and one orange V head.</p>
+          <h4>Two special cases</h4>
+          <ul>
+            <li><em>G</em> = <em>h</em>: every query head has its own K/V — this <em>is</em> MHA.</li>
+            <li><em>G</em> = 1: all query heads share one K/V — this <em>is</em> MQA.</li>
+          </ul>
+          <p>Everything between is a genuine hybrid. LLaMA-2-70B uses <em>G</em> = 8 with <em>h</em> = 64, meaning each K/V head serves 8 query heads.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s33">
+        <div class="slide-frame">
+          <div class="tag">Slide 33 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-33.png" alt="Grouped Query Attention — Multi-head to Multi-query conversion diagram: Key Projection K_1, K_2, ..., K_H (each of size d_h × d_model) get mean-pooled into a single Key Projection K_MQ of size d_h × d_model. Caption: 'Key and value projection matrices from all heads are mean pooled into a single head.'">
+          <div class="slide-caption">slide 33 · uptraining trick</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>A neat engineering trick from the GQA paper. To avoid training a GQA model from scratch, you can <em>convert</em> an existing MHA checkpoint into a GQA one by <em class="term">mean-pooling</em> the K (and V) projection matrices within each group. Then you fine-tune briefly to recover quality.</p>
+          <h4>Why this matters</h4>
+          <p>MHA-trained checkpoints exist by the terabyte. GQA-trained checkpoints, in 2023, did not. Mean-pooling gives you a way to reuse the existing investment: take a released MHA model, average the projections group-wise, uptrain for ~5% of the original compute, and ship. LLaMA-2 was released using this exact recipe.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">⚙ mean-pool in matrix form</div>
+            <p>For each group of <em>h</em>/<em>G</em> heads, the group's K projection is <em>K</em><sub>group</sub> = mean(<em>K</em><sub><em>i</em><sub>1</sub></sub>, …, <em>K</em><sub><em>i</em><sub><em>h</em>/<em>G</em></sub></sub>). Same for V. The Q projections and everything else are untouched.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s34">
+        <div class="slide-frame">
+          <div class="tag">Slide 34 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-34.png" alt="GQA parameter counts for 1B model with n_g=4 groups. K: d_h*d*n_g*l = 1M/layer, 16M, 64 MB. Q: 4M/layer, 67M, 256 MB. V: 2*d_h*d*n_g*l = 2M/layer, 33M, 128 MB. KV cache: n*l*2*n_g*d_h = 2M/layer, 33M, 128 MB.">
+          <div class="slide-caption">slide 34 · GQA parameter footprint (4 groups)</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Parameter counts for our 1B model at <em>n<sub>g</sub></em> = 4 groups. The KV cache is now <strong>128 MB</strong>: 4× smaller than MHA's 512 MB, 4× bigger than MQA's 32 MB. Exactly the interpolation the design promised.</p>
+          <table class="tbl">
+            <thead><tr><th>Attention</th><th>KV cache</th><th>Params for K</th><th>Params for V</th></tr></thead>
+            <tbody>
+              <tr><td>MHA</td><td>512 MB</td><td>67M</td><td>134M</td></tr>
+              <tr><td>GQA (4 groups)</td><td>128 MB</td><td>16M</td><td>33M</td></tr>
+              <tr><td>MQA</td><td>32 MB</td><td>4M</td><td>8M</td></tr>
+            </tbody>
+          </table>
+          <h4>How to read the ratio</h4>
+          <p>Everywhere <em>h</em> appeared in the MHA formulas, <em>n<sub>g</sub></em> (number of groups) now appears in the GQA formulas. Set <em>n<sub>g</sub></em> = <em>h</em> to get MHA back; set <em>n<sub>g</sub></em> = 1 to get MQA back. Every GQA number in the table is a linear interpolation between the two.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 35 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-35.png" alt="GQA — Gains: Quality close to MHA; Comparable speed to MQA.">
+          <div class="slide-caption">slide 35 · GQA gains</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 36 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-36.png" alt="GQA — Drawbacks: More complex than MHA or MQA — group management, K-V assignment to right group; Find optimal G — number of groups.">
+          <div class="slide-caption">slide 36 · GQA drawbacks</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>The verdict. Gains: quality is empirically close to MHA and inference speed is empirically close to MQA — you get most of the best of both worlds. Drawbacks are mostly engineering:</p>
+          <ul>
+            <li><strong>Implementation complexity.</strong> The attention kernel needs to know which query heads share which K/V head — more bookkeeping than the two extremes.</li>
+            <li><strong>Choosing <em>G</em>.</strong> One more hyperparameter to tune. The typical values landed on in practice are <em>G</em> = 4 or <em>G</em> = 8; LLaMA-2-70B uses 8.</li>
+          </ul>
+          <div class="callout aha">
+            <div class="callout-label">✦ why GQA won</div>
+            <p>By 2024, virtually every open-weights LLM at scale — LLaMA-2 and 3, Mistral, Qwen, Gemma, Falcon — ships with GQA rather than plain MHA. It is the standard KV-cache optimisation in the industry, and it exists because MQA was too aggressive.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="mla">
+      <h2><span class="num">§6</span>Multi-head latent attention — <em>compressing the cache</em></h2>
+      <p class="section-intro">
+        MQA and GQA shrink the cache by <em>having fewer</em> K/V pairs.
+        Multi-Head Latent Attention (DeepSeek-V2, 2024) shrinks it by keeping
+        all the heads but storing them in a <em>compressed latent form</em>.
+        Ten slides walk through the idea, the math, and why DeepSeek reported
+        that MLA is not just cheaper than MHA — it is <em>also better</em>.
+      </p>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 37 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-37.png" alt="Section divider titled 'Multi Head Latent Attention'.">
+          <div class="slide-caption">slide 37 · section divider</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 38 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-38.png" alt="Multi Head Latent Attention — Motivation: Reduce KV cache; Mitigate performance degradation of MQA and GQA over MHA. Cites Liu et al. 2024 DeepSeek-V2.">
+          <div class="slide-caption">slide 38 · MLA motivation</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>Section divider, then the two goals. MLA wants to (1) reduce the KV cache further and (2) mitigate the quality degradation that MQA and GQA still show relative to MHA. In other words, it wants strictly better than either predecessor.</p>
+          <h4>The idea behind it</h4>
+          <p>The trick is compression rather than sharing. MHA stores <em>h</em> full K/V heads per token. MQA stores 1. GQA stores <em>G</em>. MLA stores <em>one</em> low-dimensional latent vector per token, and reconstructs the K and V heads on demand at attention time.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s39">
+        <div class="slide-frame">
+          <div class="tag">Slide 39 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-39.png" alt="MLA vs GQA — Approach: GQA reduces the number of key-value heads (Shared Heads); MLA stores compressed latent representation of keys and values (Compressed Cache).">
+          <div class="slide-caption">slide 39 · MLA vs GQA in one line</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The one-slide contrast:</p>
+          <ul>
+            <li><strong>GQA:</strong> fewer K/V <em>heads</em>. Sharing.</li>
+            <li><strong>MLA:</strong> same number of K/V heads, but stored as one <em>compressed latent</em>. Compression.</li>
+          </ul>
+          <h4>Why the distinction matters</h4>
+          <p>Sharing loses expressivity — several query heads have to make do with the same K/V. Compression, if the compressed representation is rich enough, does not. At attention time MLA reconstructs a full per-head K and V from the shared latent, so each head still gets its own K and V for the softmax — just derived from a much smaller stored quantity.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s40">
+        <div class="slide-frame">
+          <div class="tag">Slide 40 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-40.png" alt="MLA architecture diagram: input hidden h_t → two latents c_t^Q (for queries) and c_t^KV (for keys/values); c_t^Q feeds into content query q^C and rotary query q^R (concat); c_t^KV feeds into content key k^C and content value v^C, plus a separate rotary key k^R; content and rotary parts are concatenated. Then all feed into Multi-Head Attention producing output u_t. Cached during inference: c_t^KV and k_t^R.">
+          <div class="slide-caption">slide 40 · MLA architecture</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The full MLA block from DeepSeek-V2. Read it as three ingredients:</p>
+          <ol>
+            <li>An input hidden state <em>h<sub>t</sub></em> gets projected down into two small <em>latents</em>: <em>c<sub>t</sub><sup>Q</sup></em> for the queries and <em>c<sub>t</sub><sup>KV</sup></em> for the keys and values.</li>
+            <li>At attention time, each latent is <em class="term">up-projected</em> back to per-head content vectors: <em>q<sub>t,i</sub><sup>C</sup></em> for every query head, <em>k<sub>t,i</sub><sup>C</sup></em> for every key head, <em>v<sub>t,i</sub><sup>C</sup></em> for every value head.</li>
+            <li>Because rotary position embeddings (<a class="xref" href="4-positional-encoding.html">Lecture 4</a>, §5) do not compose with the down/up projection, RoPE is applied on <em>separate</em> content-free <em>q<sub>t,i</sub><sup>R</sup></em> and <em>k<sub>t</sub><sup>R</sup></em> vectors, which are concatenated with the content pieces before the softmax.</li>
+          </ol>
+          <p>Only two things are cached: the latent <em>c<sub>t</sub><sup>KV</sup></em> and the rotary key <em>k<sub>t</sub><sup>R</sup></em>. Everything else is recomputed from those on the fly.</p>
+          <div class="callout mechanism">
+            <div class="callout-label">⚙ the split-rope trick</div>
+            <p>RoPE rotates key vectors by an angle proportional to position. If you cached compressed keys, you could not un-cache the rotation cheaply. DeepSeek's fix is to leave the content path un-rotated (cache the compressed content latent) and carry the rotation on a small, separate <em>k<sup>R</sup></em> stream that is cached in full but has small dimension. The two streams are concatenated back only at attention time.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s41">
+        <div class="slide-frame">
+          <div class="tag">Slide 41 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-41.png" alt="MLA — Approach: Low-rank key-value joint compression. Equations: c_t^KV = W^DKV h_t (compressed latent, dim d_c much less than d_h*n_h); k_t^C = W^UK c_t^KV; v_t^C = W^UV c_t^KV. W^DKV is R^{d_c×d}, W^UK and W^UV are R^{d_h*n_h × d_c}.">
+          <div class="slide-caption">slide 41 · KV compression, in math</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The equations behind the picture. In one line: the K and V projections that used to be single big matrices are now <em class="term">factored</em> through a small latent of dimension <em>d<sub>c</sub></em>.</p>
+          <div class="eq boxed">
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+              <mrow>
+                <msubsup><mi>c</mi><mi>t</mi><mi>KV</mi></msubsup>
+                <mo>=</mo>
+                <msup><mi>W</mi><mi>DKV</mi></msup><msub><mi>h</mi><mi>t</mi></msub>
+                <mo>,</mo>
+                <mspace width="0.5em"/>
+                <msubsup><mi>k</mi><mi>t</mi><mi>C</mi></msubsup>
+                <mo>=</mo>
+                <msup><mi>W</mi><mi>UK</mi></msup><msubsup><mi>c</mi><mi>t</mi><mi>KV</mi></msubsup>
+                <mo>,</mo>
+                <mspace width="0.5em"/>
+                <msubsup><mi>v</mi><mi>t</mi><mi>C</mi></msubsup>
+                <mo>=</mo>
+                <msup><mi>W</mi><mi>UV</mi></msup><msubsup><mi>c</mi><mi>t</mi><mi>KV</mi></msubsup>
+              </mrow>
+            </math>
+          </div>
+          <p>Here <em>W<sup>DKV</sup></em> is a <strong>down-projection</strong> matrix of shape (<em>d<sub>c</sub></em>, <em>d</em>) with <em>d<sub>c</sub></em> much smaller than <em>d<sub>h</sub></em> · <em>n<sub>h</sub></em>, and <em>W<sup>UK</sup></em>, <em>W<sup>UV</sup></em> are <strong>up-projections</strong> of shape (<em>d<sub>h</sub></em> · <em>n<sub>h</sub></em>, <em>d<sub>c</sub></em>) that reconstruct all-head K and V from the latent.</p>
+          <h4>Why this is a low-rank factorisation</h4>
+          <p>Instead of a full-rank K projection <em>W<sub>K</sub></em> ∈ ℝ<sup>(<em>d<sub>h</sub></em>·<em>n<sub>h</sub></em>) × <em>d</em></sup>, MLA writes it as <em>W<sup>UK</sup></em> · <em>W<sup>DKV</sup></em>. If <em>d<sub>c</sub></em> ≪ <em>d<sub>h</sub></em>·<em>n<sub>h</sub></em>, the product has rank at most <em>d<sub>c</sub></em>. This is the same trick LoRA uses — a big matrix expressed as the product of two skinny ones.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s42">
+        <div class="slide-frame">
+          <div class="tag">Slide 42 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-42.png" alt="MLA — Approach continued: During inference MLA only needs to cache c_t^KV. To reduce memory during training, low-rank compression for the queries. c_t^Q = W^DQ h_t, q_t^C = W^UQ c_t^Q.">
+          <div class="slide-caption">slide 42 · same trick for the queries</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Two things. First, a restatement of the crucial inference fact: <strong>only <em>c<sub>t</sub><sup>KV</sup></em> is cached</strong> — not per-head K and V. Second, an optional low-rank compression on the queries too, purely to save memory during training:</p>
+          <div class="eq boxed">
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+              <mrow>
+                <msubsup><mi>c</mi><mi>t</mi><mi>Q</mi></msubsup>
+                <mo>=</mo>
+                <msup><mi>W</mi><mi>DQ</mi></msup><msub><mi>h</mi><mi>t</mi></msub>
+                <mo>,</mo>
+                <mspace width="0.5em"/>
+                <msubsup><mi>q</mi><mi>t</mi><mi>C</mi></msubsup>
+                <mo>=</mo>
+                <msup><mi>W</mi><mi>UQ</mi></msup><msubsup><mi>c</mi><mi>t</mi><mi>Q</mi></msubsup>
+              </mrow>
+            </math>
+          </div>
+          <h4>Why queries too</h4>
+          <p>The query compression is <em>not</em> for the cache — queries are never cached, they are always fresh — but for training activation memory. During backprop the whole per-head query tensor has to sit in memory for the gradient computation. Compressing it through a small latent reduces that activation footprint.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s43">
+        <div class="slide-frame">
+          <div class="tag">Slide 43 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-43.png" alt="MLA — Performance table: MHA cache 2·n_h·d_h·l (Strong); GQA 2·n_g·d_h·l (Moderate); MQA 2·d_h·l (Weak); MLA (d_c + d_h^R)·l ≈ 9/2 d_h·l (Stronger). Caption explains that DeepSeek-V2 sets d_c = 4·d_h and d_h^R = d_h/2, so MLA cache = GQA with 2.25 groups but stronger performance.">
+          <div class="slide-caption">slide 43 · MLA vs everyone else</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The paper's headline comparison. The two axes are <em>KV cache size per token</em> and <em>modelling capability</em>:</p>
+          <table class="tbl">
+            <thead><tr><th>Mechanism</th><th>Cache/token</th><th>Capability</th></tr></thead>
+            <tbody>
+              <tr><td>MHA</td><td>2·<em>n<sub>h</sub></em>·<em>d<sub>h</sub></em>·<em>l</em></td><td>Strong</td></tr>
+              <tr><td>GQA</td><td>2·<em>n<sub>g</sub></em>·<em>d<sub>h</sub></em>·<em>l</em></td><td>Moderate</td></tr>
+              <tr><td>MQA</td><td>2·<em>d<sub>h</sub></em>·<em>l</em></td><td>Weak</td></tr>
+              <tr><td><strong>MLA</strong></td><td>(<em>d<sub>c</sub></em> + <em>d<sub>h</sub><sup>R</sup></em>)·<em>l</em> ≈ 9/2·<em>d<sub>h</sub></em>·<em>l</em></td><td><strong>Stronger</strong></td></tr>
+            </tbody>
+          </table>
+          <div class="callout aha">
+            <div class="callout-label">✦ the surprising claim</div>
+            <p>MLA's cache is roughly the size of GQA with 2.25 groups — deep in the "very small cache" regime — but its measured quality is <em>stronger than MHA</em>. Compression turned out to be a mild regulariser: forcing the K/V through a bottleneck kept the model from memorising per-head idiosyncrasies. That is unusual, and it is a big part of why DeepSeek-V2 landed with a splash.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide" id="s44">
+        <div class="slide-frame">
+          <div class="tag">Slide 44 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-44.png" alt="MLA parameter counts for 1B model with d_c = 32 compression dim. Down projection: d_c*d*l = 0.065M/layer, 1M total, 4 MB. Up projection: d_c*d_q*h*l = 0.065M/layer, 1M, 4 MB. KV cache: n*l*2*d_c = 0.131M/layer, 2M, 8 MB.">
+          <div class="slide-caption">slide 44 · MLA parameter footprint</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>Parameter counts for our 1B model at <em>d<sub>c</sub></em> = 32. The down- and up-projections cost about 1M parameters each. The <strong>KV cache is 8 MB</strong> — 64× smaller than MHA's 512 MB and 4× smaller than MQA's 32 MB.</p>
+          <h4>How to read the numbers</h4>
+          <p>Compression dimension <em>d<sub>c</sub></em> = 32 is tiny — smaller than a single head's <em>d<sub>h</sub></em> = 128. The whole per-token cache is just those 32 numbers (plus the rotary key), stored once per layer. That is the memory profile that makes 128k-context serving practical.</p>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 45 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-45.png" alt="MLA — Gains: Requires a significantly smaller amount of KV cache — during inference only needs to cache c_t^KV, only d_c*l elements; W^UK can be absorbed into W^Q, and W^UV can be absorbed into W^O, so we don't need to compute keys and values out for attention. Faster inference. Model quality improvement.">
+          <div class="slide-caption">slide 45 · gains</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 46 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-46.png" alt="MLA — Drawbacks: Pre-training from scratch (no conversion possibility like MHA to MQA); Implementation complexity.">
+          <div class="slide-caption">slide 46 · drawbacks</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>Gains and drawbacks in one look. Gains:</p>
+          <ul>
+            <li><strong>Much smaller cache.</strong> Only <em>d<sub>c</sub></em>·<em>l</em> elements per token.</li>
+            <li><strong>Matrix absorption.</strong> Because the up-projection is a linear function of the latent, <em>W<sup>UK</sup></em> can be pre-multiplied into <em>W<sup>Q</sup></em> (query projection) and <em>W<sup>UV</sup></em> into <em>W<sup>O</sup></em> (output projection). At inference you never actually materialise the per-head K and V — the softmax operates directly on latent-mediated dot products. That saves FLOPs on top of saving memory.</li>
+            <li><strong>Faster inference and better quality.</strong> Both. Unusual for an optimisation.</li>
+          </ul>
+          <p>Drawbacks:</p>
+          <ul>
+            <li><strong>Pre-training from scratch.</strong> Unlike the MHA → GQA conversion trick (slide 33), there is no clean way to take a released MHA checkpoint and re-shape it into MLA. So MLA is only realistic if you are training the model yourself.</li>
+            <li><strong>Implementation complexity.</strong> The split-rope trick and the matrix-absorption identities mean the attention kernel is quite a bit more involved. Standard PyTorch <code>scaled_dot_product_attention</code> does not cover this.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="landed">
+      <h2><span class="num">§7</span>Where the field landed</h2>
+      <p class="section-intro">
+        Four closing slides. A parameter-count comparison across all four
+        variants, a one-picture summary of what "cached during inference"
+        means for each, and two tables showing which real model uses which
+        attention as of 2024–2026.
+      </p>
+
+      <div class="slide" id="s47">
+        <div class="slide-frame">
+          <div class="tag">Slide 47 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-47.png" alt="Comparison of parameter counts for 1B model. MHA: KV cache n*l*2*d_h*h = 134M, 512 MB. MQA: 8M, 32 MB. GQA: 33M, 128 MB. MLA: 2M, 8 MB.">
+          <div class="slide-caption">slide 47 · one table, four numbers</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The four variants in one row each, all on the same 1B reference model, all in FP16:</p>
+          <table class="tbl">
+            <thead><tr><th>Attention</th><th>Cache calc</th><th>Total params</th><th>Memory</th></tr></thead>
+            <tbody>
+              <tr><td>MHA</td><td><em>n</em>·<em>l</em>·2·<em>d<sub>h</sub></em>·<em>h</em></td><td>134M</td><td>512 MB</td></tr>
+              <tr><td>MQA</td><td><em>n</em>·<em>l</em>·2·<em>d<sub>h</sub></em></td><td>8M</td><td>32 MB</td></tr>
+              <tr><td>GQA</td><td><em>n</em>·<em>l</em>·2·<em>n<sub>g</sub></em>·<em>d<sub>h</sub></em></td><td>33M</td><td>128 MB</td></tr>
+              <tr><td>MLA</td><td><em>n</em>·<em>l</em>·2·<em>d<sub>c</sub></em></td><td>2M</td><td>8 MB</td></tr>
+            </tbody>
+          </table>
+          <h4>How to read the ratios</h4>
+          <p>MHA is the baseline. MQA divides by <em>h</em> = 16. GQA divides by <em>h</em>/<em>n<sub>g</sub></em> = 4 (going from 16 heads to 4 groups). MLA divides by <em>h</em>·<em>d<sub>h</sub></em>/<em>d<sub>c</sub></em> = 64 (going from 16·128 = 2048 to 32). Every method is a story about what factor drops out of the formula.</p>
+        </div>
+      </div>
+
+      <div class="slide" id="s48">
+        <div class="slide-frame">
+          <div class="tag">Slide 48 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-48.png" alt="Summary MHA GQA MQA MLA: four panels showing values/keys/queries. MHA: 8 hatched keys and 8 hatched values, one per query. GQA: 4 hatched keys and 4 hatched values grouped over 8 queries. MQA: 1 hatched key and 1 hatched value over 8 queries. MLA: 8 keys and 8 values (unhatched) but with a single hatched 'compressed latent KV' projection arrow pointing at them. Legend: hatched = cached during inference.">
+          <div class="slide-caption">slide 48 · one picture, four families</div>
+        </div>
+        <div class="explain">
+          <h4>What this shows</h4>
+          <p>The clearest single-picture summary of §§2, 5, and 6. Four panels, one per family, each showing the query row (blue) and the key/value rows (hatched squares = cached in memory during inference, empty squares = recomputed on the fly).</p>
+          <ul>
+            <li><strong>MHA:</strong> one hatched K and one hatched V per query head. Everything cached, everything full-size.</li>
+            <li><strong>GQA:</strong> fewer hatched K and V columns (four here) but each still per-group full-size.</li>
+            <li><strong>MQA:</strong> a single hatched K and a single hatched V for all query heads.</li>
+            <li><strong>MLA:</strong> all K/V heads are drawn (they exist!) but they are empty — <em>not cached</em>. What <em>is</em> cached is a single hatched "compressed latent KV" vector on the right, from which all the empty K/V heads are projected on demand at attention time.</li>
+          </ul>
+          <div class="callout aha">
+            <div class="callout-label">✦ the whole lecture in a picture</div>
+            <p>Read left to right, the story is: <em>can we cache less?</em> Yes, by having fewer heads (GQA), or one head (MQA), or by keeping all the heads but caching only their compressed source (MLA). Different answers, same problem.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-strip cols-2">
+        <div class="slide-frame">
+          <div class="tag">Slide 49 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-49.png" alt="Transformer Models over Years. Table: Original Base — MHA; GPT — MHA; mT5-L — blank; GPT3 — MHA?; LLaMA — GQA; Mistral — SWA, GQA; LLaMA 3.2 — GQA; DeepSeek V3 — MLA; Qwen 3 — GQA; Kimi K2 — MLA.">
+          <div class="slide-caption">slide 49 · which model, which attention (through 2024)</div>
+        </div>
+        <div class="slide-frame">
+          <div class="tag">Slide 50 / 50</div>
+          <img src="../assets/slides/L5-attention/slide-50.png" alt="Transformer Models over Years — 2026. Qwen 3.5 — Hybrid GatedDeltaNet; Sarvam — MLA with KV Norm; Nemotron 3 Ultra — GQA; Mistral 4 — MLA; Gemma 4 — 5 SlidingWindow + 1 GQA; Qwen 3.6 — Gated DeltaNet; DeepSeek V4 — CompressedSparse + Heavily Compressed; Kimi k3 — 3 Kimi Delta Attention + 1 MLA.">
+          <div class="slide-caption">slide 50 · same, at the front of the field in 2026</div>
+        </div>
+        <div class="explain">
+          <h4>What these show</h4>
+          <p>Two tables, side by side, tracking the attention choice of real released models. The first (slide 49) covers the arc from the Vaswani base transformer through 2024:</p>
+          <ul>
+            <li><strong>Original / GPT / GPT-3:</strong> plain MHA.</li>
+            <li><strong>LLaMA family (1, 2, 3.2):</strong> GQA.</li>
+            <li><strong>Mistral:</strong> sliding-window attention (SWA, a Longformer-family idea) plus GQA.</li>
+            <li><strong>DeepSeek V3, Kimi K2:</strong> MLA.</li>
+            <li><strong>Qwen 3:</strong> GQA.</li>
+          </ul>
+          <p>The second table (slide 50) is the 2026 frontier and is worth reading slowly — it is the reason there is a whole next lecture. Almost none of these models use a single mechanism from this deck any more. They stack ideas:</p>
+          <ul>
+            <li><strong>Gemma 4</strong>: five sliding-window layers for every one GQA layer.</li>
+            <li><strong>DeepSeek V4</strong>: "CompressedSparse + Heavily Compressed" — MLA plus a sparsity pattern.</li>
+            <li><strong>Kimi k3</strong>: three layers of "Kimi Delta Attention" (a linear-attention variant) for every one MLA layer.</li>
+            <li><strong>Qwen 3.5, 3.6</strong>: Gated DeltaNet — a state-space-like mechanism replacing attention entirely.</li>
+            <li><strong>Sarvam</strong>: MLA with an added KV-norm.</li>
+          </ul>
+          <div class="callout link">
+            <div class="callout-label">→ where this goes</div>
+            <p>Every sparse pattern in slide 50 (SlidingWindow, CompressedSparse) is developed in <a class="xref" href="6-more-attention.html">Lecture 6</a>. The "Delta" and "GatedDeltaNet" entries are state-space methods, coming later in the semester under alternate architectures. The <em>hybrid</em> pattern — a few layers of linear/local attention plus a small number of full-attention or MLA layers — is now the default recipe at the frontier.</p>
+          </div>
+          <div class="callout aha">
+            <div class="callout-label">✦ the two-year arc</div>
+            <p>From 2017 to 2023 the industry standardised on MHA; from 2023 to 2024 it standardised on GQA; in 2024 MLA emerged; in 2025–2026 the frontier stopped standardising at all and started stacking. The one constant is that everyone is still trying to make the KV cache smaller — the specific mechanism just keeps changing.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="pager">
+      <a class="prev" href="4-positional-encoding.html">
+        <span class="dir">← prev</span>
+        <span class="lbl">04 · Positional Encoding</span>
+      </a>
+      <a class="next" href="6-more-attention.html">
+        <span class="dir">next →</span>
+        <span class="lbl">06 · More Attention</span>
+      </a>
+    </div>
+
+    <footer class="foot">
+      <div>Lecture 05 · Attention · ANLP Monsoon '26</div>
+      <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank" rel="noopener">github ↗</a></div>
+    </footer>
+  </main>
+
+  <aside class="rail-right">
+    <div class="kicker">progress</div>
+    <div class="heatmap-rail" aria-hidden="true"></div>
+    <div class="kicker">sections</div>
+    <div class="rail-toc">
+      <a href="#deck">at a glance</a>
+      <a href="#where">§1 where attention sits</a>
+      <a href="#core">§2 attention as invented</a>
+      <a href="#kvcache">§3 the KV cache</a>
+      <a href="#longformer">§4 Longformer</a>
+      <a href="#mqa-gqa">§5 MQA &amp; GQA</a>
+      <a href="#mla">§6 latent attention</a>
+      <a href="#landed">§7 where the field landed</a>
+    </div>
+  </aside>
+</div>
+
+<script src="../assets/js/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mid Sem 2023 · PYQ — ANLP Study Guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Mid-Semester Exam 2023 for Advanced NLP (M23CS7.501), IIIT Hyderabad. Full paper, official handwritten key, and a worked solution to every question.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../assets/css/site.css">
+</head>
+<body>
+<div class="shell">
+
+  <aside class="rail-left">
+    <div class="brand">
+      <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+      <small>ANLP · Monsoon '26</small>
+    </div>
+    <nav>
+      <div class="grp">On this page</div>
+      <a href="#paper">§1 · The paper</a>
+      <a href="#key">§2 · The official key</a>
+      <a href="#q1">§3 · Q1 · RNN, LSTM, GRU</a>
+      <a href="#q2">§4 · Q2 · ELMo</a>
+      <a href="#q3">§5 · Q3 · Seq2seq + attention</a>
+
+      <div class="grp">Elsewhere</div>
+      <a href="../tutorials/2-matrices-to-transformers.html">← Tutorial 2: Matrices → Transformers</a>
+      <a href="mid-2024.html">Next: Mid Sem 2024 →</a>
+      <a href="../index.html">Home</a>
+    </nav>
+  </aside>
+
+  <div class="topbar">
+    <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab notebook</em></a></div>
+    <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+  </div>
+
+  <main>
+    <section class="hero">
+      <div class="kicker">PYQ · Mid Semester · Sep 22, 2023</div>
+      <h1>Mid Semester 2023 — <em>the paper, worked through</em>.</h1>
+      <p class="lead">
+        This is the official mid-semester paper from the 2023 offering of
+        M23CS7.501, alongside the instructor's handwritten answer key. The
+        paper is three questions, thirty marks, ninety minutes — short, but
+        every question is a conceptual one that rewards a clean explanation
+        over a memorised formula. Below is the paper, the key, and a full
+        worked solution to each question that tries to show what the marker
+        was actually looking for.
+      </p>
+      <div class="meta">
+        <span class="pill heat">Mid Sem 2023</span>
+        <span class="pill">3 questions</span>
+        <span class="pill">30 marks · 1.5 hrs</span>
+        <span class="pill">RNN · LSTM · GRU · ELMo · attention</span>
+      </div>
+    </section>
+
+    <section id="paper">
+      <h2><span class="num">§1</span>The paper</h2>
+      <p class="section-intro">
+        Three questions, each with two parts. Q1 and Q2 are split 5 + 5.
+        Q3 is split 3 + 7 — the second sub-part on attention carries most
+        of the weight. Nothing about transformers appears yet; this exam
+        is squarely in the pre-transformer half of the course.
+      </p>
+
+      <div class="slide" id="paper-img">
+        <div class="slide-frame">
+          <div class="tag">exam paper · page 1 / 1</div>
+          <img src="../assets/pyqs/mid-2023/page-1.png" alt="Mid semester exam paper 2023: three questions on RNN/LSTM/GRU, ELMo, and seq2seq with attention.">
+          <div class="slide-caption">the exam paper — all three questions on one page</div>
+        </div>
+        <div class="explain">
+          <h4>What to notice before you read it</h4>
+          <p>The paper is single-page and text-only. There are <strong>no diagrams to complete</strong>, <strong>no numeric problems</strong>, and <strong>no code</strong>. Every question is an open-ended "describe / explain / compare" prompt. This tells you two things about how the exam is graded.</p>
+          <ol>
+            <li>Marks are given for <em class="term">structure</em>, not for showing intermediate arithmetic. A sub-part worth 5 marks expects roughly five distinct correct claims — a diagram, a defining equation, two mechanism sentences, and a "why".</li>
+            <li>The 3 + 7 split on Q3 is the strongest signal on the paper. The 3-mark half is "describe seq2seq" (a diagram + one paragraph). The 7-mark half is "why attention". Spend your time there.</li>
+          </ol>
+          <div class="callout gotcha">
+            <div class="callout-label">⚠ common trap</div>
+            <p>Because there is nothing to compute, students overwrite. A 5-mark answer that fills two pages of prose is not scoring more than a 5-mark answer that gives one diagram, one equation, and three tight sentences. The rubric caps at 5. Anything past that is time you owed to Q3.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section id="key">
+      <h2><span class="num">§2</span>The official key</h2>
+      <p class="section-intro">
+        Below is the instructor's handwritten answer sketch. It is not a
+        model answer — it is the <em>list of things the marker wanted to
+        see</em>. Reading it is more useful than reading any polished
+        solution, because it tells you which bullet was worth a mark.
+      </p>
+
+      <div class="slide" id="key-img">
+        <div class="slide-frame">
+          <div class="tag">handwritten key · page 1 / 1</div>
+          <img src="../assets/pyqs/mid-2023-key/page-1.png" alt="Handwritten official answer key showing marking hints for all three questions.">
+          <div class="slide-caption">official handwritten key — hint bullets per question</div>
+        </div>
+        <div class="explain">
+          <h4>Transcription of the key</h4>
+          <p><strong>Top margin (Q1 comparison table):</strong></p>
+          <table class="tbl">
+            <thead><tr><th>GRU</th><th>LSTM</th></tr></thead>
+            <tbody>
+              <tr><td>2 gates</td><td>3 gates</td></tr>
+              <tr><td>no external memory</td><td>computationally faster</td></tr>
+              <tr><td>less training params</td><td></td></tr>
+              <tr><td>less memory · faster</td><td></td></tr>
+            </tbody>
+          </table>
+          <p>A vertical note in the left margin reads <em class="term">"only arch"</em> — a reminder that Q1 asks specifically for an <em>architectural</em> comparison, not a benchmark or an accuracy claim.</p>
+          <p><strong>Q1:</strong> Recurrence — also talk about back propagation. Nature of gates is a lot important. Similarity.</p>
+          <p><strong>Q2:</strong> ELMo — stacked Bi LSTM. Weighted summation of layer embeddings. Weights to be computed. Downstream task.</p>
+          <p><strong>Q3:</strong> Describe a RNN/LSTM with attention "func" defined. Different target words need different content words for translation.</p>
+          <div class="callout aha">
+            <div class="callout-label">✦ the aha</div>
+            <p>Each question's hint is roughly one bullet per mark. Q1 has four bullets (recurrence, backprop, gate nature, similarity) for five marks per sub-part. Q2 has four bullets (stacked BiLSTM, weighted sum, learn the weights, downstream). Q3 has two (define the attention function, argue different targets need different sources). Match that granularity in your own answer and you have a full-marks answer.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section>
+      <h2><span class="num">§3</span>Q1 · RNN long dependencies, LSTM vs GRU</h2>
+
+      <div class="pyq-q" id="q1">
+        <div class="qhead">
+          <span class="qnum">Q1</span>
+          <span class="qmarks">5 + 5 marks</span>
+          <a class="qtag" href="../lectures/5-rnns.html">RNN</a>
+          <a class="qtag" href="../lectures/5-rnns.html">LSTM</a>
+          <a class="qtag" href="../lectures/5-rnns.html">GRU</a>
+          <a class="qtag" href="../lectures/5-rnns.html">BPTT</a>
+        </div>
+
+        <h3>The question, verbatim</h3>
+        <blockquote>
+          <p><strong>1.</strong> Explain how RNNs enable handling long distance dependencies. Can you compare LSTMs and GRUs at an architectural level? <em>[5 + 5 marks]</em></p>
+        </blockquote>
+
+        <h3>How to approach it</h3>
+        <p>The two sub-parts want two very different things. Sub-part (a) is a mechanism story: what does an RNN <em>do</em> that lets information from step 1 reach step 100. This means writing the recurrence, then honestly explaining the failure mode (vanishing gradients) and how <em class="term">gating</em> is the general fix. Sub-part (b) is a side-by-side spec sheet: same structure of "here are the gates, here is the state, here are the equations", once for LSTM and once for GRU. The key's <em>"only arch"</em> note tells you to skip discussion of accuracy, dataset size, or training time — just architecture.</p>
+
+        <h3>Full worked solution</h3>
+
+        <h4>(a) How RNNs enable long-distance dependencies · 5 marks</h4>
+
+        <p>A vanilla RNN reads a sequence <math><msub><mi>x</mi><mn>1</mn></msub></math>, <math><msub><mi>x</mi><mn>2</mn></msub></math>, …, <math><msub><mi>x</mi><mi>T</mi></msub></math> one token at a time and maintains a hidden state <math><msub><mi>h</mi><mi>t</mi></msub></math> that is <em class="term">recurrent</em> — the state at step <math><mi>t</mi></math> is a function of the previous state and the current input:</p>
+
+        <div class="eq boxed">
+          <math display="block">
+            <msub><mi>h</mi><mi>t</mi></msub>
+            <mo>=</mo>
+            <mi>tanh</mi>
+            <mo>(</mo>
+            <msub><mi>W</mi><mrow><mi>h</mi><mi>h</mi></mrow></msub>
+            <msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub>
+            <mo>+</mo>
+            <msub><mi>W</mi><mrow><mi>x</mi><mi>h</mi></mrow></msub>
+            <msub><mi>x</mi><mi>t</mi></msub>
+            <mo>+</mo>
+            <mi>b</mi>
+            <mo>)</mo>
+          </math>
+        </div>
+
+        <p>This is the mechanism that enables long-distance dependencies in principle. Because <math><msub><mi>h</mi><mi>t</mi></msub></math> is a function of <math><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub></math>, and that of <math><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>2</mn></mrow></msub></math>, the hidden state at time 100 has a functional path back to the input at time 1. Information about earlier tokens is <em>carried forward</em> through this shared recurrence, and the same weight matrices are reused at every step — so the model can learn a rule like "if a plural subject appeared, the verb far away must agree" without needing a separate parameter per gap length.</p>
+
+        <p>Training uses <em class="term">back-propagation through time</em> (BPTT): the network is unrolled into a <math><mi>T</mi></math>-layer feed-forward net that shares weights across layers, and the gradient of the loss with respect to <math><msub><mi>h</mi><mi>t</mi></msub></math> flows backward through every previous step. Every backward step multiplies by the Jacobian <math><mfrac><mrow><mo>&#8706;</mo><msub><mi>h</mi><mi>t</mi></msub></mrow><mrow><mo>&#8706;</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub></mrow></mfrac></math>, which is bounded by the spectral norm of <math><msub><mi>W</mi><mrow><mi>h</mi><mi>h</mi></mrow></msub></math> times the derivative of <math><mi>tanh</mi></math>.</p>
+
+        <p>This is where the <em class="term">vanishing / exploding gradient</em> problem enters. If that Jacobian has spectral norm less than 1, gradients decay geometrically across steps and long-range signal never reaches the earlier weights; if greater than 1, they explode. So the <em>architectural capacity</em> for long dependencies (a recurrence) is real, but a plain RNN fails to <em>train</em> them in practice.</p>
+
+        <p>The fix that makes long dependencies actually learnable is <em class="term">gating</em>. Instead of a single non-linear squash, a gated cell introduces sigmoid gates that decide, per component, how much of the old state to keep and how much of the new input to write. When a gate is near 1 on the "keep" path, the gradient flows across that time step nearly unchanged — this is the additive skip connection through time that gives LSTMs and GRUs their long-range memory.</p>
+
+        <div class="callout mechanism">
+          <div class="callout-label">mechanism · in one line</div>
+          <p>Recurrence gives an RNN the <em>capacity</em> to carry information across time. Gates give it the <em>trainability</em> to do so, by turning the multiplicative gradient path into a nearly additive one on any step where the gate says "keep".</p>
+        </div>
+
+        <h4>(b) LSTM vs GRU · architectural comparison · 5 marks</h4>
+
+        <p>Both are gated RNN cells that replace the single <math><mi>tanh</mi></math> update above with a small circuit of gates. They differ in how much state they carry and how many gates they use to route it.</p>
+
+        <p><strong>LSTM.</strong> Keeps two state vectors: a <em class="term">cell state</em> <math><msub><mi>c</mi><mi>t</mi></msub></math> (long-term memory) and a <em class="term">hidden state</em> <math><msub><mi>h</mi><mi>t</mi></msub></math> (short-term / output). Three sigmoid gates control it: forget <math><msub><mi>f</mi><mi>t</mi></msub></math>, input <math><msub><mi>i</mi><mi>t</mi></msub></math>, output <math><msub><mi>o</mi><mi>t</mi></msub></math>.</p>
+
+        <div class="eq boxed">
+          <math display="block">
+            <mtable columnalign="left">
+              <mtr><mtd><msub><mi>f</mi><mi>t</mi></msub> <mo>=</mo> <mi>&#963;</mi><mo>(</mo><msub><mi>W</mi><mi>f</mi></msub><mo>[</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>x</mi><mi>t</mi></msub><mo>]</mo><mo>+</mo><msub><mi>b</mi><mi>f</mi></msub><mo>)</mo></mtd></mtr>
+              <mtr><mtd><msub><mi>i</mi><mi>t</mi></msub> <mo>=</mo> <mi>&#963;</mi><mo>(</mo><msub><mi>W</mi><mi>i</mi></msub><mo>[</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>x</mi><mi>t</mi></msub><mo>]</mo><mo>+</mo><msub><mi>b</mi><mi>i</mi></msub><mo>)</mo></mtd></mtr>
+              <mtr><mtd><msub><mi>o</mi><mi>t</mi></msub> <mo>=</mo> <mi>&#963;</mi><mo>(</mo><msub><mi>W</mi><mi>o</mi></msub><mo>[</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>x</mi><mi>t</mi></msub><mo>]</mo><mo>+</mo><msub><mi>b</mi><mi>o</mi></msub><mo>)</mo></mtd></mtr>
+              <mtr><mtd><mover><msub><mi>c</mi><mi>t</mi></msub><mo>~</mo></mover> <mo>=</mo> <mi>tanh</mi><mo>(</mo><msub><mi>W</mi><mi>c</mi></msub><mo>[</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>x</mi><mi>t</mi></msub><mo>]</mo><mo>+</mo><msub><mi>b</mi><mi>c</mi></msub><mo>)</mo></mtd></mtr>
+              <mtr><mtd><msub><mi>c</mi><mi>t</mi></msub> <mo>=</mo> <msub><mi>f</mi><mi>t</mi></msub><mo>&#8857;</mo><msub><mi>c</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub> <mo>+</mo> <msub><mi>i</mi><mi>t</mi></msub><mo>&#8857;</mo><mover><msub><mi>c</mi><mi>t</mi></msub><mo>~</mo></mover></mtd></mtr>
+              <mtr><mtd><msub><mi>h</mi><mi>t</mi></msub> <mo>=</mo> <msub><mi>o</mi><mi>t</mi></msub><mo>&#8857;</mo><mi>tanh</mi><mo>(</mo><msub><mi>c</mi><mi>t</mi></msub><mo>)</mo></mtd></mtr>
+            </mtable>
+          </math>
+        </div>
+
+        <p>The forget gate erases parts of the old cell state; the input gate writes a candidate; the output gate decides what of the cell state becomes the exposed hidden state. The cell-state line is the <em class="term">constant error carousel</em>: on any dimension where <math><msub><mi>f</mi><mi>t</mi></msub></math> is near 1, the state passes through unchanged and gradients flow back undamped.</p>
+
+        <p><strong>GRU.</strong> Collapses the cell state and hidden state into a single vector <math><msub><mi>h</mi><mi>t</mi></msub></math>, and uses only two gates: <em class="term">update</em> <math><msub><mi>z</mi><mi>t</mi></msub></math> and <em class="term">reset</em> <math><msub><mi>r</mi><mi>t</mi></msub></math>.</p>
+
+        <div class="eq boxed">
+          <math display="block">
+            <mtable columnalign="left">
+              <mtr><mtd><msub><mi>z</mi><mi>t</mi></msub> <mo>=</mo> <mi>&#963;</mi><mo>(</mo><msub><mi>W</mi><mi>z</mi></msub><mo>[</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>x</mi><mi>t</mi></msub><mo>]</mo><mo>)</mo></mtd></mtr>
+              <mtr><mtd><msub><mi>r</mi><mi>t</mi></msub> <mo>=</mo> <mi>&#963;</mi><mo>(</mo><msub><mi>W</mi><mi>r</mi></msub><mo>[</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>x</mi><mi>t</mi></msub><mo>]</mo><mo>)</mo></mtd></mtr>
+              <mtr><mtd><mover><msub><mi>h</mi><mi>t</mi></msub><mo>~</mo></mover> <mo>=</mo> <mi>tanh</mi><mo>(</mo><mi>W</mi><mo>[</mo><msub><mi>r</mi><mi>t</mi></msub><mo>&#8857;</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>x</mi><mi>t</mi></msub><mo>]</mo><mo>)</mo></mtd></mtr>
+              <mtr><mtd><msub><mi>h</mi><mi>t</mi></msub> <mo>=</mo> <mo>(</mo><mn>1</mn><mo>&#8722;</mo><msub><mi>z</mi><mi>t</mi></msub><mo>)</mo><mo>&#8857;</mo><msub><mi>h</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub> <mo>+</mo> <msub><mi>z</mi><mi>t</mi></msub><mo>&#8857;</mo><mover><msub><mi>h</mi><mi>t</mi></msub><mo>~</mo></mover></mtd></mtr>
+            </mtable>
+          </math>
+        </div>
+
+        <p>The reset gate decides how much of the past to <em>look at</em> when computing the candidate. The update gate is a single interpolation knob between "keep the old state" and "replace with the new candidate" — so it plays the role of the LSTM's forget and input gates fused into one. There is no separate output gate; the hidden state is exposed directly.</p>
+
+        <h4>The side-by-side</h4>
+        <table class="tbl">
+          <thead><tr><th></th><th>LSTM</th><th>GRU</th></tr></thead>
+          <tbody>
+            <tr><td>State vectors</td><td><math><msub><mi>c</mi><mi>t</mi></msub></math> and <math><msub><mi>h</mi><mi>t</mi></msub></math></td><td>only <math><msub><mi>h</mi><mi>t</mi></msub></math></td></tr>
+            <tr><td>Gates</td><td>3 · forget, input, output</td><td>2 · update, reset</td></tr>
+            <tr><td>How "keep" is expressed</td><td>independent <math><msub><mi>f</mi><mi>t</mi></msub></math> and <math><msub><mi>i</mi><mi>t</mi></msub></math></td><td>tied via <math><msub><mi>z</mi><mi>t</mi></msub></math> and <math><mn>1</mn><mo>&#8722;</mo><msub><mi>z</mi><mi>t</mi></msub></math></td></tr>
+            <tr><td>Exposed state</td><td>gated: <math><msub><mi>o</mi><mi>t</mi></msub><mo>&#8857;</mo><mi>tanh</mi><mo>(</mo><msub><mi>c</mi><mi>t</mi></msub><mo>)</mo></math></td><td>same as internal <math><msub><mi>h</mi><mi>t</mi></msub></math></td></tr>
+            <tr><td>Parameter count (hidden size <math><mi>d</mi></math>)</td><td>≈ 4 · (<math><mi>d</mi></math><math><mo>+</mo></math><math><mi>d</mi></math>) · <math><mi>d</mi></math></td><td>≈ 3 · (<math><mi>d</mi></math><math><mo>+</mo></math><math><mi>d</mi></math>) · <math><mi>d</mi></math></td></tr>
+            <tr><td>Constant-error path</td><td>through <math><msub><mi>c</mi><mi>t</mi></msub></math> when <math><msub><mi>f</mi><mi>t</mi></msub></math>≈1</td><td>through <math><msub><mi>h</mi><mi>t</mi></msub></math> when <math><msub><mi>z</mi><mi>t</mi></msub></math>≈0</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Similarities</strong> — both are gated recurrences, both use sigmoid gates and a <math><mi>tanh</mi></math> candidate, both preserve gradient flow through an additive path over time, and in practice both achieve comparable accuracy on most language tasks.</p>
+
+        <div class="callout aha">
+          <div class="callout-label">✦ the aha</div>
+          <p>GRU is often preferred not because it beats LSTM on quality — it usually ties — but because it has roughly 25% fewer parameters and no separate cell state to store. Less memory, less compute per step, and one fewer gate to overfit. The LSTM's extra expressivity (independent forget and input, plus an output-gated view of the memory) pays off mainly on very long sequences and on tasks where the memory and the output need to look different.</p>
+        </div>
+
+        <h3>What the key says</h3>
+        <p>The key's four bullets — <em>recurrence, backprop, nature of gates, similarity</em> — line up with the solution above. The top-margin table (<em>GRU 2 gates / no external memory / less params / less memory / faster</em> vs <em>LSTM 3 gates / computationally faster</em>) is the marker's rubric for the comparison sub-part, and the side-by-side above hits every one of those rows. The vertical <em>"only arch"</em> reminder is the trap: do not lose time discussing which one wins on which dataset — the question is architectural only.</p>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section>
+      <h2><span class="num">§4</span>Q2 · ELMo and downstream use</h2>
+
+      <div class="pyq-q" id="q2">
+        <div class="qhead">
+          <span class="qnum">Q2</span>
+          <span class="qmarks">5 + 5 marks</span>
+          <a class="qtag" href="../lectures/5-rnns.html">ELMo</a>
+          <a class="qtag" href="../lectures/5-rnns.html">BiLSTM</a>
+          <a class="qtag" href="../lectures/5-rnns.html">contextual embeddings</a>
+        </div>
+
+        <h3>The question, verbatim</h3>
+        <blockquote>
+          <p><strong>2.</strong> Describe the ELMO Contextual embedding model. How is it used for downstream tasks? <em>[5 + 5 marks]</em></p>
+        </blockquote>
+
+        <h3>How to approach it</h3>
+        <p>Sub-part (a) wants the architecture — a <em class="term">stacked bidirectional LSTM language model</em>, trained on a next-token prediction objective in both directions, whose per-layer hidden states become word representations. Sub-part (b) wants the recipe — one embedding per token is a <em class="term">learned weighted sum</em> of the layer states, where the weights are task-specific parameters that are trained together with a downstream head while the ELMo LM itself is frozen. The key's four bullets are exactly this: stacked BiLSTM, weighted sum of layer embeddings, weights are trained, plug into downstream task.</p>
+
+        <h3>Full worked solution</h3>
+
+        <h4>(a) What ELMo is · 5 marks</h4>
+        <p>ELMo (<em>Embeddings from Language Models</em>, Peters et al. 2018) is a <em class="term">contextual</em> word-representation model: unlike GloVe or word2vec, the vector it assigns to the word <em>bank</em> depends on the sentence it appears in. The vector for <em>bank</em> in "river bank" differs from the vector for <em>bank</em> in "savings bank".</p>
+
+        <p>Architecturally, it is a <em class="term">stacked bidirectional LSTM language model</em> trained on a large monolingual corpus:</p>
+        <ol>
+          <li>A character-CNN encodes each input token into a fixed vector <math><msub><mi>x</mi><mi>k</mi></msub></math>. This makes ELMo robust to out-of-vocabulary words — it can embed <em>any</em> string.</li>
+          <li>A <em class="term">forward LM</em> is a stack of <math><mi>L</mi></math> LSTM layers (typically <math><mi>L</mi><mo>=</mo><mn>2</mn></math>) trained to predict <math><msub><mi>x</mi><mrow><mi>k</mi><mo>+</mo><mn>1</mn></mrow></msub></math> from <math><msub><mi>x</mi><mn>1</mn></msub><mo>,</mo><mo>&#8230;</mo><mo>,</mo><msub><mi>x</mi><mi>k</mi></msub></math>.</li>
+          <li>A <em class="term">backward LM</em> of the same shape is trained to predict <math><msub><mi>x</mi><mrow><mi>k</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub></math> from the right context.</li>
+          <li>The two directions are trained jointly, maximising the sum of the forward and backward log-likelihoods.</li>
+        </ol>
+
+        <p>After training, for a token at position <math><mi>k</mi></math> the model produces <math><mn>2</mn><mi>L</mi><mo>+</mo><mn>1</mn></math> representations — the token embedding <math><msub><mi>x</mi><mi>k</mi></msub></math>, plus, at every layer <math><mi>j</mi></math>, the concatenation of the forward and backward hidden states:</p>
+
+        <div class="eq boxed">
+          <math display="block">
+            <msubsup><mi>h</mi><mrow><mi>k</mi><mo>,</mo><mi>j</mi></mrow><mi>LM</mi></msubsup>
+            <mo>=</mo>
+            <mo>[</mo>
+            <mover><msubsup><mi>h</mi><mrow><mi>k</mi><mo>,</mo><mi>j</mi></mrow><mo>&#8594;</mo></msubsup><mo>&#8594;</mo></mover>
+            <mo>;</mo>
+            <mover><msubsup><mi>h</mi><mrow><mi>k</mi><mo>,</mo><mi>j</mi></mrow><mo>&#8592;</mo></msubsup><mo>&#8592;</mo></mover>
+            <mo>]</mo>
+          </math>
+        </div>
+
+        <p>These per-layer vectors are the raw output of ELMo. The empirical observation Peters et al. make is that <em>different layers capture different linguistic information</em> — the lower layer is closer to syntax (POS, morphology), the higher layer is closer to semantics (word sense, coreference). That is why the final embedding is not just the top layer but a mixture across layers.</p>
+
+        <div class="callout mechanism">
+          <div class="callout-label">mechanism · why bidirectional and stacked</div>
+          <p>Bidirectional gives context from both sides — without it, the vector for <em>bank</em> in <em>"the bank of the river"</em> would depend only on the words before <em>bank</em>. Stacked lets syntax and semantics live at different depths of the same tower — so the downstream model can choose which depth to lean on.</p>
+        </div>
+
+        <h4>(b) How it is used for downstream tasks · 5 marks</h4>
+
+        <p>For a downstream task — say NER or sentiment — ELMo is not fine-tuned. It is used as a <em class="term">frozen feature extractor</em>. For each token, the task model receives one vector produced by taking a <em>learned weighted sum</em> of the ELMo layers, scaled by a per-task <em class="term">gamma</em>:</p>
+
+        <div class="eq boxed">
+          <math display="block">
+            <msubsup><mi>ELMo</mi><mi>k</mi><mrow><mi>task</mi></mrow></msubsup>
+            <mo>=</mo>
+            <msup><mi>&#947;</mi><mrow><mi>task</mi></mrow></msup>
+            <munderover>
+              <mo>&#8721;</mo>
+              <mrow><mi>j</mi><mo>=</mo><mn>0</mn></mrow>
+              <mi>L</mi>
+            </munderover>
+            <msubsup><mi>s</mi><mi>j</mi><mrow><mi>task</mi></mrow></msubsup>
+            <mspace width="0.15em"/>
+            <msubsup><mi>h</mi><mrow><mi>k</mi><mo>,</mo><mi>j</mi></mrow><mi>LM</mi></msubsup>
+          </math>
+        </div>
+
+        <p>Here <math><msubsup><mi>s</mi><mi>j</mi><mrow><mi>task</mi></mrow></msubsup></math> are softmax-normalised layer weights (they sum to 1) and <math><msup><mi>&#947;</mi><mrow><mi>task</mi></mrow></msup></math> is a scalar that scales the mixed vector to a magnitude the downstream head is comfortable with. Both are <em>learned during downstream training</em> — they are the only ELMo-side parameters the task ever updates.</p>
+
+        <p>The full recipe:</p>
+        <ol>
+          <li>Take the pre-trained ELMo LM and <strong>freeze it</strong>.</li>
+          <li>Run the input sentence through it once to get <math><msubsup><mi>h</mi><mrow><mi>k</mi><mo>,</mo><mi>j</mi></mrow><mi>LM</mi></msubsup></math> for every token and every layer.</li>
+          <li>Compute <math><msubsup><mi>ELMo</mi><mi>k</mi><mrow><mi>task</mi></mrow></msubsup></math> with the current learned <math><msub><mi>s</mi><mi>j</mi></msub></math> and <math><mi>&#947;</mi></math>.</li>
+          <li><strong>Concatenate</strong> that vector with a static input embedding (GloVe / word2vec) if one is used, giving <math><mo>[</mo><msub><mi>x</mi><mi>k</mi></msub><mo>;</mo><msubsup><mi>ELMo</mi><mi>k</mi><mrow><mi>task</mi></mrow></msubsup><mo>]</mo></math>.</li>
+          <li>Feed that concatenated vector into the task-specific model (a BiLSTM for NER, a classifier for sentiment, an encoder for QA) and train that model end-to-end. Gradients flow back into <math><msub><mi>s</mi><mi>j</mi></msub></math>, <math><mi>&#947;</mi></math>, and the task model — <em>not</em> into the ELMo LSTMs.</li>
+        </ol>
+
+        <p>Optionally, ELMo can also be inserted at the <em>output</em> side of the task model instead of the input, and the paper shows that using it at both ends helps some tasks.</p>
+
+        <div class="callout aha">
+          <div class="callout-label">✦ the aha</div>
+          <p>The learned <math><msub><mi>s</mi><mi>j</mi></msub></math> is what makes ELMo more than "just the top layer of a BiLSTM". A syntactic task (POS tagging) will learn to lean on the lower LSTM layer; a semantic task (word sense disambiguation) will learn to lean on the upper one. One frozen encoder can serve every downstream task because each task <em>picks its own mixture</em>.</p>
+        </div>
+
+        <h3>What the key says</h3>
+        <p>The key's four bullets — <em>stacked Bi LSTM</em>, <em>weighted summation of layer embeddings</em>, <em>weights to be computed</em>, <em>downstream task</em> — are exactly the four things above. "Weights to be computed" specifically means the <math><msub><mi>s</mi><mi>j</mi></msub></math> and <math><mi>&#947;</mi></math> are <em>learned</em>, not fixed — and a common mistake is to describe ELMo as "just concatenate all the layers" or "just take the top layer", both of which drop that mark.</p>
+      </div>
+    </section>
+
+    <hr class="soft">
+
+    <section>
+      <h2><span class="num">§5</span>Q3 · Seq2seq with attention</h2>
+
+      <div class="pyq-q" id="q3">
+        <div class="qhead">
+          <span class="qnum">Q3</span>
+          <span class="qmarks">3 + 7 marks</span>
+          <a class="qtag" href="../lectures/5-rnns.html">seq2seq</a>
+          <a class="qtag" href="../lectures/5-rnns.html">encoder-decoder</a>
+          <a class="qtag" href="../lectures/5-rnns.html">attention</a>
+          <a class="qtag" href="../lectures/5-rnns.html">Bahdanau</a>
+        </div>
+
+        <h3>The question, verbatim</h3>
+        <blockquote>
+          <p><strong>3.</strong> Describe a sequence-to-sequence machine translation model where decoder pays attention to the encoder. Why is the attention needed? <em>[3 + 7 marks]</em></p>
+        </blockquote>
+
+        <h3>How to approach it</h3>
+        <p>The mark split is the most important thing on this question. The 3-mark half is describing an encoder-decoder RNN with attention — a diagram plus one paragraph is enough. The 7-mark half is <em>why attention is needed</em>. Do not answer this with a single sentence. The full argument has three moves: the bottleneck problem in vanilla seq2seq, the "different target words need different source content" observation from the key, and the concrete alignment computation that solves it.</p>
+
+        <h3>Full worked solution</h3>
+
+        <h4>(a) The model · 3 marks</h4>
+
+        <p>A sequence-to-sequence machine translation model with attention has three pieces:</p>
+
+        <ol>
+          <li>An <em class="term">encoder</em> BiLSTM reads the source sentence <math><msub><mi>x</mi><mn>1</mn></msub><mo>,</mo><mo>&#8230;</mo><mo>,</mo><msub><mi>x</mi><mi>n</mi></msub></math> and produces one hidden state per source position, <math><msub><mi>h</mi><mn>1</mn></msub><mo>,</mo><mo>&#8230;</mo><mo>,</mo><msub><mi>h</mi><mi>n</mi></msub></math>. These are the encoder <em class="term">annotations</em>.</li>
+          <li>A <em class="term">decoder</em> LSTM generates the target sentence <math><msub><mi>y</mi><mn>1</mn></msub><mo>,</mo><mo>&#8230;</mo><mo>,</mo><msub><mi>y</mi><mi>m</mi></msub></math> one token at a time. At target step <math><mi>t</mi></math>, its hidden state is <math><msub><mi>s</mi><mi>t</mi></msub></math>.</li>
+          <li>An <em class="term">attention</em> block sits between the encoder and the decoder. At every decoder step, it looks over <em>all</em> encoder annotations and produces a <em class="term">context vector</em> <math><msub><mi>c</mi><mi>t</mi></msub></math> — a weighted sum of the encoder states, where the weights are computed from how well each source state matches the current decoder state.</li>
+        </ol>
+
+        <p>The decoder then produces the next target token from its own state and this context vector: <math><mi>p</mi><mo>(</mo><msub><mi>y</mi><mi>t</mi></msub><mo>&#124;</mo><msub><mi>y</mi><mrow><mo>&lt;</mo><mi>t</mi></mrow></msub><mo>,</mo><mi>x</mi><mo>)</mo> <mo>=</mo> <mi>softmax</mi><mo>(</mo><mi>W</mi><mo>[</mo><msub><mi>s</mi><mi>t</mi></msub><mo>;</mo><msub><mi>c</mi><mi>t</mi></msub><mo>]</mo><mo>)</mo></math>.</p>
+
+        <h4>(b) The attention function · part of 7 marks</h4>
+
+        <p>At decoder step <math><mi>t</mi></math>, attention runs three lines:</p>
+
+        <div class="eq boxed">
+          <math display="block">
+            <mtable columnalign="left">
+              <mtr><mtd><msub><mi>e</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub> <mo>=</mo> <mi>score</mi><mo>(</mo><msub><mi>s</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>h</mi><mi>i</mi></msub><mo>)</mo></mtd><mtd><mtext>&#8202;alignment score&#8202;</mtext></mtd></mtr>
+              <mtr><mtd><msub><mi>&#945;</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub> <mo>=</mo> <mfrac><mrow><mi>exp</mi><mo>(</mo><msub><mi>e</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub><mo>)</mo></mrow><mrow><munderover><mo>&#8721;</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover><mi>exp</mi><mo>(</mo><msub><mi>e</mi><mrow><mi>t</mi><mo>,</mo><mi>j</mi></mrow></msub><mo>)</mo></mrow></mfrac></mtd><mtd><mtext>&#8202;attention weight&#8202;</mtext></mtd></mtr>
+              <mtr><mtd><msub><mi>c</mi><mi>t</mi></msub> <mo>=</mo> <munderover><mo>&#8721;</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover> <msub><mi>&#945;</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub> <msub><mi>h</mi><mi>i</mi></msub></mtd><mtd><mtext>&#8202;context vector&#8202;</mtext></mtd></mtr>
+            </mtable>
+          </math>
+        </div>
+
+        <p>The score function is the "attention func" the key wants defined. Two standard choices:</p>
+
+        <p><strong>Additive (Bahdanau, 2015).</strong> A tiny feed-forward net:</p>
+        <div class="eq boxed">
+          <math display="block">
+            <mi>score</mi><mo>(</mo><msub><mi>s</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>h</mi><mi>i</mi></msub><mo>)</mo>
+            <mo>=</mo>
+            <msup><mi>v</mi><mi>T</mi></msup>
+            <mi>tanh</mi>
+            <mo>(</mo>
+            <msub><mi>W</mi><mi>s</mi></msub><msub><mi>s</mi><mrow><mi>t</mi><mo>&#8722;</mo><mn>1</mn></mrow></msub>
+            <mo>+</mo>
+            <msub><mi>W</mi><mi>h</mi></msub><msub><mi>h</mi><mi>i</mi></msub>
+            <mo>)</mo>
+          </math>
+        </div>
+
+        <p><strong>Multiplicative / dot (Luong, 2015).</strong> Cheaper — just a dot product, optionally with a learned matrix in the middle:</p>
+        <div class="eq boxed">
+          <math display="block">
+            <mi>score</mi><mo>(</mo><msub><mi>s</mi><mi>t</mi></msub><mo>,</mo><msub><mi>h</mi><mi>i</mi></msub><mo>)</mo>
+            <mo>=</mo>
+            <msubsup><mi>s</mi><mi>t</mi><mi>T</mi></msubsup>
+            <mspace width="0.15em"/>
+            <mi>W</mi>
+            <mspace width="0.15em"/>
+            <msub><mi>h</mi><mi>i</mi></msub>
+          </math>
+        </div>
+
+        <p>Once <math><msub><mi>c</mi><mi>t</mi></msub></math> is computed, the decoder uses both its own state and the context to predict the next word. In Bahdanau's formulation the context is fed <em>into</em> the decoder RNN update; in Luong's it is concatenated with the decoder state after the update. Either way, the decoder step becomes conditioned on a source view that changes at every target position.</p>
+
+        <h4>(c) Why attention is needed · the rest of 7 marks</h4>
+
+        <p><strong>The bottleneck problem.</strong> A vanilla seq2seq encoder-decoder (Sutskever et al. 2014) reads the whole source sentence and summarises it into a <em>single fixed-length vector</em> — the final encoder hidden state — and hands that one vector to the decoder as its only source-side input. The decoder must generate the entire target sentence from this single vector. Empirically this collapses on long sentences: translation quality drops sharply once the source is longer than roughly 20 to 30 tokens, because a fixed-size vector cannot carry all of the source content.</p>
+
+        <p><strong>Different targets need different source content.</strong> This is the key's core observation. Consider translating <em>"the red car is fast"</em> into French — <em>"la voiture rouge est rapide"</em>. When the decoder is producing <em>voiture</em>, it needs to look at <em>car</em>. When it is producing <em>rouge</em>, it needs to look at <em>red</em>. A single fixed source vector cannot serve both — it either averages the two signals or forgets one. What the decoder actually needs is a <em class="term">different source view at each target step</em>. That is exactly what attention gives: a fresh <math><msub><mi>c</mi><mi>t</mi></msub></math> per step, computed by softly pointing at the source tokens that matter for the current output.</p>
+
+        <p><strong>Attention lifts the bottleneck by letting the decoder look back.</strong> The encoder no longer has to fit the whole source into one vector, because every one of its per-position states <math><msub><mi>h</mi><mi>i</mi></msub></math> is preserved and reachable. At each decoder step, the softmax over alignment scores acts as a <em class="term">soft pointer</em>: it selects (or blends) the source positions relevant to what the decoder is about to output. In effect, the decoder can "look back" at any encoder state at any time, cost-free at inference.</p>
+
+        <p><strong>The alignment side-effect.</strong> The attention weights <math><msub><mi>&#945;</mi><mrow><mi>t</mi><mo>,</mo><mi>i</mi></mrow></msub></math> also give a free, interpretable soft alignment between source and target words — which was previously a separate step in phrase-based statistical MT systems. Attention absorbs alignment into the model.</p>
+
+        <div class="callout mechanism">
+          <div class="callout-label">mechanism · one-line summary of why</div>
+          <p>Vanilla seq2seq forces one source vector to serve every target step. Attention gives every target step its own source vector, computed by a soft, differentiable lookup over the encoder's per-position states.</p>
+        </div>
+
+        <div class="callout aha">
+          <div class="callout-label">✦ the aha</div>
+          <p>Attention is not just an accuracy fix for long sentences. It is the observation that "which piece of the input do I need right now" is <em>itself something the model can learn</em>. Once you can learn a soft lookup over encoder states, you no longer need recurrence to carry information across positions — you can just attend directly. That realisation is what leads, three years later, to the transformer.</p>
+        </div>
+
+        <h3>What the key says</h3>
+        <p>The key's two bullets are (i) <em>describe a RNN/LSTM with attention "func" defined</em> — hit in the alignment score above — and (ii) <em>different target words need different content words for translation</em> — hit in the "why" argument. The mark split (3 + 7) is worth remembering next year: describing the model is cheap, defending attention is where the marks live.</p>
+      </div>
+    </section>
+
+    <div class="pager">
+      <a class="prev" href="../tutorials/2-matrices-to-transformers.html">
+        <span class="dir">← back</span>
+        <span class="lbl">Tutorial 2 · Matrices to Transformers</span>
+      </a>
+      <a class="next" href="mid-2024.html">
+        <span class="dir">next →</span>
+        <span class="lbl">Mid Sem 2024 (PYQ)</span>
+      </a>
+    </div>
+
+    <footer class="foot">
+      <div>Mid Semester 2023 · PYQ · ANLP Monsoon '26</div>
+      <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank" rel="noopener">github ↗</a></div>
+    </footer>
+  </main>
+
+  <aside class="rail-right">
+    <div class="kicker">progress</div>
+    <div class="heatmap-rail" aria-hidden="true"></div>
+    <div class="kicker">sections</div>
+    <div class="rail-toc">
+      <a href="#paper">§1 the paper</a>
+      <a href="#key">§2 official key</a>
+      <a href="#q1">§3 Q1 · RNN/LSTM/GRU</a>
+      <a href="#q2">§4 Q2 · ELMo</a>
+      <a href="#q3">§5 Q3 · attention</a>
+    </div>
+  </aside>
+</div>
+
+<script src="../assets/js/site.js"></script>
+</body>
+</html>
