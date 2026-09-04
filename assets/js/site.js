@@ -91,13 +91,13 @@ function __siteContext() {
       const pt = e.touches ? e.touches[0] : e;
       isDown = true; moved = 0;
       startX = pt.pageX; startScroll = scroll.scrollLeft;
-      scroll.classList.add("dragging");
     };
     const onMove = (e) => {
       if (!isDown) return;
       const pt = e.touches ? e.touches[0] : e;
       const dx = pt.pageX - startX;
       moved = Math.max(moved, Math.abs(dx));
+      if (moved > DRAG_THRESHOLD) scroll.classList.add("dragging");
       scroll.scrollLeft = startScroll - dx;
       if (e.cancelable && Math.abs(dx) > DRAG_THRESHOLD) e.preventDefault();
     };
