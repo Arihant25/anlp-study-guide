@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://arihant25.github.io/anlp-study-guide/</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/lectures/1-logistics.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/lectures/2-transformers.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/lectures/3-tokenization.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/lectures/4-positional-encoding.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/lectures/5-attention.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/lectures/6-more-attention.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/tutorials/1-math-for-dl.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/tutorials/2-matrices-to-transformers.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/assignments/1-transformers-from-scratch.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/pyqs/mid-2023.html</loc></url>
+  <url><loc>https://arihant25.github.io/anlp-study-guide/pyqs/mid-2024.html</loc></url>
+</urlset>

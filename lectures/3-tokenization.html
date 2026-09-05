@@ -7,6 +7,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="Lecture 3 of Advanced NLP, Monsoon 2026 IIIT-H: tokenization from first principles — words, subwords, WordPiece, Unigram, SentencePiece, BPE, byte-level and the token-free frontier.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/3-tokenization.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Tokenization: BPE, WordPiece &amp; Unigram | ANLP">
+  <meta property="og:description"
+    content="Learn NLP tokenization from first principles: words, subwords, BPE, WordPiece, Unigram, SentencePiece, bytes, and token-free models.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/3-tokenization.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L3-tokenization/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP tokenization lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Tokenization: BPE, WordPiece &amp; Unigram | ANLP">
+  <meta name="twitter:description"
+    content="NLP tokenization explained from words and subwords through BPE, WordPiece, Unigram, and SentencePiece.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L3-tokenization/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 3: Tokenization","url":"https://arihant25.github.io/anlp-study-guide/lectures/3-tokenization.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -114,13 +133,15 @@
             <h4>On the slide</h4>
             <p>The familiar <em class="term">Attention is All You Need</em> diagram, with a red box drawn around the
               <strong>Inputs</strong> slot at the bottom of the encoder stack. That slot is where tokenization lives —
-              it is the interface between raw text and the input embedding matrix.</p>
+              it is the interface between raw text and the input embedding matrix.
+            </p>
             <h4>What to take from it</h4>
             <p>Everything above that red box operates on vectors. But the transformer cannot ingest a string. Something
               has to chop the string into pieces, look each piece up in a vocabulary, and hand the model a sequence of
               integer ids that then index into the input embedding table. That "something" is the tokenizer, and it is
               <em>not</em> learned end-to-end with the rest of the network. It is trained separately, once, on a corpus
-              of text, and then frozen.</p>
+              of text, and then frozen.
+            </p>
             <div class="callout aha">
               <div class="callout-label">✦ Key takeaway</div>
               <p>The tokenizer is a <em>preprocessor</em>, not a layer. Its vocabulary is fixed before pretraining
@@ -274,7 +295,8 @@
               <em>Word</em> level has short sequences but an unbounded vocab. <em>Sentence</em> level is short and
               useful for retrieval or classification but hopeless for generation. <em>Subword</em> is the compromise
               that everything modern uses — small-enough vocab, short-enough sequences, and (crucially) no OOV because
-              any unseen word can be spelled out as a sequence of known pieces.</p>
+              any unseen word can be spelled out as a sequence of known pieces.
+            </p>
           </div>
         </div>
 
@@ -375,13 +397,15 @@
             <h4>On the slide</h4>
             <p>The three statistical methods that the rest of the lecture will unfold in detail:
               <strong>WordPiece</strong> (§3), <strong>Unigram Language Model</strong> and its implementation
-              <strong>SentencePiece</strong> (§4), and <strong>Byte Pair Encoding</strong> (§5).</p>
+              <strong>SentencePiece</strong> (§4), and <strong>Byte Pair Encoding</strong> (§5).
+            </p>
             <h4>Who uses what</h4>
             <p>Ballpark, so you can put the names to models you have heard of: WordPiece powers <em>BERT</em> and the
               DistilBERT family. Unigram + SentencePiece powers <em>T5</em>, <em>ALBERT</em>, <em>XLNet</em>, and most
               multilingual encoders. BPE (and its byte-level variant) powers <em>GPT-2</em> through <em>GPT-4</em>,
               <em>Llama</em>, <em>Mistral</em>, and just about every autoregressive LLM. All three learn a subword
-              vocabulary from a raw text corpus; they just disagree on the training objective.</p>
+              vocabulary from a raw text corpus; they just disagree on the training objective.
+            </p>
             <div class="callout link">
               <div class="callout-label">→ how they differ, in one line each</div>
               <p><strong>WordPiece:</strong> merge the pair whose merge most increases corpus log-likelihood.
@@ -461,13 +485,15 @@
             </div>
             <p>The ratio rewards pairs that co-occur specifically, not just pairs whose components are both common. So
               <em>th</em> wins over, say, <em>e_</em> even if space-<em>e</em> is more frequent, because <em>t</em> and
-              <em>h</em> are much more predictable together than apart.</p>
+              <em>h</em> are much more predictable together than apart.
+            </p>
             <div class="callout aha">
               <div class="callout-label">✦ Key takeaway</div>
               <p>BERT's vocabulary marks non-initial subwords with <code>##</code> — e.g. <em>playing</em> tokenises to
                 <code>play</code>, <code>##ing</code>. Those <code>##</code> markers are how the model tells "this is
                 the start of a new word" from "this piece continues the previous word." A different marker convention
-                (<code>▁</code> in SentencePiece) will show up in §4.</p>
+                (<code>▁</code> in SentencePiece) will show up in §4.
+              </p>
             </div>
           </div>
         </div>
@@ -489,7 +515,8 @@
                 hard bar for the long tail of Unicode.</li>
               <li>Still bad for <strong>morphologically rich</strong>, <strong>agglutinative</strong>, and
                 <strong>no-word-boundary</strong> languages (Turkish, Finnish, Telugu, Thai). The greedy longest-match
-                heuristic fights against languages that carry meaning in fine-grained affixes.</li>
+                heuristic fights against languages that carry meaning in fine-grained affixes.
+              </li>
               <li><strong>Domain shift.</strong> A WordPiece vocab trained on Wikipedia will fragment medical terms
                 (<em>hydroxychloroquine</em>) or legal Latinate boilerplate into unhelpful little pieces, and downstream
                 performance drops.</li>
@@ -620,7 +647,8 @@
               literally replaces the space character with a visible marker (<code>▁</code>, U+2581 LOWER ONE EIGHTH
               BLOCK) and treats that as just another character in the stream. This means it works identically on English
               (space-delimited) and Japanese (not), and detokenisation is exact:
-              <code>join(pieces).replace('▁', ' ')</code>.</p>
+              <code>join(pieces).replace('▁', ' ')</code>.
+            </p>
             <p>Second, the vocab is built by <strong>ULM</strong> under the hood. So "SentencePiece" is best read as
               "SentencePiece(Unigram)" — although the same library can also run BPE if you ask it to.</p>
             <div class="callout How it works">
@@ -710,7 +738,8 @@
               <li>Initialise the vocabulary with every character in the corpus, plus an end-of-word marker.</li>
               <li>Count all adjacent symbol pairs.</li>
               <li>Merge the most frequent pair into a new symbol (e.g. <code>t</code> + <code>h</code> →
-                <code>th</code>). Add it to the vocab.</li>
+                <code>th</code>). Add it to the vocab.
+              </li>
               <li>Every merge produces a new character n-gram; frequent n-grams and eventually whole common words get
                 merged into single symbols.</li>
               <li>Repeat until you hit the target vocabulary size.</li>
@@ -803,7 +832,8 @@
             <p>UTF-8 encodes every Unicode character as a sequence of 1–4 bytes. So a Chinese character is 3 bytes, an
               emoji is 4 bytes, and every ASCII character is 1 byte. If your base vocabulary is those 256 bytes, then
               <em>every possible input string</em> is representable — there is no OOV, ever, for any character in any
-              script. You've bought perfect coverage at the cost of one extra layer of encoding.</p>
+              script. You've bought perfect coverage at the cost of one extra layer of encoding.
+            </p>
             <div class="callout How it works">
               <div class="callout-label">◇ the 256-symbol foundation</div>
               <p>The base alphabet is finite and universal. Merges built on top of it may still learn "the byte sequence
@@ -858,7 +888,8 @@
               <li><strong>Merges are harder to interpret.</strong> A character-level BPE merge like
                 <code>i</code>+<code>n</code>+<code>g</code>→<code>ing</code> is legible. A byte-level BPE merge
                 combining bytes <code>0xE4 0xB8</code> is technically the first two bytes of a Chinese character prefix
-                — meaningful, but you have to decode it to see what.</li>
+                — meaningful, but you have to decode it to see what.
+              </li>
             </ol>
             <div class="callout gotcha">
               <div class="callout-label">⚠ the multilingual cost</div>
@@ -1019,7 +1050,8 @@
             <p>The clever bit is how the encoder decides where one patch ends and the next begins. It uses
               <strong>entropy-based grouping</strong>: a small byte-level model predicts the next byte; when its
               prediction distribution has <em>high entropy</em> (the model is uncertain), a patch boundary is drawn.
-              When entropy is low (the model is confident), the current patch keeps growing.</p>
+              When entropy is low (the model is confident), the current patch keeps growing.
+            </p>
             <p>The intuition is elegant. Boundaries fall where the model needs to "think harder" — the start of a new
               word, a rare character, an unexpected character. Predictable runs (the inside of a common word) get
               absorbed into one big patch, saving compute.</p>
@@ -1077,7 +1109,8 @@
             <ul>
               <li><strong>MegaByte, 4-strided</strong>: brutal fixed windows of 4 bytes. Slices words mid-morpheme.</li>
               <li><strong>Llama BPE</strong>: subword pieces (<code>Da</code> <code>enery</code> <code>s</code>
-                <code>T</code> <code>arg</code> <code>ary</code> <code>en</code> …), a familiar messy segmentation.</li>
+                <code>T</code> <code>arg</code> <code>ary</code> <code>en</code> …), a familiar messy segmentation.
+              </li>
               <li><strong>BLT Entropy</strong>: patches begin at high-entropy bytes. Rare parts get their own patch;
                 predictable runs merge.</li>
               <li><strong>BLT Entropy + Monotonicity</strong>: adds a constraint that patches keep growing until entropy
@@ -1139,7 +1172,8 @@
               again. With BLT, the local encoder and decoder always operate at the byte level; the latent transformer
               just sees a compressed patch view for efficiency. So questions like "how many r's are in
               <em>strawberry</em>?" become answerable without special training, because the bytes are still there in the
-              graph.</p>
+              graph.
+            </p>
             <div class="callout aha">
               <div class="callout-label">✦ where the lecture lands</div>
               <p>Tokenization has been the quiet interface between text and transformer for eight years. It is being

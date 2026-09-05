@@ -7,6 +7,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="Mid-Semester Exam 2024 for Advanced NLP (M24CS7.501), IIIT Hyderabad. Full paper and a worked solution to every question — RNN long dependencies, seq2seq attention, transformer encoder block, LoRA vs Adapters.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/pyqs/mid-2024.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Advanced NLP Mid-Sem 2024: Solved Paper | IIIT-H">
+  <meta property="og:description"
+    content="The IIIT Hyderabad Advanced NLP 2024 mid-semester paper with worked solutions on RNNs, seq2seq attention, transformers, LoRA, and adapters.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/pyqs/mid-2024.html">
+  <meta property="og:image" content="https://arihant25.github.io/anlp-study-guide/assets/pyqs/mid-2024/page-1.png">
+  <meta property="og:image:alt" content="Advanced NLP 2024 mid-semester exam paper">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Advanced NLP Mid-Sem 2024: Solved Paper | IIIT-H">
+  <meta name="twitter:description"
+    content="Full Advanced NLP 2024 mid-semester paper with worked solutions on attention, transformers, LoRA, and adapters.">
+  <meta name="twitter:image" content="https://arihant25.github.io/anlp-study-guide/assets/pyqs/mid-2024/page-1.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Mid-Semester 2024 Solved Paper","url":"https://arihant25.github.io/anlp-study-guide/pyqs/mid-2024.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"practice test","educationalLevel":"graduate"}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -81,7 +98,8 @@
               numerical work. But the balance has shifted. In 2023 the whole paper was pre-transformer; here,
               <strong>two thirds of the marks (20 out of 30) are on transformer-era material</strong>: the encoder block
               itself, and PEFT methods that only make sense once you have a large pretrained transformer to fine-tune.
-              The 2024 syllabus has caught up with the field.</p>
+              The 2024 syllabus has caught up with the field.
+            </p>
             <ol>
               <li>The two 5-mark questions want <em class="term">tight</em> answers, so think five distinct correct
                 claims per question, one for each mark. Overwriting them steals time from Q3 and Q4.</li>
@@ -389,7 +407,8 @@
                 is fast"</em> into French — <em>"la voiture rouge est rapide"</em>. When the decoder is producing
               <em>voiture</em>, it needs to look at <em>car</em>. When it is producing <em>rouge</em>, it needs to look
               at <em>red</em>. One fixed vector cannot serve both — it averages them or forgets one. What the decoder
-              actually needs is a <em class="term">different source view at every target step</em>.</li>
+              actually needs is a <em class="term">different source view at every target step</em>.
+            </li>
           </ol>
 
           <p>Attention (Bahdanau et al. 2015) fixes both. The encoder keeps <em>all</em> its per-position hidden states
@@ -412,7 +431,8 @@
                 <mi>t</mi>
               </msub>
             </math> is produced — a weighted sum of encoder states, weighted by how well each source position matches
-            the current decoder state. The decoder can "look back" at any source token at any time.</p>
+            the current decoder state. The decoder can "look back" at any source token at any time.
+          </p>
 
           <h4>The attention function</h4>
 
@@ -722,7 +742,8 @@
               <mi>d</mi>
               <mo>)</mo>
             </math> and one line on why the block looks this way. Aim for one equation-plus-paragraph per sub-component
-            — that is roughly two marks each, which lines up with the ten.</p>
+            — that is roughly two marks each, which lines up with the ten.
+          </p>
 
           <h3>Worked answer</h3>
 
@@ -1309,7 +1330,8 @@
               <mo>(</mo>
               <mn>1</mn>
               <mo>)</mo>
-            </math> path length between any two tokens, which is the whole point.</p>
+            </math> path length between any two tokens, which is the whole point.
+          </p>
 
           <div class="callout aha">
             <div class="callout-label">✦ Key takeaway</div>
@@ -1340,7 +1362,8 @@
           <h3>The question, verbatim</h3>
           <blockquote>
             <p><strong>4.</strong> How does LoRA Finetuning approach differ from Adapters? Explain with architectures.
-              <em>[10 marks]</em></p>
+              <em>[10 marks]</em>
+            </p>
           </blockquote>
 
           <h3>How to approach it</h3>

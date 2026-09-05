@@ -7,6 +7,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="Lecture 6 of Advanced NLP, Monsoon 2026 IIIT-H: attention variants that survive long contexts — sliding-window, sparse, BigBird, and linear attention.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/6-more-attention.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Efficient Attention: Sparse, BigBird &amp; Linear | ANLP">
+  <meta property="og:description"
+    content="Learn efficient attention for long contexts: sliding-window and sparse attention, BigBird, and linear attention.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/6-more-attention.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L6-more-attention/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP efficient attention lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Efficient Attention: Sparse, BigBird &amp; Linear | ANLP">
+  <meta name="twitter:description"
+    content="Sliding-window, sparse, BigBird, and linear attention for efficient long-context language models.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L6-more-attention/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 6: Efficient Attention","url":"https://arihant25.github.io/anlp-study-guide/lectures/6-more-attention.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -206,7 +225,8 @@
               <li><strong>(a) Full n² attention.</strong> The standard mask, a solid green square. Everyone looks at
                 everyone.</li>
               <li><strong>(b) Sliding window.</strong> A thin diagonal band of width <em>w</em>. Each query attends to
-                <em>w</em>/2 tokens on either side.</li>
+                <em>w</em>/2 tokens on either side.
+              </li>
               <li><strong>(c) Dilated sliding window.</strong> The same band, but with gaps: skip every other key. This
                 widens the <em class="term">receptive field</em> without adding cost, the same trick that WaveNet uses
                 in dilated convolutions.</li>
@@ -273,7 +293,8 @@
                 layers of message-passing. Depth is not free.
               </p>
               <p>The second is a tuning trap. Small <em>w</em> and you drop important long-range signal; large
-                <em>w</em> and you are back paying for something close to full attention.</p>
+                <em>w</em> and you are back paying for something close to full attention.
+              </p>
             </div>
           </div>
 
@@ -339,7 +360,8 @@
             <p>Three masks from the <em>Sparse Transformers</em> paper. The full pattern (left) is compared to two
               structured sparsifications. <strong>Strided</strong>: attend to your local window <em>and</em> every
               <em>k</em>-th token in the past. <strong>Fixed</strong>: attend to your window and to a fixed set of
-              "summary" positions.</p>
+              "summary" positions.
+            </p>
             <h4>What to take from it</h4>
             <p>The design intent was image generation: the paper factorises attention into two heads that between them
               cover the full 2D image raster in
@@ -411,7 +433,8 @@
               <h4>What to take from it</h4>
               <p>Fixed masks (windows, strides) are a guess about where attention wants to look. DeepSeek's move is to
                 <em>ask</em>, cheaply, then look only at the winners. This is a form of <em class="term">learned
-                  sparsity</em>: the mask is dynamic, per-query, per-layer.</p>
+                  sparsity</em>: the mask is dynamic, per-query, per-layer.
+              </p>
               <div class="callout How it works">
                 <div class="callout-label">⚙ How it works</div>
                 <p>Think of it as a two-stage attention. Stage 1: a lightweight, low-precision "lightning attention"
@@ -460,7 +483,8 @@
             <h4>Why keep this in mind</h4>
             <p>Fewer tokens attended to means less to keep in cache and less arithmetic. The reason DeepSeek can afford
               <em>k</em> = 64 while sliding needed <em>w</em> = 128 is that the 64 are chosen adaptively. You spend your
-              budget on the tokens the query actually cares about, not on whichever tokens happen to sit next to it.</p>
+              budget on the tokens the query actually cares about, not on whichever tokens happen to sit next to it.
+            </p>
           </div>
         </div>
 
@@ -655,7 +679,8 @@
               <li>Standard attention builds an <em>N</em>×<em>N</em> matrix, so it costs <em>O</em>(<em>N</em>²) time.
               </li>
               <li>The exponential inside softmax is the villain: it couples every <em>q<sub>i</sub></em> to every
-                <em>k<sub>j</sub></em> nonlinearly, so the sum cannot be factored.</li>
+                <em>k<sub>j</sub></em> nonlinearly, so the sum cannot be factored.
+              </li>
               <li>Replace exp with a factorable <em class="term">kernel</em> written as
                 <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
                   <mi>φ</mi>
@@ -786,7 +811,8 @@
               <h4>Why this restatement matters</h4>
               <p>Compare this to slide 16. Both compute an output that is a normalised weighted sum of values. The
                 <em>only</em> difference is what plays the role of the "weight". This slide fixes what we are trying to
-                escape.</p>
+                escape.
+              </p>
             </div>
           </div>
 
@@ -905,7 +931,8 @@
                     <em>i</em></strong>. Compute them once, in one pass through the sequence, then every query is an
                   <em>O</em>(<em>d</em>′<em>d</em>) contraction with the same <em>S</em> and <em>z</em>. Total:
                   <em>O</em>(<em>n d</em>′<em>d</em>), and (this is the killer property) memory <em>independent of
-                    n</em>. The <em>n</em>-by-<em>n</em> matrix never appears anywhere.</p>
+                    n</em>. The <em>n</em>-by-<em>n</em> matrix never appears anywhere.
+                </p>
               </div>
             </div>
           </div>
@@ -923,7 +950,8 @@
               <h4>On the slide</h4>
               <p>In the <em class="term">causal</em> case, where token <em>t</em> may only attend to positions ≤
                 <em>t</em>, the sums that make up <em>S</em> and <em>z</em> become <em>prefix sums</em>. That means they
-                can be maintained incrementally:</p>
+                can be maintained incrementally:
+              </p>
               <p style="text-align:center"><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
                   <msub>
                     <mi>S</mi>
@@ -1148,7 +1176,8 @@
               <p>The third is a training-time concern. Without the softmax denominator's normalisation, the running sums
                 <em>S<sub>t</sub></em> and <em>z<sub>t</sub></em> can grow without bound, leading to numerical issues.
                 Modern variants patch this with LayerNorm/RMSNorm on the output (see slide 18's last row), gating, or
-                careful <em>φ</em> choices. You can't just drop softmax and hope for the best.</p>
+                careful <em>φ</em> choices. You can't just drop softmax and hope for the best.
+              </p>
             </div>
           </div>
         </div>

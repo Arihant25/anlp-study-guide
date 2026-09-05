@@ -7,6 +7,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="Lecture 4 of Advanced NLP, Monsoon 2026 IIIT-H: positional encoding — absolute, sinusoidal, relative, RoPE and NoPE. From first principles.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/4-positional-encoding.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Positional Encoding: Sinusoidal, RoPE &amp; NoPE | ANLP">
+  <meta property="og:description"
+    content="Understand absolute, sinusoidal and relative positional encoding, rotary position embeddings (RoPE), and NoPE from first principles.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/4-positional-encoding.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L4-positional/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP positional encoding lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Positional Encoding: Sinusoidal, RoPE &amp; NoPE | ANLP">
+  <meta name="twitter:description"
+    content="Absolute, sinusoidal and relative positional encoding, RoPE, and NoPE explained from first principles.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L4-positional/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 4: Positional Encoding","url":"https://arihant25.github.io/anlp-study-guide/lectures/4-positional-encoding.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -115,7 +134,8 @@
             <h4>On the slide</h4>
             <p>The original Vaswani et al. (2017) transformer diagram. The lecturer has drawn a red box around the
               <strong>positional encoding</strong> block sitting under the input embedding, on both encoder and decoder
-              sides. That is the whole real estate this lecture is about.</p>
+              sides. That is the whole real estate this lecture is about.
+            </p>
             <h4>What to take from it</h4>
             <p>Read the diagram from the bottom up. Words become <em class="term">input embeddings</em> — vectors of
               size <code>d_model</code>. Those vectors are then summed with a <em class="term">positional encoding</em>
@@ -127,7 +147,8 @@
               <p>Attention is <em>permutation-equivariant</em>: shuffle the input rows and the output rows shuffle the
                 same way. So without something like this red box, the model would give <em>the dog bit the man</em> and
                 <em>man the bit dog the</em> identical hidden states. Everything in this lecture is a different answer
-                to "what should go in that red box?"</p>
+                to "what should go in that red box?"
+              </p>
             </div>
           </div>
         </div>
@@ -291,13 +312,15 @@
             <h4>On the slide</h4>
             <p>Vaswani et al.'s design hypothesis, in one line: choose a positional encoding function such that
               <strong>the encoding at position <code>pos+k</code> is a linear function of the encoding at position
-                <code>pos</code></strong>, for any fixed offset <code>k</code>.</p>
+                <code>pos</code></strong>, for any fixed offset <code>k</code>.
+            </p>
             <h4>Why that specific property</h4>
             <p>Self-attention computes a dot product of query and key. If two positions differ by a fixed amount
               <code>k</code>, the model should be able to compute their attention score in a way that <em>only depends
                 on k</em>, not on where in the sentence they happen to sit. A linear-shift-invariant encoding gives you
               exactly that: the model can learn a linear head that fires whenever two tokens are, say, 3 apart,
-              regardless of whether they are at positions (0, 3) or (100, 103).</p>
+              regardless of whether they are at positions (0, 3) or (100, 103).
+            </p>
             <p>Sines and cosines have this property for free — this is essentially the rotation identity <math
                 xmlns="http://www.w3.org/1998/Math/MathML">
                 <mi>sin</mi>
@@ -430,7 +453,8 @@
               </math> — highest at <code>i = 0</code>, and dropping by a factor of 10000 as <code>i</code> walks to the
               end of the vector. So the first pair of dimensions oscillates very quickly with position (giving the model
               a fine-grained "which token exactly?" reading), and the last pair oscillates almost not at all (giving a
-              coarse "which region of the sequence?" reading).</p>
+              coarse "which region of the sequence?" reading).
+            </p>
             <h4>What the bottom picture shows</h4>
             <p>Each of the three input tokens <em>Je</em>, <em>suis</em>, <em>étudiant</em> at positions 0, 1, 2 gets a
               coloured positional vector. At position 0, sines are 0 and cosines are 1 — you can read the values off the
@@ -522,12 +546,15 @@
             <ol>
               <li><strong>Pairwise, not per-token.</strong> A relative PE is not associated with one token — it is
                 associated with a <em>pair</em>: the query at position <code>i</code> and the key at position
-                <code>j</code>. There is one such value for every ordered pair.</li>
+                <code>j</code>. There is one such value for every ordered pair.
+              </li>
               <li><strong>Function of the two vectors.</strong> More precisely, function of their relative offset
-                <code>i − j</code>.</li>
+                <code>i − j</code>.
+              </li>
               <li><strong>Injected inside self-attention.</strong> Instead of being added to the input embedding, the
                 relative PE is added to the <em>attention logit</em> — the pre-softmax score that says how much query
-                <code>i</code> should attend to key <code>j</code>.</li>
+                <code>i</code> should attend to key <code>j</code>.
+              </li>
             </ol>
             <div class="eq boxed">
               <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
@@ -597,11 +624,13 @@
           <h4>What these two slides show</h4>
           <p>T5's specific way of doing relative PE, in two parts. Slide 14 gives the shape: a single learned
             <strong>scalar</strong> per relative offset per attention head, added to the attention logit. The scalar
-            table is <em>shared across all transformer layers</em> but <em>separate per head</em>.</p>
+            table is <em>shared across all transformer layers</em> but <em>separate per head</em>.
+          </p>
           <p>Slide 15 gives the sizing trick. T5 does not learn one scalar per offset up to sequence length — it uses
             <strong>32 buckets</strong>, and the buckets grow logarithmically. Offsets 1, 2, 3, 4 might each get their
             own bucket. Offsets 5–8 share a bucket. Offsets 9–16 share the next. And so on up to offset 128; everything
-            past 128 shares one big "far away" bucket.</p>
+            past 128 shares one big "far away" bucket.
+          </p>
           <h4>Why bucketise?</h4>
           <p>Two reasons. First, <em>parameter efficiency</em>: a 32-scalar table per head is cheap regardless of
             context length. Second — and this is the important one — <strong>fine-grained distance only matters when
@@ -652,7 +681,8 @@
               tokens so you don't recompute them at each step. But with relative PE, when a new token arrives, the bias
               <code>b(i − j)</code> for existing keys shifts — because <code>i</code> just changed. So you cannot simply
               reuse the cached keys and values as they are; you have to recompute the attention logits. This is a
-              serious performance tax on generation.</li>
+              serious performance tax on generation.
+            </li>
           </ol>
           <div class="callout link">
             <div class="callout-label">→ Keep reading</div>
@@ -734,7 +764,8 @@
             <p>The RoPE How it works in one figure. Take the query or key vector <code>(x1, x2)</code>. Rotate it in the
               plane by angle <code>m · θ₁</code> — where <code>m</code> is the token's position index and
               <code>θ₁</code> is a fixed frequency for this pair of dimensions. Call the rotated vector
-              <code>(x'₁, x'₂)</code>. That is your position-encoded query or key.</p>
+              <code>(x'₁, x'₂)</code>. That is your position-encoded query or key.
+            </p>
             <p>The bottom panel shows the same recipe applied to a full six-token sentence — <em>"Enhanced Transformer
                 with Rotary Position Embedding"</em>, positions 1 through 6. The tinted colour on each output vector
               represents the accumulating rotation. Position 1 gets a small twist. Position 6 gets a large one.</p>
@@ -743,7 +774,8 @@
               <code>d</code> dimensions into <code>d/2</code> consecutive 2D pairs. Each pair gets its own frequency
               <code>θᵢ</code> — high frequencies for the first pairs, low frequencies for the last, in the same
               10000<sup>−2i/d</sup> style as the sinusoidal formula. Each pair is rotated independently by the
-              position-dependent angle for that frequency.</p>
+              position-dependent angle for that frequency.
+            </p>
           </div>
         </div>
 
@@ -901,7 +933,8 @@
               of adjacent dimensions <code>(x<sub>2i</sub>, x<sub>2i+1</sub>)</code> and computing
               <code>(x<sub>2i</sub>cos φ − x<sub>2i+1</sub>sin φ, x<sub>2i</sub>sin φ + x<sub>2i+1</sub>cos φ)</code>
               with <code>φ = m·θᵢ</code>. That's it — one pair of trig multiplies per pair of dimensions, no matrix ever
-              materialised.</p>
+              materialised.
+            </p>
           </div>
         </div>
 
@@ -1041,7 +1074,8 @@
                 <em>global-attention</em> layers. The practical payoff is that MLA can then run as a plain multi-query
                 attention at inference — the KV cache is small and simple — and the model doesn't need any of the
                 RoPE-retuning tricks (YaRN, position interpolation) usually required to push RoPE past its training
-                length.</li>
+                length.
+              </li>
               <li><strong>Kimi K3.</strong> Goes all the way: no RoPE anywhere. Pure NoPE across the whole stack. This
                 is the strongest bet on Kazemnejad et al.'s finding to date at scale.</li>
             </ul>

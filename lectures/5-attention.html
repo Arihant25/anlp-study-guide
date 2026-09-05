@@ -7,6 +7,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="Lecture 5 of Advanced NLP, Monsoon 2026 IIIT-H: attention from first principles — scaled dot-product, multi-head, the KV cache, and the family of variants (Longformer, MQA, GQA, MLA) that shrink it.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/5-attention.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Attention: MHA, MQA, GQA &amp; KV Cache | ANLP">
+  <meta property="og:description"
+    content="Attention explained from first principles: scaled dot-product and multi-head attention, KV caching, Longformer, MQA, GQA, and MLA.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/5-attention.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L5-attention/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP attention lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Attention: MHA, MQA, GQA &amp; KV Cache | ANLP">
+  <meta name="twitter:description"
+    content="Scaled dot-product attention, multi-head attention, KV caching, MQA, GQA, and MLA explained.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L5-attention/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 5: Attention","url":"https://arihant25.github.io/anlp-study-guide/lectures/5-attention.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -114,7 +133,8 @@
           <div class="explain">
             <h4>On the slide</h4>
             <p>Title card for Lecture 5 of Advanced NLP, Monsoon '26. Delivered by <strong>Aparajitha</strong> and
-              <strong>Manish Shrivastava</strong> on August 20, 2026.</p>
+              <strong>Manish Shrivastava</strong> on August 20, 2026.
+            </p>
             <h4>What to take from it</h4>
             <p>The word on the slide is just <em>Attention</em>. Not "self-attention", not "the transformer" — the whole
               lecture treats attention as a How it works you can take apart and modify, not as one particular fixed
@@ -219,14 +239,16 @@
               <code>4·d<sub>q</sub>·d·h·l</code> is the four projection matrices per layer — <em
                 class="term">W<sub>Q</sub></em>, <em class="term">W<sub>K</sub></em>, <em
                 class="term">W<sub>V</sub></em>, and the output projection <em class="term">W<sub>O</sub></em>. Multiply
-              by heads <em>h</em> and layers <em>l</em> and you get 268M for a single-billion-parameter model.</p>
+              by heads <em>h</em> and layers <em>l</em> and you get 268M for a single-billion-parameter model.
+            </p>
             <div class="callout aha">
               <div class="callout-label">✦ Key takeaway</div>
               <p>Attention is not the biggest component — the feed-forward network is, at 57%. But attention is the one
                 that scales quadratically with sequence length at <em>inference</em> time, and its per-token memory (the
                 <em class="term">KV cache</em>, §3) is what actually breaks when you try to run these models on real
                 workloads. That is why the field spends so much effort making attention smaller, and almost none making
-                the FFN smaller.</p>
+                the FFN smaller.
+              </p>
             </div>
           </div>
         </div>
@@ -330,14 +352,16 @@
                   </msub>
                 </msqrt>
               </math> keeps the pre-softmax logits from growing large with the dimension of the key vectors, which would
-              push the softmax into a near-argmax and kill gradients.</p>
+              push the softmax into a near-argmax and kill gradients.
+            </p>
             <h4>Why multi-head</h4>
             <p>The multi-head version splits the <code>d</code>-dimensional embedding into <em>h</em> smaller
               <code>d/h</code>-dimensional slices and runs the same attention operation on each slice with its own Q, K,
               V projections. Then the outputs are concatenated back and multiplied by <em
                 class="term">W<sub>O</sub></em>. Each head can specialise: one might attend to the previous token,
               another to the subject-verb agreement, another to the discourse antecedent. The final linear lets the
-              model mix those specialists back into a single stream.</p>
+              model mix those specialists back into a single stream.
+            </p>
             <div class="callout How it works">
               <div class="callout-label">⚙ the shape of one head</div>
               <p>Given input <em>X</em> of shape (<em>n</em>, <em>d</em>): <em>Q</em> = <em>X W<sub>Q</sub></em>,
@@ -345,7 +369,8 @@
                 <em>d<sub>k</sub></em>). The attention output is (<em>n</em>, <em>d<sub>v</sub></em>). In the paper
                 <em>d<sub>k</sub></em> = <em>d<sub>v</sub></em> = <em>d</em>/<em>h</em>, so the concat of <em>h</em>
                 heads has shape (<em>n</em>, <em>d</em>) again — and <em>W<sub>O</sub></em> is (<em>d</em>, <em>d</em>).
-                The multi-head block preserves the input shape.</p>
+                The multi-head block preserves the input shape.
+              </p>
             </div>
           </div>
         </div>
@@ -415,7 +440,8 @@
               <p>The quadratic-cost problem is answered by <strong>Longformer</strong> (§4) and, more ambitiously, by
                 state-space models and Flash Attention in <a class="xref" href="6-more-attention.html">Lecture 6</a>.
                 The KV-cache-size problem is answered by <strong>MQA</strong>, <strong>GQA</strong> and
-                <strong>MLA</strong> (§§5–6).</p>
+                <strong>MLA</strong> (§§5–6).
+              </p>
             </div>
           </div>
         </div>
@@ -470,14 +496,16 @@
               </math> written out for a 4-token sequence. Row <em>i</em> is the dot products of query
               <em>q<sub>i</sub></em> against every key <em>k<sub>0</sub></em>, <em>k<sub>1</sub></em>,
               <em>k<sub>2</sub></em>, <em>k<sub>3</sub></em>. Below it, the value matrix <em>V</em> stacked as one row
-              per token.</p>
+              per token.
+            </p>
             <h4>What to take from it</h4>
             <p>Two observations sit under this innocuous-looking picture. First, every entry of the matrix costs one dot
               product, so the matrix costs <em>n</em>² dot products. Second — and this is the one that motivates the
               cache — the keys <em>k<sub>0</sub></em>…<em>k<sub>3</sub></em> and values
               <em>v<sub>0</sub></em>…<em>v<sub>3</sub></em> are computed from the input tokens by fixed projections, so
               they don't change once the token has been seen. Only the last row of the matrix (the queries from the
-              newest token) is genuinely new work.</p>
+              newest token) is genuinely new work.
+            </p>
           </div>
         </div>
 
@@ -504,7 +532,8 @@
                 <em>k<sub>t</sub></em>, <em>v<sub>t</sub></em>. Append <em>k<sub>t</sub></em>, <em>v<sub>t</sub></em> to
                 the cache. Attention output for position <em>t</em> is <em>q<sub>t</sub></em> against every cached key,
                 softmax-weighted mix of every cached value. New work: one row of the attention matrix, not the full
-                matrix.</p>
+                matrix.
+              </p>
             </div>
           </div>
         </div>
@@ -542,7 +571,8 @@
             <p>The same 4-token attention matrix from slide 8, but with the first three rows drawn in grey and only the
               last row — <em>q<sub>3</sub></em> against <em>k<sub>0</sub></em>, <em>k<sub>1</sub></em>,
               <em>k<sub>2</sub></em>, <em>k<sub>3</sub></em> — drawn in black. That black row is what the model actually
-              computes when it is emitting the 4th token, given the cache.</p>
+              computes when it is emitting the 4th token, given the cache.
+            </p>
             <h4>What to take from it</h4>
             <p>The grey rows already happened, in earlier steps. They are baked into the outputs the model has already
               emitted. From the current step's point of view they are history — you never need them again. This is why
@@ -595,7 +625,8 @@
           <div class="explain">
             <h4>On the slide</h4>
             <p>The <em>numbers</em>. For our reference 1B model (<code>d</code> = 2048, <code>n</code> = 2048,
-              <code>d<sub>h</sub></code> = 128, 16 heads, 16 layers):</p>
+              <code>d<sub>h</sub></code> = 128, 16 heads, 16 layers):
+            </p>
             <ul>
               <li><em>W<sub>K</sub></em> and <em>W<sub>Q</sub></em> — 67M parameters each, 256 MB each in FP16.</li>
               <li><em>W<sub>V</sub></em> (bundled with <em>W<sub>O</sub></em>, hence the 2×) — 134M parameters, 512 MB.
@@ -608,7 +639,8 @@
               <em>half a gigabyte</em>. Scale to a 70B model with 128k context and dozens of concurrent users and the KV
               cache becomes the dominant memory user on the GPU — bigger than the model weights themselves. Every
               optimisation from §4 onwards in this lecture is a different attempt to make that number smaller without
-              hurting quality.</p>
+              hurting quality.
+            </p>
             <div class="callout gotcha">
               <div class="callout-label">⚠ per request</div>
               <p>The model weights are shared across all users on a GPU. The KV cache is <em>not</em> — every concurrent
@@ -731,12 +763,14 @@
               note is the honest defence of the design: a single sliding-window layer only reaches <em>w</em>/2
               neighbours, but stacking <em>L</em> layers gives you a <em class="term">receptive field</em> of
               <em>L</em>·<em>w</em>/2 — the way a stack of 3×3 convolutions can eventually see the whole image. Distant
-              tokens can still influence each other, just indirectly, over several layers.</p>
+              tokens can still influence each other, just indirectly, over several layers.
+            </p>
             <div class="callout How it works">
               <div class="callout-label">⚙ layer-varying <em>w</em></div>
               <p>Longformer sometimes uses small <em>w</em> in the lower layers (focus on local context) and larger
                 <em>w</em> in the higher layers (broader synthesis). The receptive-field argument still works, just with
-                a variable stride.</p>
+                a variable stride.
+              </p>
             </div>
           </div>
         </div>
@@ -759,7 +793,8 @@
               <em>w</em> with dilation <em>d</em> covers a stretch of <em>w</em>·<em>d</em> tokens (but only sees
               <em>w</em> of them, at strides of <em>d</em>). So for the same compute budget, dilation extends the
               receptive field. Making different heads use different dilations means a single layer can simultaneously
-              reason about local and long-range structure.</p>
+              reason about local and long-range structure.
+            </p>
           </div>
         </div>
 
@@ -867,12 +902,14 @@
                 inherently serial (each token depends on the previous one). And every step re-loads the K and V tensors
                 from memory to compute new attention — that memory bandwidth becomes the bottleneck.</li>
               <li><strong>Big K/V tensors.</strong> The KV cache is <em>h</em> × per-head-size × sequence-length. Bring
-                <em>h</em> down and the cache shrinks proportionally.</li>
+                <em>h</em> down and the cache shrinks proportionally.
+              </li>
             </ul>
             <h4>Why "one write-head"</h4>
             <p>The paper's title is metaphorical: in MHA every head "writes" its own K and V. Shazeer's paper says only
               <em>one</em> write-head is needed — many query heads can share the same K and V. Hence <em
-                class="term">Multi-Query Attention</em>.</p>
+                class="term">Multi-Query Attention</em>.
+            </p>
           </div>
         </div>
 
@@ -894,7 +931,8 @@
             <p>Slide 24 states the recipe: keep <em>h</em> query heads (so each still has its own
               <em>W<sub>Q<sub>i</sub></sub></em>), but collapse to a <em>single</em> pair of <em>W<sub>K</sub></em> and
               <em>W<sub>V</sub></em> shared by all heads. Slide 25 is the picture: four <em>q</em> boxes at the bottom,
-              one shared <em>k</em> and one shared <em>v</em> at the top.</p>
+              one shared <em>k</em> and one shared <em>v</em> at the top.
+            </p>
             <h4>What to take from it</h4>
             <p>Nothing in the attention math requires that the K and V be per-head. If every query head asks its
               questions in a slightly different way but the answers all come from the same knowledge, you can share the
@@ -959,7 +997,8 @@
             <p>Any factor that was multiplied by <em>h</em> for K and V — the projection matrices and the cache —
               divides by <em>h</em>. The query projection <em>W<sub>Q</sub></em> is unchanged because we still have
               <em>h</em> query heads. In FP16 the KV cache for a 2k-context request goes from 512 MB to 32 MB. That is a
-              serving-scale difference.</p>
+              serving-scale difference.
+            </p>
           </div>
         </div>
 
@@ -1036,7 +1075,8 @@
             <p>The concrete recipe. Divide the <em>h</em> query heads into <em>G</em> groups (where 1 ≤ <em>G</em> ≤
               <em>h</em>). Each group of <em>h</em>/<em>G</em> queries shares a single K head and a single V head. In
               the picture, 8 blue query heads are grouped into 4 pairs, each pair mapping to one red K head and one
-              orange V head.</p>
+              orange V head.
+            </p>
             <h4>Two special cases</h4>
             <ul>
               <li><em>G</em> = <em>h</em>: every query head has its own K/V — this <em>is</em> MHA.</li>
@@ -1058,7 +1098,8 @@
             <h4>On the slide</h4>
             <p>A neat engineering trick from the GQA paper. To avoid training a GQA model from scratch, you can
               <em>convert</em> an existing MHA checkpoint into a GQA one by <em class="term">mean-pooling</em> the K
-              (and V) projection matrices within each group. Then you fine-tune briefly to recover quality.</p>
+              (and V) projection matrices within each group. Then you fine-tune briefly to recover quality.
+            </p>
             <h4>Why this matters</h4>
             <p>MHA-trained checkpoints exist by the terabyte. GQA-trained checkpoints, in 2023, did not. Mean-pooling
               gives you a way to reuse the existing investment: take a released MHA model, average the projections
@@ -1069,7 +1110,8 @@
               <p>For each group of <em>h</em>/<em>G</em> heads, the group's K projection is <em>K</em><sub>group</sub> =
                 mean(<em>K</em><sub><em>i</em><sub>1</sub></sub>, …,
                 <em>K</em><sub><em>i</em><sub><em>h</em>/<em>G</em></sub></sub>). Same for V. The Q projections and
-                everything else are untouched.</p>
+                everything else are untouched.
+              </p>
             </div>
           </div>
         </div>
@@ -1230,17 +1272,21 @@
             <ol>
               <li>An input hidden state <em>h<sub>t</sub></em> gets projected down into two small <em>latents</em>:
                 <em>c<sub>t</sub><sup>Q</sup></em> for the queries and <em>c<sub>t</sub><sup>KV</sup></em> for the keys
-                and values.</li>
+                and values.
+              </li>
               <li>At attention time, each latent is <em class="term">up-projected</em> back to per-head content vectors:
                 <em>q<sub>t,i</sub><sup>C</sup></em> for every query head, <em>k<sub>t,i</sub><sup>C</sup></em> for
-                every key head, <em>v<sub>t,i</sub><sup>C</sup></em> for every value head.</li>
+                every key head, <em>v<sub>t,i</sub><sup>C</sup></em> for every value head.
+              </li>
               <li>Because rotary position embeddings (<a class="xref" href="4-positional-encoding.html">Lecture 4</a>,
                 §5) do not compose with the down/up projection, RoPE is applied on <em>separate</em> content-free
                 <em>q<sub>t,i</sub><sup>R</sup></em> and <em>k<sub>t</sub><sup>R</sup></em> vectors, which are
-                concatenated with the content pieces before the softmax.</li>
+                concatenated with the content pieces before the softmax.
+              </li>
             </ol>
             <p>Only two things are cached: the latent <em>c<sub>t</sub><sup>KV</sup></em> and the rotary key
-              <em>k<sub>t</sub><sup>R</sup></em>. Everything else is recomputed from those on the fly.</p>
+              <em>k<sub>t</sub><sup>R</sup></em>. Everything else is recomputed from those on the fly.
+            </p>
             <div class="callout How it works">
               <div class="callout-label">⚙ the split-rope trick</div>
               <p>RoPE rotates key vectors by an angle proportional to position. If you cached compressed keys, you could
@@ -1263,7 +1309,8 @@
             <h4>On the slide</h4>
             <p>The equations behind the picture. In one line: the K and V projections that used to be single big
               matrices are now <em class="term">factored</em> through a small latent of dimension
-              <em>d<sub>c</sub></em>.</p>
+              <em>d<sub>c</sub></em>.
+            </p>
             <div class="eq boxed">
               <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
                 <mrow>
@@ -1322,13 +1369,15 @@
               (<em>d<sub>c</sub></em>, <em>d</em>) with <em>d<sub>c</sub></em> much smaller than <em>d<sub>h</sub></em>
               · <em>n<sub>h</sub></em>, and <em>W<sup>UK</sup></em>, <em>W<sup>UV</sup></em> are
               <strong>up-projections</strong> of shape (<em>d<sub>h</sub></em> · <em>n<sub>h</sub></em>,
-              <em>d<sub>c</sub></em>) that reconstruct all-head K and V from the latent.</p>
+              <em>d<sub>c</sub></em>) that reconstruct all-head K and V from the latent.
+            </p>
             <h4>Why this is a low-rank factorisation</h4>
             <p>Instead of a full-rank K projection <em>W<sub>K</sub></em> ∈
               ℝ<sup>(<em>d<sub>h</sub></em>·<em>n<sub>h</sub></em>) × <em>d</em></sup>, MLA writes it as
               <em>W<sup>UK</sup></em> · <em>W<sup>DKV</sup></em>. If <em>d<sub>c</sub></em> ≪
               <em>d<sub>h</sub></em>·<em>n<sub>h</sub></em>, the product has rank at most <em>d<sub>c</sub></em>. This
-              is the same trick LoRA uses — a big matrix expressed as the product of two skinny ones.</p>
+              is the same trick LoRA uses — a big matrix expressed as the product of two skinny ones.
+            </p>
           </div>
         </div>
 
@@ -1456,7 +1505,8 @@
             <h4>How to read the numbers</h4>
             <p>Compression dimension <em>d<sub>c</sub></em> = 32 is tiny — smaller than a single head's
               <em>d<sub>h</sub></em> = 128. The whole per-token cache is just those 32 numbers (plus the rotary key),
-              stored once per layer. That is the memory profile that makes 128k-context serving practical.</p>
+              stored once per layer. That is the memory profile that makes 128k-context serving practical.
+            </p>
           </div>
         </div>
 
@@ -1482,7 +1532,8 @@
                 <em>W<sup>UK</sup></em> can be pre-multiplied into <em>W<sup>Q</sup></em> (query projection) and
                 <em>W<sup>UV</sup></em> into <em>W<sup>O</sup></em> (output projection). At inference you never actually
                 materialise the per-head K and V — the softmax operates directly on latent-mediated dot products. That
-                saves FLOPs on top of saving memory.</li>
+                saves FLOPs on top of saving memory.
+              </li>
               <li><strong>Faster inference and better quality.</strong> Both. Unusual for an optimisation.</li>
             </ul>
             <p>Drawbacks:</p>
@@ -1492,7 +1543,8 @@
                 are training the model yourself.</li>
               <li><strong>Implementation complexity.</strong> The split-rope trick and the matrix-absorption identities
                 mean the attention kernel is quite a bit more involved. Standard PyTorch
-                <code>scaled_dot_product_attention</code> does not cover this.</li>
+                <code>scaled_dot_product_attention</code> does not cover this.
+              </li>
             </ul>
           </div>
         </div>

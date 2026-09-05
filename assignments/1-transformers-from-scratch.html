@@ -7,6 +7,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="A walkthrough of Assignment 1 for Advanced NLP, Monsoon 2026 IIIT-H: a from-scratch Encoder–Decoder transformer, a five-way ablation (Sinusoidal/RoPE, MHA/GQA, LayerNorm/RMSNorm, subword/BLT) and a viva question bank, with Related materials to the study guide's lectures.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical"
+    href="https://arihant25.github.io/anlp-study-guide/assignments/1-transformers-from-scratch.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Build a Transformer from Scratch | ANLP Assignment">
+  <meta property="og:description"
+    content="Build an encoder-decoder transformer and compare RoPE, GQA, RMSNorm, subword tokenization, and BLT in this Advanced NLP assignment guide.">
+  <meta property="og:url"
+    content="https://arihant25.github.io/anlp-study-guide/assignments/1-transformers-from-scratch.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L2-transformers/slide-01.png">
+  <meta property="og:image:alt" content="Transformer architecture lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Build a Transformer from Scratch | ANLP Assignment">
+  <meta name="twitter:description"
+    content="An encoder-decoder transformer implementation guide with RoPE, GQA, RMSNorm, tokenization, and BLT comparisons.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L2-transformers/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Build a Transformer from Scratch","url":"https://arihant25.github.io/anlp-study-guide/assignments/1-transformers-from-scratch.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"assignment","educationalLevel":"graduate"}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -2021,7 +2042,8 @@ scheduler.step()</code></pre>
                   residual add. Pre-LN: x = x + Dropout(Sublayer(LayerNorm(x))) — norm sits <em>inside</em> the residual
                   branch, on the sublayer's input. Pre-LN is trained without warm-up much more easily because the
                   residual highway is not renormalised at every step, so gradients flow cleanly through depth. Post-LN
-                  needs a careful warm-up schedule and often diverges without it.</p>
+                  needs a careful warm-up schedule and often diverges without it.
+                </p>
               </div>
             </details>
           </li>

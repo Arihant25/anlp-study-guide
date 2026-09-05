@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://arihant25.github.io/anlp-study-guide/sitemap.xml

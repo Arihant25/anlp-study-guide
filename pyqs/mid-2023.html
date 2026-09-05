@@ -7,6 +7,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="Mid-Semester Exam 2023 for Advanced NLP (M23CS7.501), IIIT Hyderabad. Full paper, official handwritten key, and a worked solution to every question.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/pyqs/mid-2023.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Advanced NLP Mid-Sem 2023: Solved Paper | IIIT-H">
+  <meta property="og:description"
+    content="The IIIT Hyderabad Advanced NLP 2023 mid-semester paper with the official key and worked solutions for every question.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/pyqs/mid-2023.html">
+  <meta property="og:image" content="https://arihant25.github.io/anlp-study-guide/assets/pyqs/mid-2023/page-1.png">
+  <meta property="og:image:alt" content="Advanced NLP 2023 mid-semester exam paper">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Advanced NLP Mid-Sem 2023: Solved Paper | IIIT-H">
+  <meta name="twitter:description"
+    content="Full Advanced NLP 2023 mid-semester paper, official key, and worked solutions.">
+  <meta name="twitter:image" content="https://arihant25.github.io/anlp-study-guide/assets/pyqs/mid-2023/page-1.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Mid-Semester 2023 Solved Paper","url":"https://arihant25.github.io/anlp-study-guide/pyqs/mid-2023.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"practice test","educationalLevel":"graduate"}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -330,7 +347,8 @@
               </msub>
             </math> times the derivative of <math>
               <mi>tanh</mi>
-            </math>.</p>
+            </math>.
+          </p>
 
           <p>This is where the <em class="term">vanishing / exploding gradient</em> problem enters. If that Jacobian has
             spectral norm less than 1, gradients decay geometrically across steps and long-range signal never reaches
@@ -347,7 +365,8 @@
             <div class="callout-label">How it works · in one line</div>
             <p>Recurrence gives an RNN the <em>capacity</em> to carry information across time. Gates give it the
               <em>trainability</em> to do so, by turning the multiplicative gradient path into a nearly additive one on
-              any step where the gate says "keep".</p>
+              any step where the gate says "keep".
+            </p>
           </div>
 
           <h4>(b) LSTM vs GRU · architectural comparison · 5 marks</h4>
@@ -946,7 +965,8 @@
           <h3>The question, verbatim</h3>
           <blockquote>
             <p><strong>2.</strong> Describe the ELMO Contextual embedding model. How is it used for downstream tasks?
-              <em>[5 + 5 marks]</em></p>
+              <em>[5 + 5 marks]</em>
+            </p>
           </blockquote>
 
           <h3>How to approach it</h3>
@@ -963,7 +983,8 @@
           <p>ELMo (<em>Embeddings from Language Models</em>, Peters et al. 2018) is a <em class="term">contextual</em>
             word-representation model: unlike GloVe or word2vec, the vector it assigns to the word <em>bank</em> depends
             on the sentence it appears in. The vector for <em>bank</em> in "river bank" differs from the vector for
-            <em>bank</em> in "savings bank".</p>
+            <em>bank</em> in "savings bank".
+          </p>
 
           <p>Architecturally, it is a <em class="term">stacked bidirectional LSTM language model</em> trained on a large
             monolingual corpus:</p>
@@ -1077,7 +1098,8 @@
           <p>These per-layer vectors are the raw output of ELMo. The empirical observation Peters et al. make is that
             <em>different layers capture different linguistic information</em>: the lower layer is closer to syntax
             (POS, morphology), the higher layer is closer to semantics (word sense, coreference). That is why the final
-            embedding is not just the top layer but a mixture across layers.</p>
+            embedding is not just the top layer but a mixture across layers.
+          </p>
 
           <div class="callout How it works">
             <div class="callout-label">How it works · why bidirectional and stacked</div>
@@ -1242,7 +1264,8 @@
             </math> and <math>
               <mi>&#947;</mi>
             </math> are <em>learned</em>, not fixed. A common mistake is to describe ELMo as "just concatenate all the
-            layers" or "just take the top layer", both of which drop that mark.</p>
+            layers" or "just take the top layer", both of which drop that mark.
+          </p>
         </div>
       </section>
 
@@ -1334,7 +1357,8 @@
                   <mi>t</mi>
                 </msub>
               </math>: a weighted sum of the encoder states, where the weights are computed from how well each source
-              state matches the current decoder state.</li>
+              state matches the current decoder state.
+            </li>
           </ol>
 
           <p>The decoder then produces the next target token from its own state and this context vector: <math>
@@ -1618,7 +1642,8 @@
                 <mi>c</mi>
                 <mi>t</mi>
               </msub>
-            </math> per step, computed by softly pointing at the source tokens that matter for the current output.</p>
+            </math> per step, computed by softly pointing at the source tokens that matter for the current output.
+          </p>
 
           <p><strong>Attention lifts the bottleneck by letting the decoder look back.</strong> The encoder no longer has
             to fit the whole source into one vector, because every one of its per-position states <math>

@@ -7,6 +7,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="Lecture 2 of Advanced NLP, Monsoon 2026 IIIT-H: from word representations and backprop to the full transformer: attention, positional encoding, normalisation, and the training loop.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/2-transformers.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Lecture 2: Transformers | ANLP Study Guide">
+  <meta property="og:description"
+    content="Learn transformer architecture from word representations and backpropagation through attention, positional encoding, normalization, and training.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/2-transformers.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L2-transformers/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP Lecture 2 transformers title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lecture 2: Transformers | ANLP Study Guide">
+  <meta name="twitter:description"
+    content="Learn transformer architecture, attention, positional encoding, normalization, and training from first principles.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L2-transformers/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 2: Transformers","url":"https://arihant25.github.io/anlp-study-guide/lectures/2-transformers.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
@@ -79,7 +98,8 @@
             <p>"Intro" is misleading. This is a 90-slide crash course covering everything from the definition of a
               derivative to a full encoder-decoder transformer. The reason it is labelled "intro" is that the
               <em>rest</em> of the course, nine lectures of transformer internals plus everything after, assumes you
-              carry this deck in your head.</p>
+              carry this deck in your head.
+            </p>
           </div>
         </div>
 
@@ -170,7 +190,8 @@
               <p>Read the four arrows on the right of the slide together. As we move down the list, representations get
                 more <strong>contextual</strong>, less <strong>ambiguous</strong>, more <strong>dense</strong>, and more
                 <strong>complex</strong> to train. Every step of the evolution buys context by paying complexity. That
-                trade is the through-line of the whole course.</p>
+                trade is the through-line of the whole course.
+              </p>
             </div>
             <div class="callout link">
               <div class="callout-label">→ Keep reading</div>
@@ -262,7 +283,8 @@
             <h4>On the slide</h4>
             <p>Now the function has many inputs <em>and</em> many outputs. The <em class="term">Jacobian</em>
               <em>J<sub>f</sub>(<b>x</b>)</em> is the <em>m</em>&times;<em>n</em> matrix whose <em>(i,j)</em> entry is
-              the partial derivative of the <em>i</em>-th output with respect to the <em>j</em>-th input.</p>
+              the partial derivative of the <em>i</em>-th output with respect to the <em>j</em>-th input.
+            </p>
             <h4>Why keep this in mind</h4>
             <p>Every layer of a neural network is a function from vectors to vectors. So its "gradient" is a Jacobian.
               Backpropagation is nothing more than repeatedly multiplying these Jacobians together via the chain rule,
@@ -486,7 +508,8 @@
             <p>A chain of hidden states <em>h<sub>1</sub></em>, <em>h<sub>2</sub></em>, <em>h<sub>3</sub></em>,
               <em>h<sub>4</sub></em> with the same weight matrix <em>W<sub>h</sub></em> between each pair. The loss
               <em>L</em> sits at the end. The red arrows show the gradient of the loss flowing backwards to
-              <em>h<sub>1</sub></em>.</p>
+              <em>h<sub>1</sub></em>.
+            </p>
             <h4>Why the shared weights matter</h4>
             <p>Reusing the same <em>W<sub>h</sub></em> across time steps is the picture of a Recurrent Neural Network
               unrolled. It is also why RNNs have so few parameters compared to their depth, and, as the next slide makes
@@ -648,7 +671,8 @@
               "The student opened their ___". Each token <em>x<sub>i</sub></em> becomes an embedding via matrix
               <em>E</em>, is projected by <em>W<sub>e</sub></em> into a hidden state, and combined with the previous
               hidden state via <em>W<sub>h</sub></em>. The final hidden state produces a distribution <em>y</em> over
-              the next word.</p>
+              the next word.
+            </p>
             <h4>What it means</h4>
             <p>The whole sentence's context is compressed into one fixed-size hidden vector before you ever predict a
               word. The same <em>W<sub>h</sub></em> is reused at every step; that is what "recurrent" means. This is
@@ -803,7 +827,8 @@
             <h4>On these slides</h4>
             <p>The same conjunction "since" doing two completely different jobs: on slide 31 it introduces a
               <em>cause</em> ("because you suggested it&hellip;"); on slide 32 it introduces a <em>time</em> ("from the
-              moment you suggested it&hellip;").</p>
+              moment you suggested it&hellip;").
+            </p>
             <div class="callout aha">
               <div class="callout-label">✦ Key takeaway</div>
               <p>Same surface form, different meaning. The only way to tell them apart is to read the whole clause after
@@ -973,7 +998,8 @@
             <h4>On the slide</h4>
             <p>The pitch. At every decoder step, instead of relying only on the summary vector, the decoder looks back
               at <em>all</em> the encoder hidden states and takes a weighted combination of them, with the weights (the
-              <em class="term">attention distribution</em>) computed on the fly.</p>
+              <em class="term">attention distribution</em>) computed on the fly.
+            </p>
             <h4>What it means</h4>
             <p>The decoder gets to <em>choose</em>, at each output word, which source words to focus on. Producing
               "café" attends heavily to "coffee"; producing "Me" attends to "I". No single vector has to remember the
@@ -1220,7 +1246,8 @@
             <p>Three inputs, queries <em>Q</em>, keys <em>K</em>, values <em>V</em>, and one scalar hyperparameter
               <em>d<sub>k</sub></em>, the key dimension. Compute pairwise dot products between queries and keys, scale
               down by &radic;<em>d<sub>k</sub></em>, softmax across the row, then use those weights to average the
-              values.</p>
+              values.
+            </p>
             <div class="callout How it works">
               <div class="callout-label">How it works</div>
               <p>The scale factor &radic;<em>d<sub>k</sub></em> is not cosmetic. Without it, large key dimensions give
@@ -1337,7 +1364,8 @@
               input (all tokens stacked as rows). Three projection matrices <em>W<sub>Q</sub></em>,
               <em>W<sub>K</sub></em>, <em>W<sub>V</sub></em> take <em>X</em> to <em>Q</em>, <em>K</em>, <em>V</em>. The
               whole self-attention layer is now three matrix multiplies, one softmax, and one more matrix multiply.
-              Every step is a single GPU kernel, and every position is computed at the same time.</p>
+              Every step is a single GPU kernel, and every position is computed at the same time.
+            </p>
             <div class="callout aha">
               <div class="callout-label">✦ Key takeaway</div>
               <p>This is why the transformer is fast. Compare with an RNN: <em>n</em> sequential steps, each depending
@@ -1417,7 +1445,8 @@
             <ol>
               <li><strong>Computational complexity per layer.</strong> <em>O(n<sup>2</sup>&thinsp;d)</em> for
                 self-attention vs. <em>O(n&thinsp;d<sup>2</sup>)</em> for an RNN. Self-attention is faster whenever
-                <em>n</em> &lt; <em>d</em>, which is the regime almost every serious deep model runs in.</li>
+                <em>n</em> &lt; <em>d</em>, which is the regime almost every serious deep model runs in.
+              </li>
               <li><strong>Parallelisation.</strong> Every position is a matrix-multiply row, computable in parallel. No
                 unrolled loop.</li>
               <li><strong>Long-distance dependency.</strong> Any two positions are one attention hop apart. No gradient
@@ -1582,7 +1611,8 @@
                 <em>sin(a)</em>, <em>cos(a)</em>, <em>sin(b)</em>, <em>cos(b)</em>. So the model can learn a linear
                 operator that says "shift by <em>k</em> positions", and that operator will work for any <em>k</em>,
                 including <em>k</em>'s longer than any position seen during training. That is the "extrapolate to longer
-                sequences" claim on slide 68.</p>
+                sequences" claim on slide 68.
+              </p>
             </div>
             <p>Slide 69 is the visualisation everyone remembers: 20 positions on the vertical, 512 embedding dims on the
               horizontal, sines on the left half of the vector, cosines on the right, frequencies falling as you go
@@ -1693,7 +1723,8 @@
             <p>The <em class="term">decoder block</em> adds two things: (a) the first attention sublayer is
               <em>masked</em>, and (b) a second attention sublayer sits on top, which is <em>cross-attention</em>: its
               queries come from the decoder, but its keys and values come from the encoder output. That is how the
-              decoder actually reads the source sentence.</p>
+              decoder actually reads the source sentence.
+            </p>
             <div class="callout aha">
               <div class="callout-label">✦ Key takeaway</div>
               <p>The Bahdanau attention from slides 41-44 is exactly the cross-attention sublayer on slide 73. What was
@@ -1918,7 +1949,8 @@
             <p>Slide 83 is a bookkeeping picture: given hidden dimension <em>d</em>, key dim <em>d<sub>q</sub></em>,
               <em>h</em> heads and vocabulary size <em>V</em>, every weight matrix has a specific shape. Slide 84 plugs
               in numbers (a 1B-parameter model with <em>V</em>=32k, <em>d</em>=2048, 16 layers, 16 heads) and reads off
-              the budget.</p>
+              the budget.
+            </p>
             <div class="callout aha">
               <div class="callout-label">✦ Key takeaway</div>
               <p>Two numbers jump out. <strong>The FFN is 57% of the parameters</strong>. Attention (all four
