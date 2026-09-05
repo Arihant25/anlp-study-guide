@@ -969,9 +969,13 @@ hr.soft {
   display: contents;
 }
 
-/* let inner .slide-frame be a real grid item */
+/* Let the inner .slide-frame be a real grid item, but keep it hugging the
+   image: without this the frame stretches to the height of the taller
+   explanation column in the same row, leaving a big empty dark area below
+   the slide. */
+.slide-strip>.slide-frame,
 .slide-strip>.slide>.slide-frame {
-  /* stays as-is */
+  align-self: start;
 }
 
 /* Explanation block */
