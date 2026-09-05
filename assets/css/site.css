@@ -1121,10 +1121,10 @@ math {
 }
 
 math[display="block"] {
-  display: block;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
+  /* Keep native MathML layout (block math). Overriding display to plain
+     `block` or adding overflow here blockifies the token children and stacks
+     them vertically. Horizontal scroll for wide equations is handled by the
+     .eq wrapper below, which every block equation lives in. */
   padding: 6px 2px;
 }
 
@@ -1519,10 +1519,10 @@ footer.foot a:hover {
   }
 
   math:not([display="block"]) {
-    display: inline-block;
+    /* Do not set display/overflow here: it breaks native inline MathML
+       layout and stacks the tokens. Inline expressions are short and wrap
+       with the surrounding text. */
     max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
   }
 }
 
