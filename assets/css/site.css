@@ -337,6 +337,10 @@ section,
   border-left-color: var(--heat-2);
 }
 
+.rail-right .rail-toc a.active {
+  font-weight: 700;
+}
+
 /* When the top .lecture-nav is injected (subpages), the rails must sit
    below it — both are position:sticky top:0 and the nav has z-index:50,
    so without this offset the rail brand slides behind the nav on scroll. */

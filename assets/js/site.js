@@ -326,22 +326,39 @@ function __siteContext() {
       }
     }
 
-    // Prefer h2/h3 with ids; if none, fall back to all h2/h3 in main
-    let headings = Array.from(document.querySelectorAll("main h2[id], main h3[id]"));
-    if (headings.length === 0) {
-      headings = Array.from(document.querySelectorAll("main h2, main h3"));
-    }
     const tocLinks = Array.from(document.querySelectorAll(".rail-left a[href^='#'], .rail-right .rail-toc a[href^='#']"));
+
+    // The TOC hrefs are the source of truth for what counts as a section: on
+    // these pages the id lives on the <section> wrapper, not on the h2/h3, so
+    // scanning for headings-with-ids finds nothing. Resolve each link to its
+    // target element and keep them in document order.
+    let headings = [];
+    const seen = new Set();
+    tocLinks.forEach(a => {
+      const id = a.getAttribute("href").slice(1);
+      if (!id || seen.has(id)) return;
+      const el = document.getElementById(id);
+      if (el) { seen.add(id); headings.push(el); }
+    });
+    if (headings.length === 0) {
+      headings = Array.from(document.querySelectorAll("main h2[id], main h3[id]"));
+    }
+    headings.sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
 
     // If we have no headings and no cells, nothing to do
     if (headings.length === 0 && cells.length === 0) return;
 
+    function docTop(el) {
+      return el.getBoundingClientRect().top + window.scrollY;
+    }
     function currentIndex() {
       if (headings.length === 0) return 0;
-      const y = window.scrollY + 100;
+      // Offset past the sticky top nav so a section counts as "open" once its
+      // heading clears the chrome rather than the raw viewport edge.
+      const y = window.scrollY + (document.body.classList.contains("has-topnav") ? 120 : 100);
       let idx = 0;
       for (let i = 0; i < headings.length; i++) {
-        if (headings[i].offsetTop <= y) idx = i; else break;
+        if (docTop(headings[i]) <= y) idx = i; else break;
       }
       return idx;
     }
@@ -355,11 +372,9 @@ function __siteContext() {
       const idx = currentIndex();
       if (headings.length) {
         const id = headings[idx] ? headings[idx].id : null;
-        if (id) {
-          tocLinks.forEach(a => {
-            a.classList.toggle("active", a.getAttribute("href") === "#" + id);
-          });
-        }
+        tocLinks.forEach(a => {
+          a.classList.toggle("active", !!id && a.getAttribute("href") === "#" + id);
+        });
       }
       if (cells.length) {
         // Progress by scroll position — always yields something visible, even before scrolling
