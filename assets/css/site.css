@@ -944,25 +944,43 @@ hr.soft {
   text-align: right;
 }
 
-/* Slide-strip: multiple slides grouped visually.
-   Historically this tried to place two frames side-by-side, but every use
-   in the site wraps each frame in a .slide with its own .explain — the
-   cols-2/cols-3 grids ended up shrinking each frame to half width and
-   pinning the explanation next to it, which made every slide render
-   half-size. So the strip is now just a single-column stack; the
-   .cols-2 / .cols-3 modifiers are kept as no-ops for backward
-   compatibility with existing HTML. */
+/* Slide-strip: multiple slides grouped.
+   Grid columns only apply to the image frames; any other child
+   (explanations, callouts) spans the full row so it doesn't get
+   trapped in a single column. */
 .slide-strip {
-  display: block;
+  display: grid;
+  gap: 14px 18px;
   margin: 2em 0;
 }
 
-.slide-strip > .slide {
-  margin-top: 1.4em;
+@media (min-width:640px) {
+  .slide-strip.cols-2 {
+    grid-template-columns: 1fr 1fr
+  }
 }
 
-.slide-strip > .slide:first-child {
-  margin-top: 0;
+@media (min-width:640px) {
+  .slide-strip.cols-3 {
+    grid-template-columns: 1fr 1fr 1fr
+  }
+}
+
+.slide-strip>*:not(.slide-frame):not(.slide):not(img) {
+  grid-column: 1 / -1;
+}
+
+.slide-strip>.slide {
+  display: contents;
+}
+
+/* Let the inner .slide-frame be a real grid item, but keep it hugging the
+   image: without this the frame stretches to the height of the taller
+   explanation column in the same row, leaving a big empty dark area below
+   the slide. */
+.slide-strip>.slide-frame,
+.slide-strip>.slide>.slide-frame {
+  align-self: start;
 }
 
 /* Explanation block */
