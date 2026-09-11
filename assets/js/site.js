@@ -9,6 +9,7 @@ const SITE_NAV = [
   { href: "lectures/4-positional-encoding.html", short: "04", label: "Positional", group: "lectures" },
   { href: "lectures/5-attention.html", short: "05", label: "Attention", group: "lectures" },
   { href: "lectures/6-more-attention.html", short: "06", label: "More Attn", group: "lectures" },
+  { href: "lectures/7-normalization.html", short: "07", label: "Normalization", group: "lectures" },
   { href: "tutorials/1-math-for-dl.html", short: "T1", label: "Math for DL", group: "tutorials" },
   { href: "tutorials/2-matrices-to-transformers.html", short: "T2", label: "Matrices", group: "tutorials" },
   { href: "assignments/1-transformers-from-scratch.html", short: "A1", label: "Transformers", group: "assignments" },

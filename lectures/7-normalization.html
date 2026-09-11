@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Lecture 7 · Normalization — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Lecture 7 of Advanced NLP, Monsoon 2026 IIIT-H: why normalization matters, plus BatchNorm, LayerNorm, RMSNorm, Weight Norm, residuals, Pre-LN vs Post-LN, DeepNorm, and HybridNorm.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/7-normalization.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Normalization: BatchNorm, LayerNorm, RMSNorm &amp; Residuals | ANLP">
+  <meta property="og:description"
+    content="A first-principles tour of normalization in deep networks: why it fixes the loss landscape, how each variant differs, and how residuals and Pre/Post-LN affect stability.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/7-normalization.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L7-normalization/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP Normalization lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Normalization: BatchNorm, LayerNorm, RMSNorm &amp; Residuals | ANLP">
+  <meta name="twitter:description"
+    content="Why normalization exists, and every variant transformers actually use: BatchNorm, LayerNorm, RMSNorm, Weight Norm, DeepNorm, HybridNorm.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L7-normalization/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 7: Normalization","url":"https://arihant25.github.io/anlp-study-guide/lectures/7-normalization.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#deck">The deck at a glance</a>
+        <a href="#why">§1 · Why normalize?</a>
+        <a href="#flavours">§2 · The four flavours</a>
+        <a href="#residuals">§3 · Residual connections</a>
+        <a href="#preln">§4 · Pre-LN vs Post-LN</a>
+        <a href="#deepnorm">§5 · DeepNorm</a>
+        <a href="#hybridnorm">§6 · HybridNorm</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="6-more-attention.html">← Lecture 6: More Attention</a>
+        <a href="../tutorials/1-math-for-dl.html">Next: Math for DL →</a>
+        <a href="../index.html">Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Lecture 07 · 17 slides · September 3, 2026</div>
+        <h1>Normalization: <em>flatten the landscape so the network can walk.</em></h1>
+        <p class="lead">
+          Deep networks train by gradient descent, and gradient descent is only
+          fast when the loss surface is roughly round. Raw features rarely make
+          it so. This lecture is the accumulated fix: normalize activations
+          (BatchNorm, LayerNorm, RMSNorm), normalize weights (WeightNorm), add
+          residual shortcuts so gradients survive depth, then decide where in a
+          transformer block the normalization actually goes (Pre-LN, Post-LN,
+          DeepNorm, HybridNorm).
+        </p>
+        <div class="meta">
+          <span class="pill heat">Lecture 07</span>
+          <span class="pill">17 slides</span>
+          <span class="pill">Manish Shrivastava · Aparajitha Allamraju</span>
+        </div>
+      </section>
+
+      <section id="deck">
+        <h2><span class="num">§0</span>The deck at a glance</h2>
+        <p class="section-intro">
+          The lecture starts with a picture argument: a linear-regression loss
+          landscape is a squashed ellipse before normalization and a circle
+          after. Once that motivation lands, four normalizers get introduced in
+          quick succession (BatchNorm, LayerNorm, RMSNorm, WeightNorm), each a
+          different <em>axis</em> along which to compute mean and variance.
+          The rest of the lecture puts normalization into the transformer
+          block: residuals, then Pre-LN vs Post-LN, then two modern refinements
+          (DeepNorm for very deep stacks, HybridNorm for mixing LN and RMSNorm
+          in one block).
+        </p>
+      </section>
+
+      <hr class="soft">
+
+      <section id="why">
+        <h2><span class="num">§1</span>Why normalize? <em>the shape of the loss surface</em></h2>
+        <p class="section-intro">
+          Slides 1–5 build one argument by picture. Take the simplest possible
+          model, look at its loss landscape when the features are raw, look at
+          it again after standardising the features, and see the difference.
+          Then read the four-bullet summary of what normalization is supposed
+          to buy you overall.
+        </p>
+
+        <div class="slide" id="s1">
+          <div class="slide-frame">
+            <div class="tag">Slide 01 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-01.png"
+              alt="Title slide: Normalization, Advanced NLP M26, Manish Shrivastava + Aparajitha, IIIT Hyderabad, September 3 2026">
+            <div class="slide-caption">slide 01 · title</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Lecture 7 of Advanced NLP Monsoon 2026. Co-taught by Manish Shrivastava and Aparajitha Allamraju.
+              <em>Normalization</em> is a small word for a large family of tricks: any operation whose job is to keep
+              activations, weights, or gradients in a numerical range where optimisation actually works.
+            </p>
+            <h4>What to take from it</h4>
+            <p>Historically, deeper networks kept getting <em>harder</em> to train. Not because the loss got harder in
+              principle, but because the numerical dynamics went bad: activations blew up or collapsed to zero,
+              gradients vanished or exploded, learning rates that worked at layer 2 broke layer 20. Every idea in this
+              lecture is a specific answer to a specific instance of that problem. Normalization is the reason
+              transformers can be stacked 100 layers deep at all.</p>
+          </div>
+        </div>
+
+        <div class="slide-strip cols-2">
+          <div class="slide" id="s2">
+            <div class="slide-frame">
+              <div class="tag">Slide 02 / 17</div>
+              <img src="../assets/slides/L7-normalization/slide-02.png"
+                alt="Setup: a parametric function y = a x_1 + b x_2 fit by minimising L = (1/m) sum_i (y_i − ŷ_i(a,b))^2.">
+              <div class="slide-caption">slide 02 · the toy problem</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Two-parameter linear regression: predict <em>y</em> from features <em>x</em><sub>1</sub> and
+                <em>x</em><sub>2</sub> using weights <em>a</em> and <em>b</em>. Train by mean-squared error.
+              </p>
+              <h4>What to take from it</h4>
+              <p>This is the smallest model that can still <em>demonstrate</em> the problem. Two parameters means the
+                loss is a function of two numbers, which means we can literally plot the landscape on the next slide.
+                Nothing about the argument depends on the model being simple — the same bad geometry appears in a
+                transformer, just in a million-dimensional space you can't draw.</p>
+            </div>
+          </div>
+
+          <div class="slide" id="s3">
+            <div class="slide-frame">
+              <div class="tag">Slide 03 / 17</div>
+              <img src="../assets/slides/L7-normalization/slide-03.png"
+                alt="Contour plot of L(a,b): a very narrow vertical valley, elongated by roughly 20× along b relative to a.">
+              <div class="slide-caption">slide 03 · the ellipse from hell</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>The loss surface for that two-parameter regression when the two features have very different
+                scales. It's an <em>extremely</em> elongated ellipse — a narrow trench that runs almost straight up
+                and down in the (a, b) plane.</p>
+              <h4>Why the picture is bad news</h4>
+              <p>Gradient descent takes a step in the direction of steepest descent. On this landscape steepest
+                descent points nearly perpendicular to the trench, not <em>along</em> it. The optimiser bounces from
+                one wall to the other, making tiny net progress toward the minimum. To stay stable you have to shrink
+                the learning rate, which makes progress along the long axis even slower. This is what people mean by
+                a <em class="term">poorly conditioned</em> optimisation problem.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s4">
+          <div class="slide-frame">
+            <div class="tag">Slide 04 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-04.png"
+              alt="After standardising features x_i ↦ (x_i − E[x_i]) / Var(x_i), the loss landscape becomes concentric circles centred near the origin.">
+            <div class="slide-caption">slide 04 · standardise, and the ellipse becomes a circle</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The exact same regression problem, but with the features standardised:
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub>
+                  <mi>x</mi>
+                  <mi>i</mi>
+                </msub>
+                <mo>↦</mo>
+                <mfrac>
+                  <mrow>
+                    <msub>
+                      <mi>x</mi>
+                      <mi>i</mi>
+                    </msub>
+                    <mo>−</mo>
+                    <mi>𝔼</mi>
+                    <mo>[</mo>
+                    <msub>
+                      <mi>x</mi>
+                      <mi>i</mi>
+                    </msub>
+                    <mo>]</mo>
+                  </mrow>
+                  <mrow>
+                    <mtext>Var</mtext>
+                    <mo>(</mo>
+                    <msub>
+                      <mi>x</mi>
+                      <mi>i</mi>
+                    </msub>
+                    <mo>)</mo>
+                  </mrow>
+                </mfrac>
+              </math>. The contours become concentric circles — perfectly conditioned.
+            </p>
+            <h4>Why this is the whole idea</h4>
+            <p>On circles, steepest descent points straight at the minimum. Any reasonable learning rate converges in
+              a few steps. Nothing about the model changed; the <em>input</em> changed. Standardising features rescales
+              the axes of the loss surface until they are the same length. That's it. Every normalisation scheme in
+              this lecture is a more elaborate version of the same move, but applied to the activations <em>inside</em>
+              the network rather than only the raw inputs.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Normalisation is a geometry fix. It doesn't change what the network can represent; it changes the
+                <em>shape</em> of the loss surface into one that gradient descent can actually walk down.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s5">
+          <div class="slide-frame">
+            <div class="tag">Slide 05 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-05.png"
+              alt="Why normalization? Four bullets: increase speed of convergence; reduce sensitivity to input features; reduce overfitting; help generalization.">
+            <div class="slide-caption">slide 05 · the four-bullet pitch</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four benefits attributed to normalization: faster convergence, less sensitivity to feature scale, less
+              overfitting, better generalisation.</p>
+            <h4>What to take from it</h4>
+            <p>The first two are the geometry story from slides 3–4. The last two are more subtle. Normalising a
+              hidden layer means the units to the <em>next</em> layer always see a stable distribution — the network
+              doesn't have to waste capacity re-learning how to handle a shifted scale every batch. That reduces the
+              effective number of parameters that need tuning, which is one way to see the mild regularisation effect
+              of BatchNorm and its relatives.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>"Reduces overfitting" is not the same as "replaces dropout". Normalization gives a small, incidental
+                regularisation effect (BatchNorm gets it from batch statistics being noisy; LayerNorm gets almost
+                none). Don't drop dropout or weight decay because you added normalization.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="flavours">
+        <h2><span class="num">§2</span>The four flavours: <em>same equation, different axis</em></h2>
+        <p class="section-intro">
+          Slides 6–10 introduce four normalisers. The first three
+          (BatchNorm, LayerNorm, RMSNorm) all have the same shape:
+          <em>subtract a mean, divide by a standard deviation, rescale and
+            shift by learnable</em> γ <em>and</em> β. The only thing that
+          changes is <strong>which axis you take the statistics over</strong>.
+          WeightNorm is the odd one out: it normalises the <em>parameters</em>,
+          not the activations.
+        </p>
+
+        <div class="slide" id="s6">
+          <div class="slide-frame">
+            <div class="tag">Slide 06 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-06.png"
+              alt="BatchNorm: normalizes across a batch of inputs index-wise. μ_i = (1/B) Σ_b x_i^(b); (σ_i)^2 = (1/B) Σ_b (x_i^(b) − μ_i)^2; y_i^(b) = γ_i (x_i^(b) − μ_i)/√((σ_i)^2 + ε) + β_i. Ioffe & Szegedy 2015.">
+            <div class="slide-caption">slide 06 · BatchNorm (index-wise, across the batch)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em class="term">BatchNorm</em>, from Ioffe &amp; Szegedy (2015). For each feature index <em>i</em>, you
+              take the mean and variance <em>over the batch</em> — that is, over all <em>B</em> examples that happen to
+              be in the mini-batch — then standardise every sample using that per-feature statistic, then rescale by
+              learnable
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub>
+                  <mi>γ</mi>
+                  <mi>i</mi>
+                </msub>
+              </math>
+              and shift by learnable
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub>
+                  <mi>β</mi>
+                  <mi>i</mi>
+                </msub>
+              </math>.
+            </p>
+            <h4>Why "index-wise"</h4>
+            <p>Read it as: pick a feature (say the 5th neuron's output). Now look at that neuron's value across all
+              <em>B</em> samples in the batch. That's a length-<em>B</em> vector. Standardise it. Do that
+              independently for every neuron. So the statistics couple <em>samples</em> to each other but keep the
+              features independent.
+            </p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The batch statistic is why BatchNorm has two failure modes that matter for NLP. First, small batches
+                give noisy estimates of μ and σ — with batch size 1 you can't even compute a variance. Second, at
+                inference you have to keep running-average estimates because there's no batch, and if those averages
+                don't match the training distribution you silently underperform. Both problems are why NLP mostly moved
+                to LayerNorm.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s7">
+          <div class="slide-frame">
+            <div class="tag">Slide 07 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-07.png"
+              alt="LayerNorm: normalizes input-wise. μ^(b) = (1/d) Σ_i x_i^(b); (σ^(b))^2 = (1/d) Σ_i (x_i^(b) − μ^(b))^2; y^(b) = γ^(b) (x^(b) − μ^(b))/√((σ^(b))^2 + ε) + β^(b). Ba, Kiros & Hinton 2016.">
+            <div class="slide-caption">slide 07 · LayerNorm (input-wise, across features)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em class="term">LayerNorm</em>, from Ba, Kiros &amp; Hinton (2016). Same three-step recipe as BatchNorm,
+              but the mean and variance are taken <em>per sample, over its feature dimensions</em>. So the sum runs
+              over <em>i</em> = 1…<em>d</em>, not over the batch. Every sample carries its own
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msup>
+                  <mi>μ</mi>
+                  <mo>(</mo>
+                </msup>
+                <mi>b</mi>
+                <mo>)</mo>
+              </math>
+              and
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msup>
+                  <mi>σ</mi>
+                  <mo>(</mo>
+                </msup>
+                <mi>b</mi>
+                <mo>)</mo>
+              </math>.
+            </p>
+            <h4>Why LayerNorm wins for transformers</h4>
+            <p>Every one of BatchNorm's failure modes disappears. Batch size doesn't matter — the statistic is computed
+              inside one sample. Variable-length sequences don't matter — again the statistic is per-token. Training
+              and inference behave the same because there's no running average to maintain. That's why every big
+              language model uses LayerNorm (or one of its cousins), not BatchNorm.</p>
+            <div class="callout How it works">
+              <div class="callout-label">⚙ How it works</div>
+              <p>In transformers the "sample" is usually one <em>token</em>: for each token position, you look at its
+                <em>d</em>-dimensional embedding, standardise those <em>d</em> numbers among themselves, then apply
+                per-feature γ and β. Two tokens in the same sequence are normalised independently.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s8">
+          <div class="slide-frame">
+            <div class="tag">Slide 08 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-08.png"
+              alt="Two 3D cubes with axes (Sentence Length, Feature, Batch Dimension). LayerNorm highlights a slice along the feature axis at one batch position; Batch/Power Normalization highlights the full sentence-length × batch face at one feature position.">
+            <div class="slide-caption">slide 08 · which axis do you normalise over?</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The clearest picture of the difference. The activation tensor has three axes: batch, sentence length,
+              and features. LayerNorm slices along the <em>feature</em> axis (blue face on the left), pooling per
+              token. BatchNorm (and PowerNorm) slices along the <em>batch + sentence</em> plane (blue face on the
+              right), pooling per feature.</p>
+            <h4>What to take from it</h4>
+            <p>Everything else — GroupNorm, InstanceNorm, RMSNorm — is just a different choice of face on this cube.
+              Once you can read the picture, you can tell which normalizer any paper is proposing by which face they
+              colour in. That's the single most useful mental model in this section.</p>
+          </div>
+        </div>
+
+        <div class="slide-strip cols-2">
+          <div class="slide" id="s9">
+            <div class="slide-frame">
+              <div class="tag">Slide 09 / 17</div>
+              <img src="../assets/slides/L7-normalization/slide-09.png"
+                alt="RMSNorm: LayerNorm with μ=0 enforced. y^(b) = γ^(b) x^(b) / √((1/d) Σ_i (x_i^(b))^2) + β^(b).">
+              <div class="slide-caption">slide 09 · RMSNorm (LayerNorm minus the mean)</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p><em class="term">RMSNorm</em>. LayerNorm normally does two things: recenter (subtract the mean) and
+                rescale (divide by the standard deviation). RMSNorm drops the recentering step and only rescales, using
+                the root-mean-square of the activations directly.</p>
+              <h4>Why give up the mean subtraction</h4>
+              <p>Empirically the recentering step contributes almost nothing to the quality of the model but costs a
+                pass through the data to compute μ. Dropping it saves ~20% of the normaliser's compute and shows no
+                measurable quality regression. That's why big open-source LLMs (LLaMA, Mistral, Gemma, Qwen) all
+                switched to RMSNorm. Papers by Zhang &amp; Sennrich (2019) first proposed it; wide adoption came four
+                years later.</p>
+              <div class="callout aha">
+                <div class="callout-label">✦ Key takeaway</div>
+                <p>RMSNorm = LayerNorm with a compute discount. Same shape, same γ/β, one fewer statistic. If a paper
+                  says "we use RMSNorm", read it as "we use LayerNorm and don't care about the centring".</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="slide" id="s10">
+            <div class="slide-frame">
+              <div class="tag">Slide 10 / 17</div>
+              <img src="../assets/slides/L7-normalization/slide-10.png"
+                alt="Weight Normalization: separate weight vectors into magnitude and direction. WeightNorm(x) = (g/||v||) v^T x + b. Applied per neuron. Salimans & Kingma 2016.">
+              <div class="slide-caption">slide 10 · Weight Norm (normalise the weights, not the activations)</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p><em class="term">Weight Normalization</em>, from Salimans &amp; Kingma (2016). Instead of touching
+                activations, decompose each neuron's weight vector into a <em>direction</em> (unit vector) and a
+                learnable <em>magnitude</em>
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <mi>g</mi>
+                </math>. Optimise the two separately.
+              </p>
+              <h4>Why the decomposition helps</h4>
+              <p>Gradient descent updates weights by adding a scaled gradient. When direction and magnitude are entangled
+                in one vector, an update that wanted to change only the length of <em>v</em> also nudges its direction,
+                and vice versa. Separating them means the optimiser gets a cleaner set of "knobs" and can move the two
+                independently. This speeds convergence in some settings.</p>
+              <div class="callout gotcha">
+                <div class="callout-label">⚠ Watch out</div>
+                <p>Unlike the other three, this one <em>never caught on</em> in transformers. It doesn't remove the
+                  ill-conditioning problem from activations at all — it only fixes weight geometry. Modern architectures
+                  either don't need it (because LayerNorm handles the harder problem) or fold something equivalent into
+                  the initialisation scheme.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="residuals">
+        <h2><span class="num">§3</span>Residual connections: <em>let the gradient survive depth</em></h2>
+        <p class="section-intro">
+          Normalisation fixes the geometry of one layer. Residual connections
+          fix the geometry <em>between</em> layers. Slide 11 gives the
+          one-line formula that appears in every transformer block; slide 12
+          shows why, visually, deep networks without residuals are basically
+          untrainable.
+        </p>
+
+        <div class="slide" id="s11">
+          <div class="slide-frame">
+            <div class="tag">Slide 11 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-11.png"
+              alt="Residual Connections: x_{L+1} = σ(x_L + F(x_L)). Used in the original transformers paper; well-known to mitigate vanishing gradient since the additive gradients dominate the multiplicative gradients.">
+            <div class="slide-caption">slide 11 · the residual formula</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The one equation that made deep networks trainable. Layer <em>L</em>+1's output is not just <em>F</em>
+              applied to layer <em>L</em>'s input — it's the input <em>plus</em> what <em>F</em> computed on it (with
+              a nonlinearity σ around the sum). Introduced by ResNet (He et al., 2015), used everywhere since.</p>
+            <h4>Why residuals fix vanishing gradients</h4>
+            <p>Backprop multiplies gradients through the chain of layers. If each layer's local Jacobian has singular
+              values less than 1, the gradient shrinks exponentially with depth — that's the <em class="term">vanishing
+                gradient</em> problem. With a residual, the derivative of <em>x</em><sub><em>L</em>+1</sub> with
+              respect to <em>x</em><sub><em>L</em></sub> gets an extra <em>+ I</em> from the shortcut, so even if
+              <em>F</em>'s local Jacobian collapses to zero, the gradient still has a straight-through path of
+              magnitude 1 back to earlier layers. Additive contributions dominate multiplicative decay.
+            </p>
+            <div class="callout How it works">
+              <div class="callout-label">⚙ How it works</div>
+              <p>Read
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <msub>
+                    <mi>x</mi>
+                    <mrow>
+                      <mi>L</mi>
+                      <mo>+</mo>
+                      <mn>1</mn>
+                    </mrow>
+                  </msub>
+                  <mo>=</mo>
+                  <msub>
+                    <mi>x</mi>
+                    <mi>L</mi>
+                  </msub>
+                  <mo>+</mo>
+                  <mi>F</mi>
+                  <mo>(</mo>
+                  <msub>
+                    <mi>x</mi>
+                    <mi>L</mi>
+                  </msub>
+                  <mo>)</mo>
+                </math>
+                as "the next layer's job is to <em>correct</em> the previous representation, not <em>replace</em> it".
+                A layer that can't help sets its <em>F</em> ≈ 0 and the identity flows through untouched. That means
+                extra depth never hurts you: worst case, a redundant layer becomes a no-op.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s12">
+          <div class="slide-frame">
+            <div class="tag">Slide 12 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-12.png"
+              alt="ResNet-56 loss surfaces: without skip connections, a jagged mountain range full of local minima and cliffs; with skip connections, a smooth single basin. Li, Xu, Taylor, Studer & Goldstein 2018.">
+            <div class="slide-caption">slide 12 · what depth looks like with and without residuals</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two visualisations of the same 56-layer ResNet's loss landscape, from Li et al. (2018). On the left, the
+              network trained <em>without</em> skip connections: a fractal-looking terrain of peaks and canyons. On the
+              right, the same network <em>with</em> skips: a smooth bowl with a single obvious minimum.</p>
+            <h4>What to take from it</h4>
+            <p>This is the picture people mean when they say "residuals make deep networks trainable". The landscape on
+              the left is what your optimiser sees, and it is essentially impossible to descend without landing in a
+              local minimum or a saddle. The landscape on the right is what you get for free by adding an
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mi>x</mi>
+                <mo>+</mo>
+                <mo>…</mo>
+              </math>
+              in every block.
+            </p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Normalisation makes the local geometry inside each layer nicer. Residuals make the global geometry
+                across layers nicer. Every transformer needs both.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="preln">
+        <h2><span class="num">§4</span>Pre-LN vs Post-LN: <em>where inside the block?</em></h2>
+        <p class="section-intro">
+          Once you have LayerNorm and residuals, you have a choice about
+          <em>where in the block</em> the LayerNorm sits. Two placements
+          dominate. The original transformer paper (Vaswani et al., 2017)
+          put it after the addition (<em>Post-LN</em>). The community
+          converged onto putting it before the sub-layer (<em>Pre-LN</em>)
+          because it trains much more reliably. Both are still around, and
+          they behave differently in specific ways.
+        </p>
+
+        <div class="slide" id="s13">
+          <div class="slide-frame">
+            <div class="tag">Slide 13 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-13.png"
+              alt="Two transformer block diagrams. (a) Pre-LN: LayerNorm sits inside the residual branch, before Attention and before FFN, and the addition happens on the raw residual. (b) Post-LN: Attention and FFN feed into an addition with the residual, then LayerNorm sits after the addition. Xiong et al. 2020.">
+            <div class="slide-caption">slide 13 · Pre-LN vs Post-LN, in a picture</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two block diagrams from Xiong et al. (2020). Both are one layer of a transformer, both have Multi-Head
+              Attention, an FFN, additions, and LayerNorm — the arrangement is what changes.</p>
+            <ul>
+              <li><strong>(a) Pre-LN</strong>: <em>Norm → sub-layer → add</em>. The LayerNorm is applied to the
+                residual branch <em>before</em> it enters attention or the FFN. The addition is on raw
+                <em>x</em><sub><em>L</em></sub>.
+              </li>
+              <li><strong>(b) Post-LN</strong>: <em>sub-layer → add → Norm</em>. Attention or FFN runs on
+                <em>x</em><sub><em>L</em></sub>, its output is added to the residual, <em>then</em> LayerNorm runs on
+                the sum. This is the original 2017 layout.
+              </li>
+            </ul>
+            <h4>Why one-line difference, big effect</h4>
+            <p>In Post-LN, the residual path itself gets scaled and shifted by LayerNorm at every layer. Small errors
+              in that normalisation compound down the stack. In Pre-LN, the residual path is untouched — the identity
+              connection runs unnormalised all the way from input to output, and LayerNorm only affects what gets added
+              in. That's why Pre-LN behaves like a proper residual network and Post-LN doesn't quite.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s14">
+          <div class="slide-frame">
+            <div class="tag">Slide 14 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-14.png"
+              alt="Pre-LN vs Post-LN tradeoffs: Post-Norm makes training unstable and can lead to vanishing/exploding gradients; done carefully Post-Norm doesn't lose information; Pre-Norm stabilises training but leads to representation collapse (each layer represents nearly the same information, measured by cosine similarity).">
+            <div class="slide-caption">slide 14 · the tradeoff nobody escapes</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four bullets that summarise years of empirical work.</p>
+            <h4>The idea behind each</h4>
+            <ol>
+              <li><strong>Post-LN is unstable.</strong> Because the residual gets renormalised at every layer, gradient
+                magnitudes at deeper layers can drift far from those at shallower ones. You often need warmup schedules
+                and careful learning rates to train a Post-LN transformer at all.</li>
+              <li><strong>Done carefully, Post-LN doesn't lose information.</strong> If you can get it to train, it
+                tends to give slightly better final quality than Pre-LN. It's harder, not worse — nothing about the
+                architecture caps its capacity.</li>
+              <li><strong>Pre-LN stabilises training.</strong> The untouched residual pathway means gradients flow
+                cleanly. You can use larger learning rates, skip warmup in some setups, and stack more layers.</li>
+              <li><strong>Pre-LN causes representation collapse.</strong> This is the surprising finding. Because every
+                layer's output is dominated by the (unchanged) residual, deep Pre-LN networks tend to have every
+                intermediate layer looking similar to the next — measured by cosine similarity between layer outputs.
+                You get depth without the diversity of representations depth is supposed to buy.</li>
+            </ol>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The reflex "Pre-LN is just better" is not quite right. It's <em>easier to train</em>, which usually
+                translates to better final numbers because you actually finish training. But if you have the budget and
+                the patience for the tricks Post-LN needs, Post-LN gives you a real representation gain. This is why
+                you still see Post-LN in some production models with careful engineering behind them.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="deepnorm">
+        <h2><span class="num">§5</span>DeepNorm: <em>Post-LN that scales to 1000 layers</em></h2>
+        <p class="section-intro">
+          Slide 15 is a single equation that lets Post-LN work at extreme
+          depth: multiply the residual by a constant α that depends on the
+          total number of layers. That's it. Microsoft's <em>DeepNet</em>
+          paper (Wang et al., 2024) uses this trick to stack transformers
+          a thousand deep and still keep them stable.
+        </p>
+
+        <div class="slide" id="s15">
+          <div class="slide-frame">
+            <div class="tag">Slide 15 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-15.png"
+              alt="DeepNorm: add a scaling term α to the residual in Post-Norm; stabilises gradients across networks that are theoretically thousands of layers deep. x_{L+1} = LayerNorm(α x_L + F(x_L)), where α depends on the total number of layers. Wang et al. 2024.">
+            <div class="slide-caption">slide 15 · DeepNorm — one α buys 1000 layers of depth</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em class="term">DeepNorm</em>. Take the Post-LN block from slide 13(b), and multiply the residual by a
+              constant α before the addition:
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub>
+                  <mi>x</mi>
+                  <mrow>
+                    <mi>L</mi>
+                    <mo>+</mo>
+                    <mn>1</mn>
+                  </mrow>
+                </msub>
+                <mo>=</mo>
+                <mtext>LayerNorm</mtext>
+                <mo>(</mo>
+                <mi>α</mi>
+                <msub>
+                  <mi>x</mi>
+                  <mi>L</mi>
+                </msub>
+                <mo>+</mo>
+                <mi>F</mi>
+                <mo>(</mo>
+                <msub>
+                  <mi>x</mi>
+                  <mi>L</mi>
+                </msub>
+                <mo>)</mo>
+                <mo>)</mo>
+              </math>. The α is a fixed constant chosen from the total number of layers.
+            </p>
+            <h4>Why one constant fixes it</h4>
+            <p>The instability of Post-LN comes from the residual and the sub-layer output being on <em>different
+                scales</em> after LayerNorm renormalises them repeatedly. α pre-weights the residual so that after all
+              those renormalisations, its contribution stays comparable to the sub-layer's contribution. Wang et al.
+              derive the exact α as a function of the depth (roughly
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mo>(</mo>
+                <mn>2</mn>
+                <mi>N</mi>
+                <msup>
+                  <mo>)</mo>
+                  <mrow>
+                    <mn>1</mn>
+                    <mo>/</mo>
+                    <mn>4</mn>
+                  </mrow>
+                </msup>
+              </math>
+              for an <em>N</em>-layer encoder), so that gradient norms stay bounded regardless of depth.
+            </p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>DeepNorm is the whole reason people believe "you can train arbitrarily deep transformers". Before it,
+                stacking beyond ~100 layers required either heroic tuning or Pre-LN's representation-collapse
+                compromise. DeepNorm keeps Post-LN's quality with Pre-LN's trainability — for the price of one carefully
+                chosen constant.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="hybridnorm">
+        <h2><span class="num">§6</span>HybridNorm: <em>use each normaliser where it earns its keep</em></h2>
+        <p class="section-intro">
+          The last two slides propose the newest twist. If RMSNorm is 20%
+          cheaper than LayerNorm but slightly less numerically robust,
+          and if some positions in the block are more sensitive to
+          normalisation quality than others — why apply the same
+          normaliser everywhere? <em>HybridNorm</em> (Zhuo et al., 2026)
+          puts LayerNorm where it matters and RMSNorm everywhere else.
+        </p>
+
+        <div class="slide" id="s16">
+          <div class="slide-frame">
+            <div class="tag">Slide 16 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-16.png"
+              alt="Four transformer block variants ×L: (a) Post-Norm — Norm placed at the top of each residual; (b) Pre-Norm — Norm inside each residual branch; (c) Pre-Norm with QK-Norm — separate Norms on Q and K inside attention; (d) HybridNorm — a combination that puts Norm in specific positions. Zhuo et al. 2026.">
+            <div class="slide-caption">slide 16 · four transformer block layouts</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four block designs, drawn as small diagrams to compare where the normalisers sit.</p>
+            <ul>
+              <li><strong>(a) Post-Norm</strong>: LayerNorm on the sum at the top of each block, as in the 2017 paper.
+              </li>
+              <li><strong>(b) Pre-Norm</strong>: LayerNorm inside the residual branch before attention and before FFN.
+              </li>
+              <li><strong>(c) Pre-Norm with QK-Norm</strong>: Pre-Norm, plus separate LayerNorms directly on the Q and
+                K projections inside attention. Helps stabilise the softmax input scale.</li>
+              <li><strong>(d) HybridNorm</strong>: puts LayerNorm at specific sensitive positions and RMSNorm at the
+                rest, chosen empirically.</li>
+            </ul>
+            <h4>Why the picture, not just the equation</h4>
+            <p>You cannot spot which normaliser is which from the maths — they all look identical on the page. Papers
+              use these block diagrams because the <em>placement</em> is the whole contribution. Read them as circuit
+              schematics: where the Norm box sits, and what its input is, determines what property the block gets.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s17">
+          <div class="slide-frame">
+            <div class="tag">Slide 17 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-17.png"
+              alt="HybridNorm intuition: post-attention normalization is (empirically) more sensitive to normalizer choice than other positions; using LayerNorm there and RMSNorm elsewhere gives meaningful speedup relative to LayerNorm-only without the catastrophic results likely when using only RMSNorm.">
+            <div class="slide-caption">slide 17 · why the mix wins</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two-bullet summary of why HybridNorm exists.</p>
+            <h4>The idea behind each</h4>
+            <ol>
+              <li><strong>Post-attention is the sensitive spot.</strong> Empirically, the LayerNorm that comes right
+                after the attention output is the one where RMSNorm's shortcut hurts the most. Attention outputs can
+                have skewed distributions that need proper mean-subtraction to stay tame.</li>
+              <li><strong>Everywhere else is fair game.</strong> The remaining LayerNorms (before Q/K/V, after FFN) can
+                be replaced by RMSNorm with negligible quality loss. You keep the speed win over an all-LayerNorm
+                network while dodging the crashes you'd see in an all-RMSNorm network.</li>
+            </ol>
+            <div class="callout link">
+              <div class="callout-label">→ Trend to watch</div>
+              <p>This is the general shape of a lot of modern architecture research: not "invent a better normaliser"
+                but "figure out where each one belongs". Similar arguments show up in FP8-training papers (some layers
+                tolerate low precision, others don't) and in Mixture-of-Experts routing (some tokens want the big
+                expert, others want the cheap one). Normalisation choice is now a <em>per-position</em> hyperparameter,
+                not a global one.</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="section-intro" style="margin-top:1.5rem">
+          Zoom out. Normalisation is layers of fixes for the same underlying
+          disease: gradient descent hates poorly conditioned landscapes.
+          Standardise inputs to fix the geometry within a layer
+          (BatchNorm, LayerNorm, RMSNorm). Add residuals to fix the
+          geometry across layers. Choose Pre-LN or Post-LN and live with
+          the tradeoff. Scale to 1000 layers with DeepNorm. Mix normalisers
+          per-position with HybridNorm. Every one of these is a small piece
+          of geometry engineering, and each was worth a paper.
+        </p>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="6-more-attention.html">
+          <span class="dir">← back</span>
+          <span class="lbl">06 · More Attention</span>
+        </a>
+        <a class="next" href="../tutorials/1-math-for-dl.html">
+          <span class="dir">next →</span>
+          <span class="lbl">Tutorial · Math for DL</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Lecture 07 · Normalization · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#deck">at a glance</a>
+        <a href="#why">§1 why normalize?</a>
+        <a href="#flavours">§2 four flavours</a>
+        <a href="#residuals">§3 residuals</a>
+        <a href="#preln">§4 Pre-LN vs Post-LN</a>
+        <a href="#deepnorm">§5 DeepNorm</a>
+        <a href="#hybridnorm">§6 HybridNorm</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>
