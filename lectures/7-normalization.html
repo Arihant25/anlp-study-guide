@@ -133,46 +133,44 @@
           </div>
         </div>
 
-        <div class="slide-strip cols-2">
-          <div class="slide" id="s2">
-            <div class="slide-frame">
-              <div class="tag">Slide 02 / 17</div>
-              <img src="../assets/slides/L7-normalization/slide-02.png"
-                alt="Setup: a parametric function y = a x_1 + b x_2 fit by minimising L = (1/m) sum_i (y_i − ŷ_i(a,b))^2.">
-              <div class="slide-caption">slide 02 · the toy problem</div>
-            </div>
-            <div class="explain">
-              <h4>On the slide</h4>
-              <p>Two-parameter linear regression: predict <em>y</em> from features <em>x</em><sub>1</sub> and
-                <em>x</em><sub>2</sub> using weights <em>a</em> and <em>b</em>. Train by mean-squared error.
-              </p>
-              <h4>What to take from it</h4>
-              <p>This is the smallest model that can still <em>demonstrate</em> the problem. Two parameters means the
-                loss is a function of two numbers, which means we can literally plot the landscape on the next slide.
-                Nothing about the argument depends on the model being simple — the same bad geometry appears in a
-                transformer, just in a million-dimensional space you can't draw.</p>
-            </div>
+        <div class="slide" id="s2">
+          <div class="slide-frame">
+            <div class="tag">Slide 02 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-02.png"
+              alt="Setup: a parametric function y = a x_1 + b x_2 fit by minimising L = (1/m) sum_i (y_i − ŷ_i(a,b))^2.">
+            <div class="slide-caption">slide 02 · the toy problem</div>
           </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two-parameter linear regression: predict <em>y</em> from features <em>x</em><sub>1</sub> and
+              <em>x</em><sub>2</sub> using weights <em>a</em> and <em>b</em>. Train by mean-squared error.
+            </p>
+            <h4>What to take from it</h4>
+            <p>This is the smallest model that can still <em>demonstrate</em> the problem. Two parameters means the
+              loss is a function of two numbers, which means we can literally plot the landscape on the next slide.
+              Nothing about the argument depends on the model being simple — the same bad geometry appears in a
+              transformer, just in a million-dimensional space you can't draw.</p>
+          </div>
+        </div>
 
-          <div class="slide" id="s3">
-            <div class="slide-frame">
-              <div class="tag">Slide 03 / 17</div>
-              <img src="../assets/slides/L7-normalization/slide-03.png"
-                alt="Contour plot of L(a,b): a very narrow vertical valley, elongated by roughly 20× along b relative to a.">
-              <div class="slide-caption">slide 03 · the ellipse from hell</div>
-            </div>
-            <div class="explain">
-              <h4>On the slide</h4>
-              <p>The loss surface for that two-parameter regression when the two features have very different
-                scales. It's an <em>extremely</em> elongated ellipse — a narrow trench that runs almost straight up
-                and down in the (a, b) plane.</p>
-              <h4>Why the picture is bad news</h4>
-              <p>Gradient descent takes a step in the direction of steepest descent. On this landscape steepest
-                descent points nearly perpendicular to the trench, not <em>along</em> it. The optimiser bounces from
-                one wall to the other, making tiny net progress toward the minimum. To stay stable you have to shrink
-                the learning rate, which makes progress along the long axis even slower. This is what people mean by
-                a <em class="term">poorly conditioned</em> optimisation problem.</p>
-            </div>
+        <div class="slide" id="s3">
+          <div class="slide-frame">
+            <div class="tag">Slide 03 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-03.png"
+              alt="Contour plot of L(a,b): a very narrow vertical valley, elongated by roughly 20× along b relative to a.">
+            <div class="slide-caption">slide 03 · the ellipse from hell</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The loss surface for that two-parameter regression when the two features have very different
+              scales. It's an <em>extremely</em> elongated ellipse — a narrow trench that runs almost straight up
+              and down in the (a, b) plane.</p>
+            <h4>Why the picture is bad news</h4>
+            <p>Gradient descent takes a step in the direction of steepest descent. On this landscape steepest
+              descent points nearly perpendicular to the trench, not <em>along</em> it. The optimiser bounces from
+              one wall to the other, making tiny net progress toward the minimum. To stay stable you have to shrink
+              the learning rate, which makes progress along the long axis even slower. This is what people mean by
+              a <em class="term">poorly conditioned</em> optimisation problem.</p>
           </div>
         </div>
 
@@ -384,61 +382,59 @@
           </div>
         </div>
 
-        <div class="slide-strip cols-2">
-          <div class="slide" id="s9">
-            <div class="slide-frame">
-              <div class="tag">Slide 09 / 17</div>
-              <img src="../assets/slides/L7-normalization/slide-09.png"
-                alt="RMSNorm: LayerNorm with μ=0 enforced. y^(b) = γ^(b) x^(b) / √((1/d) Σ_i (x_i^(b))^2) + β^(b).">
-              <div class="slide-caption">slide 09 · RMSNorm (LayerNorm minus the mean)</div>
-            </div>
-            <div class="explain">
-              <h4>On the slide</h4>
-              <p><em class="term">RMSNorm</em>. LayerNorm normally does two things: recenter (subtract the mean) and
-                rescale (divide by the standard deviation). RMSNorm drops the recentering step and only rescales, using
-                the root-mean-square of the activations directly.</p>
-              <h4>Why give up the mean subtraction</h4>
-              <p>Empirically the recentering step contributes almost nothing to the quality of the model but costs a
-                pass through the data to compute μ. Dropping it saves ~20% of the normaliser's compute and shows no
-                measurable quality regression. That's why big open-source LLMs (LLaMA, Mistral, Gemma, Qwen) all
-                switched to RMSNorm. Papers by Zhang &amp; Sennrich (2019) first proposed it; wide adoption came four
-                years later.</p>
-              <div class="callout aha">
-                <div class="callout-label">✦ Key takeaway</div>
-                <p>RMSNorm = LayerNorm with a compute discount. Same shape, same γ/β, one fewer statistic. If a paper
-                  says "we use RMSNorm", read it as "we use LayerNorm and don't care about the centring".</p>
-              </div>
+        <div class="slide" id="s9">
+          <div class="slide-frame">
+            <div class="tag">Slide 09 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-09.png"
+              alt="RMSNorm: LayerNorm with μ=0 enforced. y^(b) = γ^(b) x^(b) / √((1/d) Σ_i (x_i^(b))^2) + β^(b).">
+            <div class="slide-caption">slide 09 · RMSNorm (LayerNorm minus the mean)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em class="term">RMSNorm</em>. LayerNorm normally does two things: recenter (subtract the mean) and
+              rescale (divide by the standard deviation). RMSNorm drops the recentering step and only rescales, using
+              the root-mean-square of the activations directly.</p>
+            <h4>Why give up the mean subtraction</h4>
+            <p>Empirically the recentering step contributes almost nothing to the quality of the model but costs a
+              pass through the data to compute μ. Dropping it saves ~20% of the normaliser's compute and shows no
+              measurable quality regression. That's why big open-source LLMs (LLaMA, Mistral, Gemma, Qwen) all
+              switched to RMSNorm. Papers by Zhang &amp; Sennrich (2019) first proposed it; wide adoption came four
+              years later.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>RMSNorm = LayerNorm with a compute discount. Same shape, same γ/β, one fewer statistic. If a paper
+                says "we use RMSNorm", read it as "we use LayerNorm and don't care about the centring".</p>
             </div>
           </div>
+        </div>
 
-          <div class="slide" id="s10">
-            <div class="slide-frame">
-              <div class="tag">Slide 10 / 17</div>
-              <img src="../assets/slides/L7-normalization/slide-10.png"
-                alt="Weight Normalization: separate weight vectors into magnitude and direction. WeightNorm(x) = (g/||v||) v^T x + b. Applied per neuron. Salimans & Kingma 2016.">
-              <div class="slide-caption">slide 10 · Weight Norm (normalise the weights, not the activations)</div>
-            </div>
-            <div class="explain">
-              <h4>On the slide</h4>
-              <p><em class="term">Weight Normalization</em>, from Salimans &amp; Kingma (2016). Instead of touching
-                activations, decompose each neuron's weight vector into a <em>direction</em> (unit vector) and a
-                learnable <em>magnitude</em>
-                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
-                  <mi>g</mi>
-                </math>. Optimise the two separately.
-              </p>
-              <h4>Why the decomposition helps</h4>
-              <p>Gradient descent updates weights by adding a scaled gradient. When direction and magnitude are entangled
-                in one vector, an update that wanted to change only the length of <em>v</em> also nudges its direction,
-                and vice versa. Separating them means the optimiser gets a cleaner set of "knobs" and can move the two
-                independently. This speeds convergence in some settings.</p>
-              <div class="callout gotcha">
-                <div class="callout-label">⚠ Watch out</div>
-                <p>Unlike the other three, this one <em>never caught on</em> in transformers. It doesn't remove the
-                  ill-conditioning problem from activations at all — it only fixes weight geometry. Modern architectures
-                  either don't need it (because LayerNorm handles the harder problem) or fold something equivalent into
-                  the initialisation scheme.</p>
-              </div>
+        <div class="slide" id="s10">
+          <div class="slide-frame">
+            <div class="tag">Slide 10 / 17</div>
+            <img src="../assets/slides/L7-normalization/slide-10.png"
+              alt="Weight Normalization: separate weight vectors into magnitude and direction. WeightNorm(x) = (g/||v||) v^T x + b. Applied per neuron. Salimans & Kingma 2016.">
+            <div class="slide-caption">slide 10 · Weight Norm (normalise the weights, not the activations)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em class="term">Weight Normalization</em>, from Salimans &amp; Kingma (2016). Instead of touching
+              activations, decompose each neuron's weight vector into a <em>direction</em> (unit vector) and a
+              learnable <em>magnitude</em>
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mi>g</mi>
+              </math>. Optimise the two separately.
+            </p>
+            <h4>Why the decomposition helps</h4>
+            <p>Gradient descent updates weights by adding a scaled gradient. When direction and magnitude are entangled
+              in one vector, an update that wanted to change only the length of <em>v</em> also nudges its direction,
+              and vice versa. Separating them means the optimiser gets a cleaner set of "knobs" and can move the two
+              independently. This speeds convergence in some settings.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>Unlike the other three, this one <em>never caught on</em> in transformers. It doesn't remove the
+                ill-conditioning problem from activations at all — it only fixes weight geometry. Modern architectures
+                either don't need it (because LayerNorm handles the harder problem) or fold something equivalent into
+                the initialisation scheme.</p>
             </div>
           </div>
         </div>
