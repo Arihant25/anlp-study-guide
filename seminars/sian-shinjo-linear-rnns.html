@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Seminar · Linear RNNs — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Student seminar by Sian Shinjo for Advanced NLP Monsoon 2026 IIIT-H: Linear RNNs. Slides will land here once the seminar is presented.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/seminars/sian-shinjo-linear-rnns.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#status">Status</a>
+        <a href="#topic">What the seminar covers</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="../index.html">← Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Seminar · Sian Shinjo</div>
+        <h1>Linear RNNs.</h1>
+        <p class="lead">
+          A student-led seminar on recurrent models with linear state updates —
+          the family that ties together linear attention, state-space models
+          (Mamba, S4), and modern efficient sequence architectures. This page
+          will hold the slide-by-slide study companion once the deck is
+          available.
+        </p>
+        <div class="meta">
+          <span class="pill">Seminar</span>
+          <span class="pill">Sian Shinjo</span>
+          <span class="pill">slides pending</span>
+        </div>
+      </section>
+
+      <section id="status">
+        <h2><span class="num">§0</span>Status</h2>
+        <div class="callout link">
+          <div class="callout-label">→ Not yet online</div>
+          <p>The seminar hasn't been presented yet, so no slides are available. Once the deck lands, this page will get
+            the same slide-by-slide walkthrough treatment as the other seminars — every slide embedded verbatim with
+            a first-principles explanation underneath.</p>
+        </div>
+      </section>
+
+      <section id="topic">
+        <h2><span class="num">§1</span>What the seminar covers</h2>
+        <p>
+          Linear RNNs are recurrent networks whose state update is a linear function of the previous state and the
+          current input: something of the form
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+            <msub>
+              <mi>h</mi>
+              <mi>t</mi>
+            </msub>
+            <mo>=</mo>
+            <mi>A</mi>
+            <msub>
+              <mi>h</mi>
+              <mrow>
+                <mi>t</mi>
+                <mo>−</mo>
+                <mn>1</mn>
+              </mrow>
+            </msub>
+            <mo>+</mo>
+            <mi>B</mi>
+            <msub>
+              <mi>x</mi>
+              <mi>t</mi>
+            </msub>
+          </math>. Removing the nonlinearity from the recurrence buys a lot: the hidden state can be computed in
+          parallel across time (through associative scans or FFT-like reductions), so training doesn't sequentially
+          bottleneck on the recurrence.
+        </p>
+        <p>
+          This is the algebraic backbone behind the recent efficient-sequence-model line: <em>linear attention</em>,
+          <em>State-Space Models</em> (S4, S5, Mamba), and the various gated linear architectures. The seminar likely
+          covers the recurrence formulation, why it can be parallelised, how it relates to attention, and which
+          variants have caught on in practice.
+        </p>
+        <div class="callout link">
+          <div class="callout-label">→ Related material on this site</div>
+          <p>Linear attention — the closest cousin covered in a main lecture — appears in
+            <a class="xref" href="../lectures/6-more-attention.html#linear">Lecture 6 §5</a>. That section derives the
+            kernel-based rewrite, the causal-case recurrence, and the "transformers are RNNs" framing that this
+            seminar builds on.
+          </p>
+        </div>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="../index.html">
+          <span class="dir">← back</span>
+          <span class="lbl">Home</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Seminar · Linear RNNs · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#status">status</a>
+        <a href="#topic">topic</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>

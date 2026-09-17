@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Seminar · Diffusion Language Models — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Student seminar by Vansh Nawander for Advanced NLP Monsoon 2026 IIIT-H: Diffusion Language Models. Slides will land here once the seminar is presented.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/seminars/vansh-nawander-diffusion-lms.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#status">Status</a>
+        <a href="#topic">What the seminar covers</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="../index.html">← Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Seminar · Vansh Nawander</div>
+        <h1>Diffusion Language Models.</h1>
+        <p class="lead">
+          A student-led seminar on language models that generate by iterative
+          denoising instead of left-to-right sampling — the diffusion recipe
+          from image generation, applied to discrete text. This page will hold
+          the slide-by-slide study companion once the deck is available.
+        </p>
+        <div class="meta">
+          <span class="pill">Seminar</span>
+          <span class="pill">Vansh Nawander</span>
+          <span class="pill">slides pending</span>
+        </div>
+      </section>
+
+      <section id="status">
+        <h2><span class="num">§0</span>Status</h2>
+        <div class="callout link">
+          <div class="callout-label">→ Not yet online</div>
+          <p>The seminar hasn't been presented yet, so no slides are available. Once the deck lands, this page will
+            get the same slide-by-slide walkthrough treatment as the other seminars — every slide embedded verbatim
+            with a first-principles explanation underneath.</p>
+        </div>
+      </section>
+
+      <section id="topic">
+        <h2><span class="num">§1</span>What the seminar covers</h2>
+        <p>
+          Standard language models generate <em>autoregressively</em>: one token at a time, left to right, each
+          token conditioned on everything already produced. Diffusion language models do something very different.
+          They start from pure noise (a sequence of random or masked tokens) and, over many denoising steps,
+          gradually refine the whole sequence in parallel until it is a coherent piece of text.
+        </p>
+        <p>
+          The idea is imported from image diffusion (DDPM, Stable Diffusion), where it revolutionised generation.
+          Adapting it to text is harder because text is discrete, and the recent research line — <em>D3PM</em>,
+          <em>SEDD</em>, <em>MDLM</em>, and more — has explored several ways to handle that. The payoff is
+          parallel decoding (much faster generation than left-to-right sampling), stronger controllability, and
+          iterative refinement of the final output.
+        </p>
+        <div class="callout link">
+          <div class="callout-label">→ Related material on this site</div>
+          <p>The autoregressive baseline this seminar contrasts against is the standard transformer decoder covered
+            in <a class="xref" href="../lectures/2-transformers.html">Lecture 2</a>. Tokenisation choices become
+            especially load-bearing for discrete diffusion — see
+            <a class="xref" href="../lectures/3-tokenization.html">Lecture 3</a>.
+          </p>
+        </div>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="../index.html">
+          <span class="dir">← back</span>
+          <span class="lbl">Home</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Seminar · Diffusion Language Models · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#status">status</a>
+        <a href="#topic">topic</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>

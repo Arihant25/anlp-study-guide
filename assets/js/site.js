@@ -10,18 +10,24 @@ const SITE_NAV = [
   { href: "lectures/5-attention.html", short: "05", label: "Attention", group: "lectures" },
   { href: "lectures/6-more-attention.html", short: "06", label: "More Attn", group: "lectures" },
   { href: "lectures/7-normalization.html", short: "07", label: "Normalization", group: "lectures" },
+  { href: "seminars/sian-shinjo-linear-rnns.html", short: "S1", label: "Linear RNNs", group: "seminars" },
+  { href: "seminars/vishal-rao-data-creation.html", short: "S2", label: "Data Creation", group: "seminars" },
+  { href: "seminars/shruthi-m-efficient-deployment.html", short: "S3", label: "Efficient Deploy", group: "seminars" },
+  { href: "seminars/trisanu-bhar-ttt-learning.html", short: "S4", label: "TTT Learning", group: "seminars" },
+  { href: "seminars/vansh-nawander-diffusion-lms.html", short: "S5", label: "Diffusion LMs", group: "seminars" },
+  { href: "seminars/abdul-nalawala-reasoning.html", short: "S6", label: "Reasoning", group: "seminars" },
   { href: "tutorials/1-math-for-dl.html", short: "T1", label: "Math for DL", group: "tutorials" },
   { href: "tutorials/2-matrices-to-transformers.html", short: "T2", label: "Matrices", group: "tutorials" },
   { href: "assignments/1-transformers-from-scratch.html", short: "A1", label: "Transformers", group: "assignments" },
   { href: "pyqs/mid-2023.html", short: "Q23", label: "PYQ 2023", group: "pyqs" },
   { href: "pyqs/mid-2024.html", short: "Q24", label: "PYQ 2024", group: "pyqs" },
 ];
-const GROUP_LABELS = { home: "", lectures: "Lectures", tutorials: "Tutorials", assignments: "Assignments", pyqs: "PYQs" };
+const GROUP_LABELS = { home: "", lectures: "Lectures", tutorials: "Tutorials", assignments: "Assignments", pyqs: "PYQs", seminars: "Seminars" };
 
 // Resolve prefix + currentIdx from window.location — shared by both injectors.
 function __siteContext() {
   const path = location.pathname.replace(/\\/g, "/");
-  const inSubdir = /\/(lectures|tutorials|pyqs|assignments)\//.test(path);
+  const inSubdir = /\/(lectures|tutorials|pyqs|assignments|seminars)\//.test(path);
   const prefix = inSubdir ? "../" : "";
   const currentIdx = SITE_NAV.findIndex(item => {
     const target = "/" + item.href;

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Seminar · Efficient Deployment — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Student seminar by Shruthi M for Advanced NLP Monsoon 2026 IIIT-H: Efficient Deployment of language models. Slides will land here once the seminar is presented.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical"
+    href="https://arihant25.github.io/anlp-study-guide/seminars/shruthi-m-efficient-deployment.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#status">Status</a>
+        <a href="#topic">What the seminar covers</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="../index.html">← Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Seminar · Shruthi M</div>
+        <h1>Efficient Deployment.</h1>
+        <p class="lead">
+          A student-led seminar on serving large language models cheaply —
+          the engineering that decides real-world cost per token, latency,
+          and throughput once training is done. This page will hold the
+          slide-by-slide study companion once the deck is available.
+        </p>
+        <div class="meta">
+          <span class="pill">Seminar</span>
+          <span class="pill">Shruthi M</span>
+          <span class="pill">slides pending</span>
+        </div>
+      </section>
+
+      <section id="status">
+        <h2><span class="num">§0</span>Status</h2>
+        <div class="callout link">
+          <div class="callout-label">→ Not yet online</div>
+          <p>The seminar hasn't been presented yet, so no slides are available. Once the deck lands, this page will
+            get the same slide-by-slide walkthrough treatment as the other seminars — every slide embedded verbatim
+            with a first-principles explanation underneath.</p>
+        </div>
+      </section>
+
+      <section id="topic">
+        <h2><span class="num">§1</span>What the seminar covers</h2>
+        <p>
+          Training LLMs and <em>serving</em> them are two very different engineering problems. Serving is where a
+          model actually gets used, and its unit economics come from a small stack of well-known tricks:
+        </p>
+        <ul>
+          <li><strong>Quantisation</strong> — running the model at INT8, INT4, or lower without noticeable quality
+            loss.</li>
+          <li><strong>KV-cache optimisation</strong> — paged, quantised, or shared caches that keep long-context
+            inference within memory budgets.</li>
+          <li><strong>Continuous batching</strong> — packing decode steps from many concurrent requests into a single
+            GPU kernel launch instead of running them one at a time.</li>
+          <li><strong>Speculative decoding</strong> — using a small draft model to propose several tokens at once,
+            then verifying them cheaply with the big model.</li>
+          <li><strong>Distillation and pruning</strong> — shrinking the model itself for the deployment target.</li>
+        </ul>
+        <p>
+          The seminar likely walks through several of these, with the goal of turning "we trained a nice model" into
+          "we can serve it at a price users will pay".
+        </p>
+        <div class="callout link">
+          <div class="callout-label">→ Related material on this site</div>
+          <p>Attention variants that were designed with deployment cost in mind — sliding-window, sparse, and linear
+            attention — appear in <a class="xref" href="../lectures/6-more-attention.html">Lecture 6</a>. The
+            KV-cache accounting that underpins many of these serving tricks is set up in
+            <a class="xref" href="../lectures/5-attention.html">Lecture 5</a>.
+          </p>
+        </div>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="../index.html">
+          <span class="dir">← back</span>
+          <span class="lbl">Home</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Seminar · Efficient Deployment · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#status">status</a>
+        <a href="#topic">topic</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>

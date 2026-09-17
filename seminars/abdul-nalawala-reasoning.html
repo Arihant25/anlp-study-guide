@@ -1,0 +1,1627 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Seminar · Reasoning in LMs — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Student seminar by Abdul Kadir Nalawala for Advanced NLP Monsoon 2026 IIIT-H: how large language models reason — chain-of-thought, self-consistency, verifiers, and the recent reasoning-model line.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/seminars/abdul-nalawala-reasoning.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Reasoning in Language Models: CoT to GRPO | ANLP Seminar">
+  <meta property="og:description"
+    content="Student seminar (Abdul Kadir Nalawala) surveying reasoning in LLMs: prompting, SFT on traces, REINFORCE/TRPO/PPO, RLHF, RLOO, GRPO, DeepSeek-R1, and efficient-reasoning models.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/seminars/abdul-nalawala-reasoning.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/seminars/S-reasoning/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP seminar title slide: Reasoning in Language Models">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Reasoning in Language Models: CoT to GRPO | ANLP Seminar">
+  <meta name="twitter:description"
+    content="A first-principles walk through prompting, SFT, RL (REINFORCE→TRPO→PPO→RLHF→RLOO→GRPO), and efficient reasoning in modern LLMs.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/seminars/S-reasoning/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"ANLP Seminar: Reasoning in Language Models","url":"https://arihant25.github.io/anlp-study-guide/seminars/abdul-nalawala-reasoning.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"seminar notes","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#deck">The deck at a glance</a>
+        <a href="#what">§1 · What reasoning is</a>
+        <a href="#cot">§2 · Chain-of-thought</a>
+        <a href="#sft">§3 · SFT on traces (STaR)</a>
+        <a href="#rl">§4 · An RL primer for LMs</a>
+        <a href="#ppo">§5 · TRPO &amp; PPO</a>
+        <a href="#rlhf">§6 · RLHF</a>
+        <a href="#rloo">§7 · RLOO</a>
+        <a href="#grpo">§8 · GRPO &amp; DeepSeek-R1</a>
+        <a href="#eff">§9 · Efficient reasoning</a>
+        <a href="#recent">§10 · Recent advances</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="vishal-rao-data-creation.html">← Seminar: Data Creation</a>
+        <a href="../tutorials/1-math-for-dl.html">Next: Tutorial · Math for DL →</a>
+        <a href="../index.html">Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Seminar · Abdul Kadir Nalawala · 45 slides</div>
+        <h1>Reasoning in Language Models: <em>chain-of-thought and everything after.</em></h1>
+        <p class="lead">
+          A student-led tour of how large language models learned to <em>think
+          out loud</em>. The seminar starts from a single observation — that
+          inserting intermediate steps between a question and its answer makes
+          the answer better — and follows that thread all the way to the
+          modern reasoning-model line (o1, DeepSeek-R1, Qwen3). Along the way
+          it builds up the reinforcement-learning machinery that these models
+          are trained with, from REINFORCE through TRPO, PPO, RLHF, RLOO and
+          GRPO, then ends on efficient-reasoning tricks and the newest
+          research directions.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Seminar</span>
+          <span class="pill">45 slides</span>
+          <span class="pill">Abdul Kadir Nalawala · 2026701019</span>
+          <span class="pill">16 Sept 2026</span>
+        </div>
+      </section>
+
+      <section id="deck">
+        <h2><span class="num">§0</span>The deck at a glance</h2>
+        <p class="section-intro">
+          The seminar is structured as a survey: it names <em>what</em>
+          reasoning means in the context of a language model, then walks
+          through the three families of methods that make an LM reason
+          better — <strong>prompting</strong> (chain-of-thought),
+          <strong>supervised fine-tuning</strong> on reasoning traces
+          (STaR), and <strong>reinforcement learning</strong> against a
+          reward signal. Most of the deck is spent on the RL family
+          because that's where the recent action is: REINFORCE gives the
+          policy-gradient template, TRPO adds a trust region, PPO
+          clips instead of constraining, RLHF learns the reward from
+          human preferences, RLOO removes the critic with a
+          leave-one-out baseline, and GRPO strips it down further by
+          using group statistics. The last third of the deck covers
+          efficient-reasoning designs (Qwen3's thinking modes,
+          Nemotron Nano 2's explicit budget) and a peek at what's
+          coming next (agentic, multimodal, latent reasoning via looped
+          transformers).
+        </p>
+      </section>
+
+      <hr class="soft">
+
+      <section id="what">
+        <h2><span class="num">§1</span>What reasoning is, and why LMs need it</h2>
+        <p class="section-intro">
+          Slides 1–7 set the stage. A one-line definition of reasoning, an
+          appeal to the Sutton "bitter lesson" quote about scale, the
+          canonical chain-of-thought example that motivates every method
+          in the deck, and a benchmark (MATH-Perturb) that shows why the
+          problem is far from solved even for GPT-4-class models.
+        </p>
+
+        <div class="slide" id="s1">
+          <div class="slide-frame">
+            <div class="tag">Slide 01 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-01.png"
+              alt="Title slide: Seminar — Reasoning in Language Models, Advanced NLP Monsoon 2026, by Abdul Kadir Nalawala (2026701019), 16 September 2026.">
+            <div class="slide-caption">slide 01 · title</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Student seminar for Advanced NLP Monsoon 2026 at IIIT-H,
+              presented by Abdul Kadir Nalawala on 16 September 2026.</p>
+            <h4>What to take from it</h4>
+            <p>Reasoning in language models is a fast-moving topic — the
+              term wasn't part of NLP vocabulary before 2022, and by 2025
+              it names an entire product category. This deck is a survey,
+              not a canonical reference: the goal is to lay out the
+              recipes people currently use, not to defend a definition
+              of reasoning.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s2">
+          <div class="slide-frame">
+            <div class="tag">Slide 02 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-02.png"
+              alt="Table of contents: What is Reasoning; Why we need Reasoning; Methods for Eliciting and Training Reasoning in LLMs; Efficient Reasoning; Recent Advances.">
+            <div class="slide-caption">slide 02 · table of contents</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Five acts: (1) definition, (2) motivation, (3) the methods
+              catalogue — prompting, SFT, RL, (4) efficient reasoning,
+              (5) recent advances.</p>
+            <h4>What to take from it</h4>
+            <p>The centre of gravity is act three. The prompting method
+              (chain-of-thought) is quick to explain because it is one
+              trick with one paper. SFT-on-traces is one more paper (STaR).
+              The RL section is long because there is a whole family tree
+              — REINFORCE → TRPO → PPO → RLHF → RLOO → GRPO — and each
+              step fixes a specific problem with the previous one.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s3">
+          <div class="slide-frame">
+            <div class="tag">Slide 03 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-03.png"
+              alt="Epigraph slide: There are a lot of things wrong with this world, but too much intelligence is not one of them. — Richard Sutton.">
+            <div class="slide-caption">slide 03 · epigraph (Sutton)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A Sutton quote used as an epigraph.</p>
+            <h4>Why it's here</h4>
+            <p>Sutton is the co-author of the reinforcement-learning
+              textbook that the RL section leans on, and the author of
+              <em>The Bitter Lesson</em> — the thesis that general
+              methods leveraging computation always eventually beat
+              handcrafted priors. The seminar is broadly in that
+              spirit: don't hand-engineer reasoning into a model; give
+              it a training procedure and a reward, and let it discover
+              its own reasoning strategy. That framing pays off two
+              sections later when we get to RL.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s4">
+          <div class="slide-frame">
+            <div class="tag">Slide 04 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-04.png"
+              alt="Section title and definition: What is Reasoning? — The ability to solve a problem or navigate through a scenario by piecing together prior knowledge and facts.">
+            <div class="slide-caption">slide 04 · a working definition</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Reasoning defined operationally: <em>the ability to solve a
+              problem or navigate through a scenario by piecing together
+              prior knowledge and facts</em>.</p>
+            <h4>What to take from it</h4>
+            <p>Note what this definition <em>does not</em> claim. It doesn't
+              require the model to be conscious, or to follow the rules of
+              formal logic, or to be right for the right reasons. It just
+              says: given a problem, chain together things you already know
+              to reach an answer. That's deliberately weak — it lets
+              chain-of-thought count as reasoning even when the intermediate
+              steps are wrong, as long as they're the mechanism by which the
+              final answer becomes more accurate.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Throughout the deck, "reasoning" means <em>producing
+                intermediate steps that improve the final answer</em>, not
+                any deeper philosophical property. Every method in the deck
+                is a different way to elicit or train those intermediate
+                steps.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s5">
+          <div class="slide-frame">
+            <div class="tag">Slide 05 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-05.png"
+              alt="Why we need Reasoning. Standard prompting versus chain-of-thought prompting on Roger's tennis balls and the cafeteria apples problems from Wei et al. 2022: standard prompting gets 27 (wrong) for the apples question; chain-of-thought explicitly walks through 23 − 20 + 6 = 9 (right).">
+            <div class="slide-caption">slide 05 · why reasoning: the CoT example</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The famous side-by-side from Wei et al. (2022). Given a
+              two-step word problem, a standard-prompted LM answers 27 for
+              the cafeteria question (wrong). With a few-shot example that
+              writes out the reasoning, the LM answers 9 (right), and its
+              own output now contains "23 − 20 = 3. They bought 6 more
+              apples, so they have 3 + 6 = 9."</p>
+            <h4>Why this figure matters</h4>
+            <p>This is the picture that launched the whole reasoning
+              agenda. Humans don't solve multi-step math by pattern
+              matching against a memorised answer — they think through
+              intermediate steps. If you let an LM do the same in its
+              output, its accuracy on multi-step problems jumps sharply.
+              Every other method in this deck is either an improvement on
+              CoT (get better traces via SFT) or a way to reward the LM
+              for producing good CoT-style outputs via RL.</p>
+            <div class="callout How it works">
+              <div class="callout-label">⚙ How it works</div>
+              <p>Mechanically, the LM is a next-token predictor. When you
+                force intermediate arithmetic to appear in its output, the
+                final answer is conditioned on tokens that already
+                represent the partial computation — <em>the model gets to
+                use its own scratch work as context for producing the last
+                number</em>. Without CoT, it has to compute the answer in
+                one forward pass, in a fixed number of hidden layers.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s6">
+          <div class="slide-frame">
+            <div class="tag">Slide 06 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-06.png"
+              alt="MATH-Perturb annotation process from Huang et al. 2025: an original problem is edited two ways — Simple Perturbation (numerical or wording tweaks that don't change the method) and Hard Perturbation (edits that force a different problem-solving method, e.g. dropping simplifying constraints).">
+            <div class="slide-caption">slide 06 · MATH-Perturb: surface-similar, method-different</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The MATH-Perturb benchmark (Huang et al., 2025). Take a
+              MATH-competition problem, then make two edits: an
+              <em>easy</em> one that keeps the same solution method
+              (numbers or wording change), and a <em>hard</em> one that
+              looks nearly identical but demands a genuinely different
+              method (e.g., a factorisation trick no longer applies).</p>
+            <h4>What to take from it</h4>
+            <p>This is the litmus test for whether a model is
+              <em>reasoning</em> or <em>pattern-matching</em>. Pattern
+              matching is fine on MATH-P-Simple (surface still triggers the
+              right template) but crashes on MATH-P-Hard (surface still
+              triggers the same template, but the template no longer
+              works). A model that has actually internalised a reasoning
+              procedure should degrade far less. The next slide quantifies
+              it.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s7">
+          <div class="slide-frame">
+            <div class="tag">Slide 07 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-07.png"
+              alt="Zero-shot CoT accuracy of many LLMs on Original, MATH-P-Easy and MATH-P-Hard. Reasoning models like o1 and Gemini-2.0-flash-thinking lose ~15 points from Original to Hard; non-reasoning models like GPT-4o and Claude-3-Opus lose 20–27 points.">
+            <div class="slide-caption">slide 07 · reasoning models vs non-reasoning under perturbation</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Zero-shot chain-of-thought accuracy on the three splits
+              (Original, MATH-P-Easy, MATH-P-Hard) for a mix of
+              <em>reasoning</em> models (o1-preview, o1-mini,
+              Gemini-2.0-flash-thinking) and <em>non-reasoning</em>
+              models (GPT-4o, Claude-3.5-Sonnet, Claude-3-Opus, etc.).
+              The last column (ΔAll) is the drop from Original to Hard.</p>
+            <h4>What to take from it</h4>
+            <p>Two things. First, even the best model in the table
+              (Gemini-2.0-flash-thinking) loses 14 points from Original
+              to Hard — nobody has solved this. Second, the drop for
+              reasoning-tuned models (14–16 pts) is meaningfully smaller
+              than for non-reasoning ones (21–27 pts). The extra training
+              is doing something; it just isn't full immunity. That
+              headroom is the motivation for the rest of the deck.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>"Reasoning model" in this table is a label for models
+                explicitly trained with RL on reasoning traces
+                (o1-series, Gemini-thinking). It is <em>not</em> a
+                claim about anyone's subjective cognition. Read the pill
+                as an architectural / training-recipe tag.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="cot">
+        <h2><span class="num">§2</span>Prompting for reasoning: chain-of-thought</h2>
+        <p class="section-intro">
+          The first family of methods requires zero training changes: just
+          <em>ask</em> the model to think step by step. Slides 8–9 formalise
+          the trick and show its most famous property — that it only kicks
+          in above a certain model scale.
+        </p>
+
+        <div class="slide" id="s8">
+          <div class="slide-frame">
+            <div class="tag">Slide 08 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-08.png"
+              alt="Methods for Eliciting and Training Reasoning in LLMs. 1. Chain of Thought (CoT) — a series of intermediate reasoning steps significantly improves the ability of LLMs to perform complex reasoning. Works because LLMs are capable of in-context few-shot learning via prompting. Reference: Wei et al. 2022.">
+            <div class="slide-caption">slide 08 · chain-of-thought, formally</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em class="term">Chain-of-Thought (CoT)</em> prompting: give
+              the LM a few-shot exemplar in which the answer is preceded by
+              an explicit reasoning trace. The model then imitates the
+              format on new questions and produces its own trace before
+              answering.</p>
+            <h4>What to take from it</h4>
+            <p>CoT is entirely a <em>prompting</em> technique — no weights
+              change, no data collection, no training run. It leverages a
+              property large LMs already have: in-context learning. Show
+              the model a few examples of the format you want and it
+              generalises. This is why CoT is often the first thing anyone
+              tries: it's free.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s9">
+          <div class="slide-frame">
+            <div class="tag">Slide 09 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-09.png"
+              alt="CoT scaling from Wei et al. 2022: on GSM8K, SVAMP and MAWPS, chain-of-thought prompting (blue) is roughly at par with standard prompting (black) for LaMDA and small GPT models but shoots up dramatically at PaLM 540B and large GPT scales, surpassing prior supervised state-of-the-art.">
+            <div class="slide-caption">slide 09 · CoT is an emergent ability</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Solve rates on GSM8K, SVAMP and MAWPS as model size grows,
+              for LaMDA, GPT-3 and PaLM. At small scale, CoT (blue) is no
+              better than standard prompting (black). At large scale, CoT
+              suddenly outperforms it — often by 40+ points — and beats
+              the prior supervised state-of-the-art (dashed line).</p>
+            <h4>What to take from it</h4>
+            <p>CoT is what the community calls an <em>emergent ability</em>:
+              a capability that appears roughly discontinuously as you
+              scale. A small model produces intermediate steps but they're
+              wrong, so writing them down doesn't help. A big model's
+              intermediate steps are usually right, so conditioning the
+              final answer on them helps a lot. This is one of the earliest
+              pieces of concrete evidence that <em>scale changes what
+              prompting can do</em>, not just how well the model does what
+              it already does.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>CoT is not something you teach a language model. It's
+                something a large-enough language model can already do,
+                and you just have to elicit it with the right prompt
+                format. That's why the next question is: <em>if bigger
+                models reason spontaneously, can we train smaller models
+                to imitate them?</em></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="sft">
+        <h2><span class="num">§3</span>Supervised fine-tuning on reasoning traces (STaR)</h2>
+        <p class="section-intro">
+          The second family bakes the reasoning ability into the weights.
+          Instead of relying on the LM to produce good traces at inference,
+          you collect examples of good traces and fine-tune on them.
+          Slides 10–11 introduce the trick everyone uses to collect those
+          traces cheaply: <em>have the model produce its own</em>, keep
+          the ones that got the right answer, and iterate.
+        </p>
+
+        <div class="slide" id="s10">
+          <div class="slide-frame">
+            <div class="tag">Slide 10 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-10.png"
+              alt="Supervised Fine-Tuning (SFT) on Reasoning Traces. Zelikman et al. 2022 STaR: generate multiple reasoning traces, fine-tune on the ones whose final answer is correct; for problems the model can't solve, use rationalisation — give the model the correct answer as a hint, let it construct a rationale to that answer, and add those rationales to the training set. Called Self-Taught Reasoner (STaR).">
+            <div class="slide-caption">slide 10 · STaR: bootstrap your own reasoning data</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em class="term">STaR</em> (Self-Taught Reasoner; Zelikman
+              et al., 2022). The recipe:</p>
+            <ol>
+              <li>Ask the LM to solve each problem in the training set,
+                producing a rationale and an answer.</li>
+              <li>Keep only the (rationale, answer) pairs where the answer
+                is correct.</li>
+              <li>Fine-tune the LM on those pairs.</li>
+              <li>Repeat.</li>
+            </ol>
+            <p>Because step 2 filters out failures, the loop never gets a
+              training signal for the questions the model can't yet solve.
+              STaR's fix — called <em>rationalisation</em> — is to feed
+              those failed questions back with the ground-truth answer
+              attached, have the model write a rationale that leads to
+              that answer, and add those reverse-engineered rationales to
+              the training pile.</p>
+            <h4>Why this is clever</h4>
+            <p>Handwriting high-quality reasoning traces at scale is
+              expensive. STaR's insight is that you don't need to: the
+              model can generate many candidate traces cheaply, and a
+              <em>correctness check on the final answer</em> is enough
+              signal to filter the good ones. Rationalisation extends the
+              coverage to hard problems. The whole loop is a poor
+              person's RL — same idea (roll out, keep the wins) but
+              implemented as supervised fine-tuning on filtered rollouts.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s11">
+          <div class="slide-frame">
+            <div class="tag">Slide 11 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-11.png"
+              alt="STaR results on GSM8K: Few-shot Direct GPT-J 3.0%, Few-shot CoT GPT-J 3.1%, GPT-J Direct Finetuned 5.8%, STaR without rationalization 10.1%, STaR with rationalization 10.7%. Train data used goes 0, 0, 100%, 25%, 28.7% respectively.">
+            <div class="slide-caption">slide 11 · STaR numbers on GSM8K</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>GSM8K accuracy for GPT-J variants. Few-shot direct: 3.0%.
+              Few-shot CoT: 3.1% (CoT doesn't help at this scale — see
+              slide 9). Direct fine-tuning on the whole training set:
+              5.8%. STaR: 10.1%, and 10.7% with rationalisation. Note
+              the "train data used" column — STaR trains on ~25–29% of
+              the data (only what it could self-solve) but nearly
+              doubles the accuracy of direct fine-tuning.</p>
+            <h4>What to take from it</h4>
+            <p>You don't need more data; you need better-quality data. A
+              model taught to imitate its own <em>successful</em>
+              reasoning trajectories generalises better than one taught
+              to memorise the ground-truth answers. This is the empirical
+              seed of every RL-for-reasoning method that follows: reward
+              the good rollouts, ignore or down-weight the bad ones.</p>
+            <div class="callout link">
+              <div class="callout-label">→ Bridge to the next section</div>
+              <p>STaR is filtering by correctness with no probabilistic
+                accounting for how likely the model was to sample the
+                good trace. Reinforcement learning is the general
+                framework for doing this properly — assigning a reward,
+                estimating the gradient of expected reward with respect to
+                policy parameters, and updating. The next six sections
+                build that machinery.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="rl">
+        <h2><span class="num">§4</span>An RL primer for language models</h2>
+        <p class="section-intro">
+          Slides 12–17 install the reinforcement-learning vocabulary the
+          rest of the deck runs on. Agent, environment, state, action,
+          policy, reward, trajectory — the classical Sutton &amp; Barto
+          setup, mapped one-to-one onto the LM setting. Then the
+          policy-gradient objective and its most classical estimator:
+          REINFORCE.
+        </p>
+
+        <div class="slide" id="s12">
+          <div class="slide-frame">
+            <div class="tag">Slide 12 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-12.png"
+              alt="Reinforcement Learning section start: Thorndike's Law of Effect (greater satisfaction or discomfort ↔ greater strengthening or weakening of the bond), Sutton and Barto's textbook definition (learning what to do, how to map situations to actions, to maximise a numerical reward signal), plus questions like how it differs from supervised/unsupervised learning and the explore-vs-exploit tension.">
+            <div class="slide-caption">slide 12 · what RL is, in one slide</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two definitions: Thorndike's Law of Effect (the older
+              behavioural one — reward strengthens the response, punishment
+              weakens it) and Sutton &amp; Barto's algorithmic one (learn a
+              mapping from situations to actions that maximises expected
+              cumulative reward). Plus the trailer for the two ideas that
+              differentiate RL from supervised learning: <em>no labels
+              on individual actions, only a scalar reward on outcomes</em>,
+              and the <em>explore–exploit</em> trade-off.</p>
+            <h4>What to take from it</h4>
+            <p>For an LM, the "action" is generating the next token and
+              the "reward" is a score given to the completed response.
+              That's a much sparser signal than the per-token cross-entropy
+              loss used in pre-training — you only find out at the end
+              whether the whole answer was any good. RL's whole job is to
+              turn that sparse end-of-trajectory reward into a per-token
+              gradient update.</p>
+          </div>
+        </div>
+
+        <div class="slide-strip cols-2">
+          <div class="slide" id="s13">
+            <div class="slide-frame">
+              <div class="tag">Slide 13 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-13.png"
+                alt="Elements of RL table, part 1: Agent (π_θ) — LM with parameters θ generating tokens; Environment (E) — everything outside the agent; State (s_t) — current prompt plus tokens so far; Action (a_t) — generating the next token.">
+              <div class="slide-caption">slide 13 · RL vocabulary → LM setting (1/2)</div>
+            </div>
+            <div class="explain">
+              <h4>The mapping</h4>
+              <p>Every symbol has an LM analogue. The <em>agent</em> is the
+                LM itself, parameterised by θ. The <em>environment</em> is
+                the input prompt plus anything else the LM interacts with.
+                The <em>state</em> at step <em>t</em> is the prompt
+                concatenated with everything the LM has generated so far —
+                the KV cache, effectively. The <em>action</em> is picking
+                the next token from the vocabulary.</p>
+            </div>
+          </div>
+
+          <div class="slide" id="s14">
+            <div class="slide-frame">
+              <div class="tag">Slide 14 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-14.png"
+                alt="Elements of RL table, part 2: Policy π_θ(a|s) is the LM's next-token probability distribution P_θ; Reward r_t/R is R(x,y), scalar feedback on a whole response/trajectory; Trajectory τ = {s_0,a_0,r_0,s_1,a_1,r_1,…,s_T} is generation prompt + response + rewards.">
+              <div class="slide-caption">slide 14 · RL vocabulary → LM setting (2/2)</div>
+            </div>
+            <div class="explain">
+              <h4>The mapping (continued)</h4>
+              <p>The <em>policy</em>
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <msub><mi>π</mi><mi>θ</mi></msub><mo>(</mo><mi>a</mi><mo>|</mo><mi>s</mi><mo>)</mo>
+                </math>
+                is just the LM's next-token distribution
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <msub><mi>P</mi><mi>θ</mi></msub>
+                </math>. The <em>reward</em>
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <mi>R</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo>
+                </math>
+                scores the entire response
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>y</mi></math>
+                to a prompt
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>x</mi></math>
+                — end-of-trajectory only, in the plain vanilla setup. A
+                <em>trajectory</em>
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>τ</mi></math>
+                is the whole (state, action, reward) sequence: prompt +
+                generated response + reward.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s15">
+          <div class="slide-frame">
+            <div class="tag">Slide 15 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-15.png"
+              alt="RL objective. Goal: π* = argmax_π J(π), where J(π) is expected return generated using π. Standard SGD: Θ_{k+1} = Θ_k − η ∇_Θ L(Θ_k). Vanilla gradient ascent: Θ_{k+1} = Θ_k + η ∇_Θ J(Θ_k). Average reward over all trajectories: J(π) = ∫_τ P(τ|π) R(τ) = E_{τ~P(τ|π)} [R(τ)].">
+            <div class="slide-caption">slide 15 · the RL objective and gradient ascent</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The optimal policy
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msup><mi>π</mi><mo>∗</mo></msup>
+              </math>
+              maximises the expected return
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mi>J</mi><mo>(</mo><mi>π</mi><mo>)</mo>
+              </math>. Whereas supervised learning uses SGD to minimise a
+              loss (step in the <em>negative</em> gradient), RL uses gradient
+              <em>ascent</em> on
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mi>J</mi>
+              </math>
+              (step in the <em>positive</em> gradient — because we want
+              reward to go up, not down).</p>
+            <h4>What to take from it</h4>
+            <p>The whole optimisation game reduces to: <em>estimate the
+              gradient of expected reward with respect to policy parameters,
+              take a step in that direction, repeat</em>. The catch is that
+              "expected reward" is an integral over every possible sequence
+              the policy could generate — astronomically large in an LM
+              setting. The next two slides show how to estimate it without
+              enumerating everything.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s16">
+          <div class="slide-frame">
+            <div class="tag">Slide 16 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-16.png"
+              alt="Probability of a trajectory decomposes as P(τ|π) = p_0(s_0) · Π_t P(s_t|s_{t-1}, a_{t-1}) · π(a_{t-1}|s_{t-1}) — a product of the initial-state distribution, the environment transition probabilities and the policy. The policy-gradient identity is ∇_θ J(π_θ) = E_{τ~π_θ} [ R(τ) · Σ_t ∇_θ log π_θ(a_{t-1}|s_{t-1}) ]. The expectation is over all trajectories, |τ| = |V|^N — intractable to enumerate.">
+            <div class="slide-caption">slide 16 · the policy-gradient identity</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The trajectory probability factorises into (a) the initial
+              state distribution, (b) the environment's transition
+              probabilities, and (c) the policy's action probabilities.
+              Applying the log-derivative trick gives the policy-gradient
+              identity:
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>∇</mi><mi>θ</mi></msub><mi>J</mi><mo>(</mo>
+                <msub><mi>π</mi><mi>θ</mi></msub><mo>)</mo><mo>=</mo>
+                <msub><mi>𝔼</mi><mrow><mi>τ</mi><mo>∼</mo>
+                <msub><mi>π</mi><mi>θ</mi></msub></mrow></msub>
+                <mo>[</mo><mi>R</mi><mo>(</mo><mi>τ</mi><mo>)</mo>
+                <munderover><mo>∑</mo><mrow><mi>t</mi><mo>=</mo><mn>1</mn></mrow><mi>T</mi></munderover>
+                <msub><mi>∇</mi><mi>θ</mi></msub><mi>log</mi>
+                <msub><mi>π</mi><mi>θ</mi></msub><mo>(</mo>
+                <msub><mi>a</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub>
+                <mo>|</mo>
+                <msub><mi>s</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub>
+                <mo>)</mo><mo>]</mo>
+              </math>.</p>
+            <h4>Why this identity is the whole trick</h4>
+            <p>The environment's transition probabilities depend on things
+              we can't differentiate through (external systems, humans,
+              real-world dynamics). But the log-derivative trick pushes
+              the gradient <em>inside</em> the expectation and onto the
+              part we <em>can</em> differentiate — the log of the policy.
+              The reward
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>R</mi><mo>(</mo><mi>τ</mi><mo>)</mo></math>
+              becomes just a scalar weight. That's why every method in
+              the rest of the deck is a variation on
+              <em>"weight the log-prob gradient by some scalar"</em>. What
+              changes across methods is <em>what scalar</em> — raw reward,
+              advantage, clipped importance-ratio times advantage, etc.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The vocabulary size raised to sequence length is
+                unimaginably large — you cannot enumerate trajectories.
+                The next slide's answer: don't enumerate, <em>sample</em>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s17">
+          <div class="slide-frame">
+            <div class="tag">Slide 17 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-17.png"
+              alt="REINFORCE (Williams 1992). Monte-Carlo estimate of the policy gradient: sample a set N of trajectories, then ∇_θ J(π_{θ_0}) ≈ (1/|N|) Σ_{τ∈N} Σ_t ∇_θ log π_{θ_0}(a_{t-1}|s_{t-1}) · R(τ).">
+            <div class="slide-caption">slide 17 · REINFORCE — the Monte-Carlo estimator</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em class="term">REINFORCE</em> (Williams, 1992). Sample
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>N</mi></math>
+              trajectories from the current policy, and estimate the
+              intractable expectation by the sample average. That's it —
+              one line.</p>
+            <h4>What to take from it</h4>
+            <p>REINFORCE is the simplest possible policy-gradient
+              estimator, and it's <em>unbiased</em>: on average, it
+              points in the right direction. But it has notorious
+              <em>high variance</em> — the reward
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>R</mi><mo>(</mo><mi>τ</mi><mo>)</mo></math>
+              multiplies every per-step log-prob gradient, so one
+              unusually lucky or unlucky trajectory dominates the batch.
+              Everything from TRPO onwards is a way to reduce that variance,
+              or to make sure the update doesn't send the policy careening
+              too far from a working region of parameter space.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>REINFORCE is your baseline mental model. If you understand
+                REINFORCE, everything that follows (TRPO, PPO, GRPO) is
+                just <em>REINFORCE plus tricks</em> — better baselines,
+                trust regions, clipping, group statistics. The core
+                update is always: log-prob gradient times a scalar
+                weight.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="ppo">
+        <h2><span class="num">§5</span>TRPO and PPO: keeping updates small</h2>
+        <p class="section-intro">
+          REINFORCE's two problems — high variance and unconstrained step
+          size — are what TRPO (Schulman et al., 2015) and its more practical
+          successor PPO (Schulman et al., 2017) fix. Slides 18–23 introduce
+          both, plus the value/advantage vocabulary that PPO needs.
+        </p>
+
+        <div class="slide-strip cols-2">
+          <div class="slide" id="s18">
+            <div class="slide-frame">
+              <div class="tag">Slide 18 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-18.png"
+                alt="TRPO section title (blank body): TRPO — [7].">
+              <div class="slide-caption">slide 18 · TRPO (section marker)</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Section marker for TRPO — <em>Trust Region Policy
+                Optimization</em>. Content is on the next slide.</p>
+            </div>
+          </div>
+
+          <div class="slide" id="s19">
+            <div class="slide-frame">
+              <div class="tag">Slide 19 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-19.png"
+                alt="TRPO details. REINFORCE tells us which direction improves the policy but doesn't restrict how far the new policy moves and is high-variance. Importance ratio r_t(θ) = π_θ(a_t|s_t) / π_{θ_old}(a_t|s_t). TRPO objective: max_θ E_{τ~π_{θ_old}} [Σ_t r_t(θ) · A_{π_{θ_old}}(s_t,a_t)] subject to E_t[D_KL(π_{θ_old}(·|s_t) || π_θ(·|s_t))] ≤ δ.">
+              <div class="slide-caption">slide 19 · TRPO — trust the neighbourhood</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>TRPO replaces the log-prob gradient with an
+                <em>importance ratio</em>
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <msub><mi>r</mi><mi>t</mi></msub><mo>(</mo><mi>θ</mi><mo>)</mo><mo>=</mo>
+                  <mfrac>
+                    <mrow><msub><mi>π</mi><mi>θ</mi></msub><mo>(</mo><msub><mi>a</mi><mi>t</mi></msub><mo>|</mo><msub><mi>s</mi><mi>t</mi></msub><mo>)</mo></mrow>
+                    <mrow><msub><mi>π</mi><mrow><msub><mi>θ</mi><mtext>old</mtext></msub></mrow></msub><mo>(</mo><msub><mi>a</mi><mi>t</mi></msub><mo>|</mo><msub><mi>s</mi><mi>t</mi></msub><mo>)</mo></mrow>
+                  </mfrac>
+                </math>
+                between the candidate new policy and the current one, times
+                the <em>advantage</em>
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>A</mi></math>
+                (defined on slide 20). Then it imposes a hard KL-divergence
+                constraint: the new policy's per-state distribution must not
+                drift more than δ from the old one.</p>
+              <h4>Why the trust region</h4>
+              <p>Without a constraint on step size, a policy-gradient update
+                can put you in a region where the samples you already
+                collected are no longer representative of what the new
+                policy would do. The KL constraint says: only move as far
+                as your on-policy samples remain a reasonable approximation.
+                It <em>works</em>, but the constrained optimisation is
+                painful to solve every step. PPO's contribution is a much
+                cheaper approximation of the same idea.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s20">
+          <div class="slide-frame">
+            <div class="tag">Slide 20 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-20.png"
+              alt="Q, V and A definitions. A_{π_θ}(s,a) = Q_{π_θ}(s,a) − V_{π_θ}(s). Q is action-value (expected cumulative reward starting in s and taking action a); V is state-value (expected reward starting in s); A is advantage: how much better action a is than the policy's average from state s.">
+            <div class="slide-caption">slide 20 · Q, V and the advantage function</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three standard RL quantities, needed by every method from
+              here on:</p>
+            <ul>
+              <li><strong>Q(s, a)</strong> — expected cumulative reward if
+                you start in state <em>s</em>, take action <em>a</em>, then
+                follow the current policy.</li>
+              <li><strong>V(s)</strong> — expected cumulative reward if you
+                start in state <em>s</em> and follow the current policy
+                (average over all first actions).</li>
+              <li><strong>A(s, a) = Q(s, a) − V(s)</strong> — the
+                <em>advantage</em>: how much better than the policy's own
+                average this particular action is.</li>
+            </ul>
+            <h4>Why advantage, not raw reward</h4>
+            <p>The whole point of subtracting V is variance reduction.
+              Instead of asking "was this action followed by a big reward?"
+              (which conflates the action with everything else the policy
+              did next), we ask "did this action do better than the
+              policy's average from here?". The answer has much lower
+              variance across trajectories. Every modern policy-gradient
+              method uses some estimate of advantage in place of raw
+              reward.</p>
+          </div>
+        </div>
+
+        <div class="slide-strip cols-2">
+          <div class="slide" id="s21">
+            <div class="slide-frame">
+              <div class="tag">Slide 21 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-21.png"
+                alt="PPO section title (blank body): PPO — [8].">
+              <div class="slide-caption">slide 21 · PPO (section marker)</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Section marker for PPO — <em>Proximal Policy
+                Optimization</em>. Content on the next two slides.</p>
+            </div>
+          </div>
+
+          <div class="slide" id="s22">
+            <div class="slide-frame">
+              <div class="tag">Slide 22 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-22.png"
+                alt="PPO. To reduce REINFORCE variance, use a more informative baseline. Drop the KL constraint and introduce a clipping mechanism that discourages large updates. Objective: max_θ E [Σ_t min(r_t(θ) A, clip(r_t(θ), 1-ε, 1+ε) A)].">
+              <div class="slide-caption">slide 22 · PPO — clipping replaces the trust region</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p><em class="term">PPO</em> keeps TRPO's importance-ratio idea
+                but throws out the KL constraint. Instead it takes the
+                <em>minimum</em> of two things: the unclipped
+                importance-ratio-weighted advantage, and the same quantity
+                with the ratio clipped into
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <mo>[</mo><mn>1</mn><mo>−</mo><mi>ϵ</mi><mo>,</mo><mn>1</mn><mo>+</mo><mi>ϵ</mi><mo>]</mo>
+                </math>.</p>
+              <h4>Why min-of-two-terms works</h4>
+              <p>Think of it as a <em>pessimistic</em> update. If the
+                advantage is positive and the ratio has gone above
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mn>1</mn><mo>+</mo><mi>ϵ</mi></math>,
+                the clipped term caps the reward — no incentive to push
+                the ratio further. If the advantage is negative and the
+                ratio has gone below
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mn>1</mn><mo>−</mo><mi>ϵ</mi></math>,
+                same thing in the other direction. The result: the policy
+                is not encouraged to drift further from the old one once
+                it's already moved a certain amount. All the benefits of
+                TRPO, none of the constrained-optimisation cost.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s23">
+          <div class="slide-frame">
+            <div class="tag">Slide 23 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-23.png"
+              alt="Full PPO objective breakdown. J_PPO(θ, γ) = [maximise reward — the clipped surrogate] + w_1 · H(π_θ) — maximise entropy — w_2 · E_t[D_KL(π_θ ‖ π_ref)] — penalise KL divergence — w_3 · L_V(γ) — critic L2. Advantage A(x, y) = R(x, y) − V(x) uses a critic as the baseline.">
+            <div class="slide-caption">slide 23 · PPO in practice — entropy, KL and a critic</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The full PPO training objective, as actually used. Four
+              terms:</p>
+            <ol>
+              <li><strong>The clipped reward surrogate</strong> from slide 22.</li>
+              <li><strong>+ w₁ · H(π<sub>θ</sub>)</strong> — an entropy
+                bonus, to keep the policy exploring rather than collapsing
+                onto a single high-reward mode.</li>
+              <li><strong>− w₂ · KL(π<sub>θ</sub> ‖ π<sub>ref</sub>)</strong>
+                — a KL penalty against a <em>reference</em> policy (usually
+                the base SFT model). Keeps the fine-tuned model from
+                forgetting how to be a language model.</li>
+              <li><strong>− w₃ · L<sub>V</sub></strong> — L2 loss on the
+                critic (value function) that estimates
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>V</mi><mo>(</mo><mi>x</mi><mo>)</mo></math>
+                so we can form advantages
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>A</mi><mo>=</mo><mi>R</mi><mo>−</mo><mi>V</mi></math>.</li>
+            </ol>
+            <h4>Why the extras matter</h4>
+            <p>Without entropy, the policy collapses. Without the KL
+              penalty, the fine-tuned LM will discover ways to satisfy
+              the reward that are gibberish to a human (reward hacking).
+              Without the critic, you're back to REINFORCE-level variance.
+              PPO plus these three regularisers is the workhorse RL
+              algorithm that trained InstructGPT, ChatGPT and a large
+              fraction of every RLHF pipeline until GRPO.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The critic is a whole second neural network, usually
+                the same size as the policy. That doubles memory and
+                adds one training loop. Removing the critic — cheaply —
+                is one of the reasons GRPO exists.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="rlhf">
+        <h2><span class="num">§6</span>RLHF: preferences as reward</h2>
+        <p class="section-intro">
+          Everything up to here assumed a reward function. But there is
+          no automatic reward for "is this English natural, helpful and
+          not offensive?". Slides 24–29 explain how to <em>learn</em> a
+          reward from human preference comparisons — the RLHF pipeline
+          that made ChatGPT chattable.
+        </p>
+
+        <div class="slide-strip cols-2">
+          <div class="slide" id="s24">
+            <div class="slide-frame">
+              <div class="tag">Slide 24 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-24.png"
+                alt="RLHF section title (blank body): RLHF — [9].">
+              <div class="slide-caption">slide 24 · RLHF (section marker)</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Section marker for RLHF — <em>Reinforcement Learning
+                from Human Feedback</em>. Ouyang et al., 2022
+                (InstructGPT).</p>
+            </div>
+          </div>
+
+          <div class="slide" id="s25">
+            <div class="slide-frame">
+              <div class="tag">Slide 25 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-25.png"
+                alt="RLHF motivation. Cross-entropy loss can't capture human preference or taste, so we rely on proxy metrics like BLEU and ROUGE. But can we use human feedback on generated text as a measure of performance and then use that feedback as a reward signal that can optimise the LM?">
+              <div class="slide-caption">slide 25 · why RLHF: cross-entropy misses "taste"</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Standard supervised training optimises token-level
+                cross-entropy — how likely was the ground-truth next token?
+                That's fine for language modelling but a bad proxy for
+                whether the whole response is <em>helpful, harmless,
+                honest</em>. Metrics like BLEU and ROUGE were the older
+                fix; they're weak and correlate poorly with human judgment.
+                RLHF replaces them with a learned reward model that is
+                literally trained to match human preferences.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s26">
+          <div class="slide-frame">
+            <div class="tag">Slide 26 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-26.png"
+              alt="ChatGPT-3.5's own ELI-5 explanation of RLHF, using the analogy of a robot named Rufus who says something, gets human feedback, updates its language model and tries again — repeated until the sentences sound natural.">
+            <div class="slide-caption">slide 26 · RLHF, explained by ChatGPT (ELI5)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>ChatGPT-3.5's own "explain like I'm five" version of RLHF,
+              inserted for lightness: a robot says something, a human says
+              "not quite", the robot updates, the robot tries again,
+              repeat.</p>
+            <h4>What to take from it</h4>
+            <p>The kindergarten summary is basically right. The only bit
+              missing is that a real RLHF pipeline doesn't ask a human at
+              every RL step — that would be infeasibly slow. It collects
+              preference judgments once, trains a <em>reward model</em> to
+              imitate them, then uses PPO against that surrogate. The next
+              slide shows the three-step pipeline.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s27">
+          <div class="slide-frame">
+            <div class="tag">Slide 27 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-27.png"
+              alt="Three-step RLHF pipeline diagram from Ouyang et al. 2022: Step 1 Collect demonstration data and train a supervised policy (SFT). Step 2 Collect comparison data (labeler ranks outputs best to worst) and train a reward model. Step 3 Optimise a policy against the reward model using PPO.">
+            <div class="slide-caption">slide 27 · the three-step InstructGPT pipeline</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The canonical three-step recipe:</p>
+            <ol>
+              <li><strong>SFT.</strong> Fine-tune a base LM on
+                human-written demonstrations of the desired behaviour
+                ("here is how a helpful assistant would answer this").</li>
+              <li><strong>Reward model.</strong> For each prompt, sample
+                several outputs from the SFT model; have a human rank them
+                best-to-worst; train a small neural network to score
+                outputs consistently with those rankings.</li>
+              <li><strong>RL.</strong> Optimise the SFT policy against the
+                reward model using PPO, with a KL penalty back to the SFT
+                policy (from slide 23's objective) so it doesn't drift into
+                nonsense.</li>
+            </ol>
+            <h4>Why the split into three steps</h4>
+            <p>SFT teaches the format. The reward model captures human
+              preferences that are hard to spell out. PPO propagates those
+              preferences into the policy via reinforcement learning. Each
+              step has a different data type (demonstrations, preferences,
+              rollouts) and each addresses a different failure mode of the
+              step before it. That's why the pipeline stuck.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s28">
+          <div class="slide-frame">
+            <div class="tag">Slide 28 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-28.png"
+              alt="Reward-model training loss: L(θ) = − log σ(R_θ(x, y_i) − R_θ(x, y_j)), derived from the Bradley-Terry model P(y_i ≻ y_j | x) = exp(R_θ(x, y_i)) / (exp(R_θ(x, y_i)) + exp(R_θ(x, y_j))). RL-phase objective: max_π E [R_φ(x, y) − β log (π_θ / π_ref)] + γ · pre-training loss.">
+            <div class="slide-caption">slide 28 · reward model = Bradley-Terry on preferences</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The reward-model loss is negative log-likelihood under the
+              <em>Bradley-Terry</em> preference model: given a pair
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mo>(</mo><msub><mi>y</mi><mi>i</mi></msub><mo>,</mo><msub><mi>y</mi><mi>j</mi></msub><mo>)</mo>
+              </math>
+              where humans preferred
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>y</mi><mi>i</mi></msub></math>,
+              maximise the probability that
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>R</mi><mi>θ</mi></msub></math>
+              scores it higher. This is the classic sigmoid-of-difference
+              loss used for pairwise ranking.</p>
+            <h4>Why Bradley-Terry</h4>
+            <p>Humans are much better at <em>comparing</em> two outputs than
+              at giving absolute scores. Bradley-Terry converts a pile of
+              "A is better than B" judgments into an absolute scalar
+              scoring function
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>R</mi><mi>θ</mi></msub></math>
+              — one that assigns higher numbers to preferred outputs. That
+              scalar is the reward the RL phase then maximises.</p>
+            <div class="callout How it works">
+              <div class="callout-label">⚙ How it works</div>
+              <p>The RL-phase objective at the bottom of the slide is
+                literally the PPO objective plus a KL penalty to
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>π</mi><mtext>ref</mtext></msub></math>
+                and (optionally) a small language-modelling loss on
+                pre-training data. That last term is the
+                <em>PPO-ptx</em> variant, used in InstructGPT to preserve
+                capabilities that the preference dataset didn't cover.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s29">
+          <div class="slide-frame">
+            <div class="tag">Slide 29 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-29.png"
+              alt="Human evaluation from InstructGPT: win-rate against a 175B SFT model plotted vs model size. PPO-ptx and PPO consistently beat SFT and vanilla GPT prompted, and the gap grows with size; a 1.3B PPO model already ties the 175B SFT baseline.">
+            <div class="slide-caption">slide 29 · RLHF beats SFT at every scale</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Human win-rate versus the 175B SFT model, plotted as model
+              size grows. PPO and PPO-ptx (top two lines) both cross the
+              50% line — even a 1.3B PPO-trained model is judged as good
+              as a 175B SFT model. Vanilla GPT (prompted or not) trails
+              far behind.</p>
+            <h4>What to take from it</h4>
+            <p>RLHF isn't just a marginal quality bump — it's roughly a
+              100× compression on parameters at fixed human preference.
+              That's the empirical result that made every serious LM
+              deployer adopt the recipe. It's also the setup that
+              reasoning-focused RL (GRPO, DeepSeek-R1) inherits: same
+              training loop, but the reward is <em>correctness</em>
+              instead of preference.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="rloo">
+        <h2><span class="num">§7</span>RLOO: a critic-free baseline</h2>
+        <p class="section-intro">
+          PPO needs a critic network to estimate
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mi>V</mi><mo>(</mo><mi>s</mi><mo>)</mo></math>.
+          Training and storing a second big network is expensive. Slides
+          30–32 introduce a REINFORCE variant that gets a baseline for
+          free: sample <em>K</em> responses per prompt and use the mean
+          of the other <em>K−1</em> as the baseline. That's RLOO
+          (Kool et al., 2019).
+        </p>
+
+        <div class="slide-strip cols-2">
+          <div class="slide" id="s30">
+            <div class="slide-frame">
+              <div class="tag">Slide 30 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-30.png"
+                alt="RLOO section title (blank body): RLOO — [10].">
+              <div class="slide-caption">slide 30 · RLOO (section marker)</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Section marker for RLOO — <em>REINFORCE Leave-One-Out</em>.
+                Kool, van Hoof &amp; Welling, ICLR 2019 —
+                cheekily titled "Buy 4 REINFORCE Samples, Get a Baseline
+                for Free!".</p>
+            </div>
+          </div>
+
+          <div class="slide" id="s31">
+            <div class="slide-frame">
+              <div class="tag">Slide 31 / 45</div>
+              <img src="../assets/seminars/S-reasoning/slide-31.png"
+                alt="RLOO derivation. REINFORCE suffers from high variance because it uses the entire trajectory's reward. RLOO reduces variance without training a critic: A(x, y_i) = R(x, y_i) − (1/(K-1)) Σ_{j≠i} R(x, y_j). The subtracted term is the Leave-One-Out baseline.">
+              <div class="slide-caption">slide 31 · leave-one-out as a baseline</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Sample <em>K</em> responses to the same prompt. For each
+                response <em>y<sub>i</sub></em>, subtract from its reward
+                the <em>mean of the other K−1 responses' rewards</em>. That
+                difference is a valid, low-variance estimate of the
+                advantage — with no critic in sight.</p>
+              <h4>Why leave-one-out is unbiased</h4>
+              <p>The subtracted quantity doesn't depend on <em>y<sub>i</sub></em>
+                itself, so it doesn't bias the gradient (the expectation of
+                the constant times the log-prob gradient is zero). What it
+                <em>does</em> do is remove a lot of variance that comes from
+                prompt-level difficulty — hard prompts have low reward for
+                everyone, easy prompts have high reward for everyone, and
+                the leave-one-out baseline absorbs both.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s32">
+          <div class="slide-frame">
+            <div class="tag">Slide 32 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-32.png"
+              alt="RLOO gradient: ∇_θ J ≈ (1/|N|) Σ_τ Σ_t ∇_θ log π(a_{t-1} | s_{t-1}) · A(τ), where A(τ) is the leave-one-out advantage from the previous slide.">
+            <div class="slide-caption">slide 32 · RLOO gradient — same shape as REINFORCE, better weight</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The full RLOO gradient is REINFORCE's gradient with
+              <em>advantage</em> (leave-one-out) instead of raw reward.</p>
+            <h4>What to take from it</h4>
+            <p>This is the pattern that GRPO will generalise. Cheap
+              variance reduction without a critic, by pooling
+              information across a small group of samples that share a
+              prompt. Once you see this, GRPO's group-relative advantage
+              becomes almost obvious — it's the same idea with the
+              standard deviation added back in.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Sampling multiple responses per prompt gives you
+                <em>free</em> baselines. You already need the samples for
+                the gradient; using them for the baseline as well costs
+                nothing extra and cuts variance sharply.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="grpo">
+        <h2><span class="num">§8</span>GRPO and the DeepSeek-R1 line</h2>
+        <p class="section-intro">
+          Slides 33–36 arrive at the algorithm that trained DeepSeek's
+          R1-series and became the default RL choice for reasoning
+          models in 2024–25: <em>Group Relative Policy Optimization</em>
+          (Shao et al., 2024). GRPO combines PPO's clipping with RLOO's
+          critic-free group baseline, adds a KL to a reference model, and
+          uses a simple rule-based reward for math and code.
+        </p>
+
+        <div class="slide" id="s33">
+          <div class="slide-frame">
+            <div class="tag">Slide 33 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-33.png"
+              alt="GRPO. PPO requires a separate critic to estimate V(s). GRPO eliminates the critic by sampling multiple responses for the same prompt and using their group-relative rewards as the advantage. Diagram contrasts PPO (Policy Model → o → Reference Model + Reward Model + Value Model → GAE → A) with GRPO (Policy Model → many o_i → Reward Model → r_i → Group Computation → A_i).">
+            <div class="slide-caption">slide 33 · GRPO — drop the critic, keep the group</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The PPO-versus-GRPO block diagram. PPO has a Reference
+              Model (for KL), a Reward Model, a Value Model (the critic),
+              and applies GAE to compute the advantage. GRPO drops the
+              Value Model entirely: it samples <em>G</em> outputs per
+              prompt, gets <em>G</em> rewards, and computes an advantage
+              per output from the <em>group</em> statistics.</p>
+            <h4>Why this matters practically</h4>
+            <p>The critic in PPO is often the same size as the policy —
+              7B, 70B, whatever the base model is. Removing it halves the
+              memory needed during RL training. For DeepSeek that meant
+              being able to train a much larger reasoning model on the
+              same hardware. This engineering point is a big part of why
+              GRPO caught on.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s34">
+          <div class="slide-frame">
+            <div class="tag">Slide 34 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-34.png"
+              alt="GRPO objective: J_GRPO(θ) = E [ (1/G) Σ_i (1/|y_i|) Σ_t min(r_{i,t}(θ) Â_{i,t}, clip(r_{i,t}(θ), 1-ε, 1+ε) Â_{i,t}) − β D_KL(π_θ ‖ π_ref) ]. Advantage A_i = (R_i − μ_R) / σ_R with μ_R and σ_R the mean and std of the group's rewards. Importance ratio r_{i,t}(θ) = π_θ / π_{θ_old}. KL estimate is the standard log-ratio expression.">
+            <div class="slide-caption">slide 34 · GRPO objective in full</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The full GRPO objective, term by term:</p>
+            <ul>
+              <li><strong>Advantage:</strong>
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <msub><mi>A</mi><mi>i</mi></msub><mo>=</mo>
+                  <mfrac>
+                    <mrow><msub><mi>R</mi><mi>i</mi></msub><mo>−</mo><msub><mi>μ</mi><mi>R</mi></msub></mrow>
+                    <msub><mi>σ</mi><mi>R</mi></msub>
+                  </mfrac>
+                </math>
+                — standardise each response's reward against the group
+                (mean and std over the <em>G</em> samples).</li>
+              <li><strong>Importance ratio:</strong> the PPO ratio, per
+                token, between the new and old policies.</li>
+              <li><strong>Clipped objective:</strong> same
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <mi>min</mi><mo>(</mo><mo>·</mo><mo>,</mo><mtext>clip</mtext><mo>(</mo><mo>·</mo><mo>)</mo><mo>)</mo>
+                </math>
+                trick as PPO.</li>
+              <li><strong>KL to reference:</strong> a per-token divergence
+                penalty back to π<sub>ref</sub>, preventing drift.</li>
+            </ul>
+            <h4>Why standardise, not just centre</h4>
+            <p>RLOO centres. GRPO standardises. Dividing by σ<sub>R</sub>
+              makes the advantages comparable across prompts of wildly
+              different difficulty — a hard prompt might have all rewards
+              near zero with tiny spread, an easy prompt might have all
+              near one with tiny spread; standardising re-scales both to
+              unit variance so the gradient magnitudes are commensurate.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s35">
+          <div class="slide-frame">
+            <div class="tag">Slide 35 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-35.png"
+              alt="GRPO uses a rule-based reward system: Reward_rule = Reward_acc + Reward_format. Diagram of the DeepSeek-R1 multi-stage pipeline: DeepSeek V3 Base → RL on reasoning prompts with accuracy and format reward → R1 Zero, then SFT on cold-start long CoT → R1 Dev-1 → RL with rule-based reward and language consistency → R1 Dev-2 → SFT non-reasoning and reasoning data → R1 Dev-3 → RL on diverse prompts with rule-based and preference reward → R1.">
+            <div class="slide-caption">slide 35 · DeepSeek-R1 pipeline and rule-based reward</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two things: (1) the reward used to train R1 is a
+              <em>rule-based sum</em> — an accuracy check (does the boxed
+              answer match?) plus a format check (are the
+              <code>&lt;think&gt;</code>/<code>&lt;/think&gt;</code> tags
+              present?). No learned reward model. (2) The end-to-end
+              multi-stage pipeline that produced DeepSeek-R1: cold-start
+              SFT on long chains of thought, then RL, then more SFT, then
+              more RL, alternating.</p>
+            <h4>Why rules, not preferences</h4>
+            <p>For math and code, correctness is checkable automatically
+              — you don't need a human. That removes the biggest
+              bottleneck in RLHF (collecting preference data) and lets
+              you scale RL training essentially arbitrarily. This is
+              probably the single biggest reason reasoning models moved
+              so fast in 2024–25: the reward was free.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>Rule-based rewards only work when correctness is
+                checkable. For creative writing, dialogue, or
+                open-ended reasoning without a boxed answer, you're
+                back to needing human preferences (RLHF) or LLM-as-judge
+                (which has its own biases).</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s36">
+          <div class="slide-frame">
+            <div class="tag">Slide 36 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-36.png"
+              alt="An emergent aha moment from an intermediate DeepSeek-R1-Zero: the model is solving √(a − √(a+x)) = x, gets partway, then writes 'Wait, wait. Wait. That's an aha moment I can flag here. Let's reevaluate this step-by-step to identify if the correct sum can be…' — and restarts from a cleaner form of the equation.">
+            <div class="slide-caption">slide 36 · the "aha moment" — self-correction discovered by RL</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A transcript from an intermediate DeepSeek-R1-Zero
+              checkpoint. Mid-derivation, the model says <em>"Wait, wait.
+              Wait. That's an aha moment I can flag here. Let's reevaluate
+              this step-by-step to identify if the correct sum can be…"</em>
+              and restarts.</p>
+            <h4>Why this is remarkable</h4>
+            <p>Nobody trained the model to say "wait, aha". The behaviour
+              emerged from RL against a correctness reward. Because
+              back-tracking increases the chance of a right final answer,
+              gradient pressure pushed the policy toward interruptions
+              like this. It's a live demonstration of the Sutton quote
+              from slide 3: give the system a general enough optimiser
+              and enough compute, and it discovers its own strategies —
+              including ones the designers never anticipated.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>This is the single most-cited moment from the DeepSeek-R1
+                paper, and rightly so. It's the clearest evidence that
+                the RL-for-reasoning recipe is doing something
+                qualitatively different from the SFT recipe — teaching
+                the model when to <em>doubt itself</em>, not just how to
+                imitate a good trace.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="eff">
+        <h2><span class="num">§9</span>Efficient reasoning: budget and mode control</h2>
+        <p class="section-intro">
+          Long chains of thought are expensive. Slides 37–40 look at how
+          modern reasoning models let you <em>pay less</em> for easy
+          questions — a thinking-mode toggle in Qwen3, an explicit token
+          budget in NVIDIA's Nemotron Nano 2.
+        </p>
+
+        <div class="slide" id="s37">
+          <div class="slide-frame">
+            <div class="tag">Slide 37 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-37.png"
+              alt="Efficient Reasoning section start. Two points: reasoning is expensive; reasoning effort should change with task difficulty. Two terminal screenshots contrast Qwen3:8b-q8 in 'nothink' mode (answers '1+1 equals 2') and in default thinking mode (produces a long stream of thought about arithmetic, binary and Boolean logic before answering 2).">
+            <div class="slide-caption">slide 37 · why efficient reasoning matters</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two side-by-side terminals running Qwen3 8B on
+              <em>"What is 1+1?"</em>. In <em>nothink</em> mode: three
+              tokens — "1 + 1 equals 2." In default thinking mode: many
+              paragraphs of internal monologue about arithmetic, binary,
+              Boolean logic, then the same answer.</p>
+            <h4>What to take from it</h4>
+            <p>Chain-of-thought is a hammer that turns every question
+              into a nail — including "what is 1+1?". At scale, that
+              costs money and latency. The natural next question is
+              whether we can let the model <em>decide</em> how much to
+              think, or at least let the user set a budget.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s38">
+          <div class="slide-frame">
+            <div class="tag">Slide 38 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-38.png"
+              alt="Qwen3 (Yang et al. 2025). Thinking Control: integration of 'thinking' and 'non-thinking' modes. Thinking Budget: ability to handle intermediate cases by generating responses from incomplete thinking. Post-training pipeline: Base → Stage 1 Long-CoT Cold Start → Stage 2 Reasoning RL → Stage 3 Thinking Mode Fusion → Stage 4 General RL. Lightweight models are distilled from the flagship. SFT data table shows /think and /no_think markers in the user turn selecting mode.">
+            <div class="slide-caption">slide 38 · Qwen3 — thinking mode as a first-class knob</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Qwen3's design (Yang et al., 2025). Two knobs:</p>
+            <ul>
+              <li><strong>Thinking control.</strong> User adds
+                <code>/think</code> or <code>/no_think</code> to their
+                query; the model produces either a full
+                <code>&lt;think&gt;…&lt;/think&gt;</code> block or an
+                empty one before answering. The SFT data explicitly
+                includes both patterns so the model learns to obey the
+                marker.</li>
+              <li><strong>Thinking budget.</strong> The model can be cut
+                off mid-thought and asked to produce its best answer
+                from an incomplete chain, and it degrades gracefully.</li>
+            </ul>
+            <p>Achieved via a four-stage post-training pipeline that
+              alternates SFT and RL, then distils from the flagship into
+              smaller variants.</p>
+            <h4>Why unify both modes in one model</h4>
+            <p>Serving two models (a fast one and a reasoning one) doubles
+              inference infrastructure. A single model with a runtime
+              switch is much cheaper. Qwen3's design says: bake both
+              behaviours in, controlled by a text marker in the prompt.
+              This is now a common pattern.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s39">
+          <div class="slide-frame">
+            <div class="tag">Slide 39 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-39.png"
+              alt="Nemotron Nano 2 (NVIDIA 2025) post-training flow: Base → SFT 1 → SFT 2 → SFT 3 → GRPO → RLHF → DPO → Merged. Bullet: 'Explicit Thinking Budget'.">
+            <div class="slide-caption">slide 39 · Nemotron Nano 2 — explicit budget in training</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>NVIDIA's Nemotron Nano 2. Post-training goes through three
+              SFT stages, then GRPO, then RLHF, then DPO, then a merge.
+              Selling point: an <em>explicit thinking budget</em> that the
+              user can dial at inference.</p>
+            <h4>Why the many stages</h4>
+            <p>Each stage teaches something different: format, then
+              behaviour, then reasoning quality (GRPO), then preference
+              alignment (RLHF), then final refinement (DPO). Stacking
+              them is common in production LM training now — no single
+              algorithm covers everything you want the model to do.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s40">
+          <div class="slide-frame">
+            <div class="tag">Slide 40 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-40.png"
+              alt="Nemotron Nano 2 budget-control ablation. Six panels compare (a) budget-control truncation training and (b) after truncation training. Accuracy, tokens after thinking completed, and well-formed traces are plotted against a budget axis. After truncation training, the model produces almost no extra tokens once its budget is hit and its well-formed-trace rate stays near 100%.">
+            <div class="slide-caption">slide 40 · training the model to <em>respect</em> the budget</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Six-panel ablation. Row (a): a model with no truncation
+              training. When you cut its budget short it either keeps
+              generating long thoughts (top-middle plot) or produces
+              malformed traces (top-right). Row (b): after truncation
+              training. The model actually <em>stops</em> when the budget
+              is up (middle plot flat near zero extra tokens) and its
+              trace format stays clean (right plot near 100%).</p>
+            <h4>What to take from it</h4>
+            <p>Budget compliance isn't free — the model has to be trained
+              to tolerate having its thinking cut off. If you just clamp
+              the max tokens at inference on a model that wasn't trained
+              this way, you often get garbled output. This is one of
+              those small but crucial engineering details that separates
+              a reasoning model that's <em>usable</em> from one that
+              looks great in a paper but explodes in production.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="recent">
+        <h2><span class="num">§10</span>Recent advances, references and resources</h2>
+        <p class="section-intro">
+          The last five slides sketch where the field is going next
+          (agentic, multimodal, latent reasoning via looped transformers)
+          and list the papers and tutorials the seminar drew on.
+        </p>
+
+        <div class="slide" id="s41">
+          <div class="slide-frame">
+            <div class="tag">Slide 41 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-41.png"
+              alt="Recent Advances section title with a cartoon: a user asks a computer to solve the Navier-Stokes Millennium Problem; the computer's response is a chaotic tangle of coloured turbulence lines; the user says 'oh my god.'">
+            <div class="slide-caption">slide 41 · Recent Advances (section marker)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section marker for recent advances, with a cartoon: user
+              asks the LM to solve Navier–Stokes; LM answers with a
+              picture of turbulence.</p>
+            <h4>What to take from it</h4>
+            <p>The joke: for problems humans can't yet solve, we can't
+              even <em>tell</em> whether a model's answer is right. That's
+              part of why reward design is going to keep getting harder
+              — the field of "verifiable reward" runs out at the frontier
+              of open problems.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s42">
+          <div class="slide-frame">
+            <div class="tag">Slide 42 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-42.png"
+              alt="Three directions of recent advances: Agentic Reasoning (foundational capabilities, self-evolving adaptation, collective coordination); Multimodal Reasoning; Latent Reasoning via Looped Transformers. Ouro architecture diagram: at training, the input embedding is passed through the same N-layer stack up to T_max iterations, each iteration producing an exit gate/head and a loss; at inference, an early-exit decision is triggered when the cumulative exit-gate CDF passes a threshold.">
+            <div class="slide-caption">slide 42 · three directions to watch</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three research directions:</p>
+            <ul>
+              <li><strong>Agentic reasoning.</strong> LMs that plan,
+                call tools, and coordinate with other LMs.</li>
+              <li><strong>Multimodal reasoning.</strong> Reasoning
+                grounded in images, video, or other non-text modalities.</li>
+              <li><strong>Latent reasoning via looped transformers.</strong>
+                Instead of writing thoughts out as tokens, run the same
+                layers multiple times internally and let an early-exit
+                gate decide when to stop. Ouro's architecture is the
+                pictured example.</li>
+            </ul>
+            <h4>Why looped transformers matter</h4>
+            <p>Every method in this deck up to now uses <em>textual</em>
+              chain-of-thought — thinking-as-tokens. That's expensive
+              (KV cache grows) and lossy (the residual stream has to be
+              projected back down to tokens each step). Looped
+              transformers keep the "thoughts" inside the residual
+              stream, iterating layers rather than emitting tokens. If
+              it works at scale, it's a genuine reframing of what
+              "reasoning" means in an LM.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s43">
+          <div class="slide-frame">
+            <div class="tag">Slide 43 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-43.png"
+              alt="Bar-chart panels: Ouro-1.4B and Ouro-2.6B versus Qwen3-1.7B/4B/8B and Deepseek-1.5B/7B on AIME24, AIME25, Olympiadbench, BeyondAIME, HLE, SuperGPQA and GPQA. Ouro-2.6B is competitive with or ahead of Qwen3-8B and Deepseek-7B on most reasoning benchmarks despite being smaller.">
+            <div class="slide-caption">slide 43 · Ouro benchmarks</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Ouro's small looped models (1.4B, 2.6B) against Qwen3
+              (1.7B / 4B / 8B) and DeepSeek (1.5B / 7B) on seven
+              reasoning benchmarks. Ouro-2.6B is competitive with, and
+              sometimes ahead of, models 3× its size.</p>
+            <h4>What to take from it</h4>
+            <p>If latent-loop reasoning holds up under further study, it
+              could shift the compute-vs-quality frontier the same way
+              chain-of-thought did in 2022 — trading extra sequential
+              compute for depth of reasoning, but without paying for it
+              in tokens. Worth watching.</p>
+            <div class="callout link">
+              <div class="callout-label">→ Where the field is headed</div>
+              <p>Zoom out from this whole deck and the arc is clear:
+                (1) discover reasoning as a prompting trick; (2) bake it
+                into weights via SFT on filtered traces; (3) reward it
+                explicitly via RL; (4) make the RL more efficient
+                (RLOO, GRPO); (5) make the reasoning itself more
+                efficient (budgets, thinking modes); (6) explore
+                whether reasoning even needs to be textual at all. Each
+                step keeps the previous ones and adds a new dimension.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s44">
+          <div class="slide-frame">
+            <div class="tag">Slide 44 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-44.png"
+              alt="References list: [14] Wei et al. 2026 Agentic Reasoning for LLMs; [15] Lin et al. 2025 Mind with Eyes (multimodal); [16] Dehghani et al. 2018 Universal Transformers; [17] Fan, Svete, Lee 2026 Bridging Latent and Explicit Reasoning with Looped Transformers; [18] Zhu et al. 2025 Scaling Latent Reasoning via Looped Language Models; [19] DeepSeek-AI 2025 DeepSeek-R1; [20] Huang & Chang 2023 Towards Reasoning in LLMs: A Survey; [21] Xu et al. 2025 Towards Large Reasoning Models: A Survey of Reinforced Reasoning.">
+            <div class="slide-caption">slide 44 · references</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>References for the recent-advances section: agentic
+              reasoning surveys, multimodal reasoning, universal /
+              looped transformers, DeepSeek-R1, and two survey papers
+              on reasoning in LMs.</p>
+            <h4>Reading order</h4>
+            <p>If you're getting into this area from scratch, the two
+              surveys ([20] Huang &amp; Chang, [21] Xu et al.) are the
+              obvious starting point. DeepSeek-R1 ([19]) is the paper
+              behind slide 35's pipeline and is worth reading in full.
+              The looped-transformers papers ([16]–[18]) are the
+              speculative bet.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s45">
+          <div class="slide-frame">
+            <div class="tag">Slide 45 / 45</div>
+            <img src="../assets/seminars/S-reasoning/slide-45.png"
+              alt="Resources list: Huang J.-B. 2025 GRPO YouTube explainer; Qingfeng 2025 blog on REINFORCE to Dr. GRPO; Shi 2025 A Vision Researcher's Guide to Some RL Stuff (PPO & GRPO); Raschka 2026 Controlling Reasoning Effort in LLMs; Cameron 2026 Reinforcement Learning for LLMs: The Complete Guide; Sutton 2019 The Bitter Lesson; Fortes 2025 Awesome LLM Reasoning GitHub repo.">
+            <div class="slide-caption">slide 45 · further resources</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A collection of blog posts, videos and repositories that
+              teach the same material in different registers — from a
+              vision researcher's guide to PPO/GRPO to Sebastian
+              Raschka's tutorials on controlling reasoning effort.</p>
+            <h4>What to take from it</h4>
+            <p>Reading the papers on this deck alone will teach you the
+              formal picture. Reading the blog posts will teach you the
+              engineering picture — which loss weights matter, how the
+              reward signal looks in a real training log, what breaks
+              first, and why. The two together are how you get from
+              knowing the equations to knowing the algorithm.</p>
+            <div class="callout link">
+              <div class="callout-label">→ One-line summary of the whole deck</div>
+              <p>Reasoning in LMs = <em>elicit intermediate steps</em>
+                (chain-of-thought), <em>train the model to produce good
+                ones</em> (SFT on filtered traces / STaR), and
+                <em>reward it for producing better ones</em> (REINFORCE
+                → TRPO → PPO → RLHF → RLOO → GRPO). Everything after
+                that is efficiency (budget, thinking modes) and
+                exploration of alternatives to textual thought (looped
+                transformers).</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="section-intro" style="margin-top:1.5rem">
+          A last word. This was a student-led survey, not a canonical
+          reference — the point was to draw the family tree of reasoning
+          methods and show how each node fixes a problem in its parent.
+          The single most-important idea to walk away with is the
+          <em>reward-weighted log-prob gradient</em>: once you see that
+          REINFORCE, PPO, RLHF, RLOO and GRPO are all versions of the
+          same one-line update — with different choices of scalar weight
+          and different regularisers — the RL-for-LMs literature becomes
+          a lot smaller.
+        </p>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="vishal-rao-data-creation.html">
+          <span class="dir">← back</span>
+          <span class="lbl">Seminar · Data Creation</span>
+        </a>
+        <a class="next" href="../tutorials/1-math-for-dl.html">
+          <span class="dir">next →</span>
+          <span class="lbl">Tutorial · Math for DL</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Seminar · Reasoning in Language Models · ANLP Monsoon '26 · Abdul Kadir Nalawala</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#deck">at a glance</a>
+        <a href="#what">§1 what reasoning is</a>
+        <a href="#cot">§2 CoT</a>
+        <a href="#sft">§3 STaR</a>
+        <a href="#rl">§4 RL primer</a>
+        <a href="#ppo">§5 TRPO &amp; PPO</a>
+        <a href="#rlhf">§6 RLHF</a>
+        <a href="#rloo">§7 RLOO</a>
+        <a href="#grpo">§8 GRPO</a>
+        <a href="#eff">§9 efficient reasoning</a>
+        <a href="#recent">§10 recent advances</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>

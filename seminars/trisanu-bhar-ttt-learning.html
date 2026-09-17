@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Seminar · Test-Time Training — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Student seminar by Trisanu Bhar for Advanced NLP Monsoon 2026 IIIT-H: Test-Time Training. Slides will land here once the seminar is presented.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/seminars/trisanu-bhar-ttt-learning.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#status">Status</a>
+        <a href="#topic">What the seminar covers</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="../index.html">← Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Seminar · Trisanu Bhar</div>
+        <h1>Test-Time Training.</h1>
+        <p class="lead">
+          A student-led seminar on networks that keep learning at inference —
+          adapting weights, or a small piece of them, to the specific example
+          the model is looking at right now. This page will hold the
+          slide-by-slide study companion once the deck is available.
+        </p>
+        <div class="meta">
+          <span class="pill">Seminar</span>
+          <span class="pill">Trisanu Bhar</span>
+          <span class="pill">slides pending</span>
+        </div>
+      </section>
+
+      <section id="status">
+        <h2><span class="num">§0</span>Status</h2>
+        <div class="callout link">
+          <div class="callout-label">→ Not yet online</div>
+          <p>The seminar hasn't been presented yet, so no slides are available. Once the deck lands, this page will
+            get the same slide-by-slide walkthrough treatment as the other seminars — every slide embedded verbatim
+            with a first-principles explanation underneath.</p>
+        </div>
+      </section>
+
+      <section id="topic">
+        <h2><span class="num">§1</span>What the seminar covers</h2>
+        <p>
+          <em>Test-Time Training</em> (TTT) breaks the usual assumption that a model's weights are frozen at
+          inference. Instead, for each test example (or short window of examples), the model runs a tiny
+          self-supervised optimisation loop on the input itself — for example, a masked-reconstruction objective —
+          nudging its parameters to fit that specific instance before producing the prediction.
+        </p>
+        <p>
+          The recent <em>TTT-layers</em> line (Sun et al., 2024) reframes this idea as a sequence model: the RNN's
+          hidden state is a small neural network whose weights are updated by gradient descent at every timestep, so
+          the "state" has essentially unlimited capacity. This connects it directly to State-Space Models and linear
+          RNNs, which are also efficient sequence models with a rich internal state.
+        </p>
+        <div class="callout link">
+          <div class="callout-label">→ Related material on this site</div>
+          <p>The bounded-state problem that TTT tries to solve is discussed in
+            <a class="xref" href="../lectures/6-more-attention.html#linear">Lecture 6 §5</a> under linear attention's
+            limitations. LoRA and adapters — parameter-efficient <em>train</em>-time analogues — are covered in the
+            <a class="xref" href="../pyqs/mid-2024.html">2024 mid-sem PYQ</a>.
+          </p>
+        </div>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="../index.html">
+          <span class="dir">← back</span>
+          <span class="lbl">Home</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Seminar · Test-Time Training · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#status">status</a>
+        <a href="#topic">topic</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>
