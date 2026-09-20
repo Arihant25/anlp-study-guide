@@ -537,7 +537,7 @@
           <div class="slide-frame">
             <div class="tag">Slide 13 / 29</div>
             <img src="../assets/slides/L4-positional/slide-13.png"
-              alt="Relative PE Approach. Instead of individual token embedding, pairwise embedding. PE calculated between two vectors. Added to self-attention How it works instead of token vector.">
+              alt="Relative PE Approach. Instead of individual token embedding, pairwise embedding. PE calculated between two vectors. Added to self-attention mechanism instead of token vector.">
             <div class="slide-caption">slide 13 · approach</div>
           </div>
           <div class="explain">
@@ -761,7 +761,7 @@
           </div>
           <div class="explain">
             <h4>On the slide</h4>
-            <p>The RoPE How it works in one figure. Take the query or key vector <code>(x1, x2)</code>. Rotate it in the
+            <p>The RoPE mechanism in one figure. Take the query or key vector <code>(x1, x2)</code>. Rotate it in the
               plane by angle <code>m · θ₁</code> — where <code>m</code> is the token's position index and
               <code>θ₁</code> is a fixed frequency for this pair of dimensions. Call the rotated vector
               <code>(x'₁, x'₂)</code>. That is your position-encoded query or key.
@@ -943,7 +943,7 @@
             <div class="slide-frame">
               <div class="tag">Slide 23 / 29</div>
               <img src="../assets/slides/L4-positional/slide-23.png"
-                alt="RoPE Gains: flexibility of sequence length; decaying inter-token dependency with increasing relative distances; capability of equipping the linear self-attention with relative position encoding; interpretability — rotational approach offers intuitive geometric interpretation of how positional information influences the attention How it works">
+                alt="RoPE Gains: flexibility of sequence length; decaying inter-token dependency with increasing relative distances; capability of equipping the linear self-attention with relative position encoding; interpretability — rotational approach offers intuitive geometric interpretation of how positional information influences the attention mechanism">
               <div class="slide-caption">slide 23 · gains</div>
             </div>
           </div>
@@ -1026,7 +1026,7 @@
               <div class="tag">Slide 27 / 29</div>
               <img src="../assets/slides/L4-positional/slide-27.png"
                 alt="NoPE Approach: causal mask — a token at position t can only see tokens at positions ≤ t; implicit sense of direction; regular gradient-descent-based training learns to exploit it if it finds it beneficial for the optimization objective; when trained with SGD it mostly resembles T5's relative PE attention patterns.">
-              <div class="slide-caption">slide 27 · the How it works</div>
+              <div class="slide-caption">slide 27 · the mechanism</div>
             </div>
           </div>
         </div>
@@ -1041,7 +1041,7 @@
             1, which is a strict subset of the set visible to token 2, and so on. Any position-sensitive computation the
             model wants to do — counting how many tokens are on the left, or measuring recency — can be assembled out of
             that asymmetry.</p>
-          <p>Slide 27 spells out the How it works. Since gradient descent will exploit any structural asymmetry that
+          <p>Slide 27 spells out the mechanism. Since gradient descent will exploit any structural asymmetry that
             helps the loss, and since the causal mask <em>is</em> such an asymmetry, the model organically learns to
             route positional information through the attention pattern. The paper's striking empirical finding is that
             the resulting attention patterns end up looking a lot like T5's relative-position patterns — meaning the
@@ -1121,7 +1121,7 @@
               <div class="callout-label">✦ the deck's punchline</div>
               <p>Look at where the story has gone. Slide 5: learned position lookup. Slide 9: fixed sinusoidal function.
                 Slide 14: pairwise bias on the logit. Slide 22: rotation of query and key. Slide 26: nothing. Each step
-                removed a piece of the How it works and asked "did we actually need it?", and the answer, more often
+                removed a piece of the mechanism and asked "did we actually need it?", and the answer, more often
                 than the original transformer paper would have guessed, was <em>no</em>. The direction of travel in the
                 field is toward <em>less</em> hand-designed structure, not more.</p>
             </div>

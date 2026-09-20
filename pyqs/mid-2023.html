@@ -101,7 +101,7 @@
             <ol>
               <li>Marks are given for <em class="term">structure</em>, not for showing intermediate arithmetic. A
                 sub-part worth 5 marks expects roughly five distinct correct claims: a diagram, a defining equation, two
-                How it works sentences, and a "why".</li>
+                mechanism sentences, and a "why".</li>
               <li>The 3 + 7 split on Q3 is the strongest signal on the paper. The 3-mark half is "describe seq2seq" (a
                 diagram + one paragraph). The 7-mark half is "why attention". Spend your time there.</li>
             </ol>
@@ -202,7 +202,7 @@
           </blockquote>
 
           <h3>How to approach it</h3>
-          <p>The two sub-parts want different things. Sub-part (a) is a How it works story: what does an RNN <em>do</em>
+          <p>The two sub-parts want different things. Sub-part (a) is a mechanism story: what does an RNN <em>do</em>
             that lets information from step 1 reach step 100. This means writing the recurrence, then honestly
             explaining the failure mode (vanishing gradients) and how <em class="term">gating</em> is the general fix.
             Sub-part (b) is a side-by-side spec sheet: same structure of "here are the gates, here is the state, here
@@ -279,7 +279,7 @@
             </math>
           </div>
 
-          <p>This is the How it works that enables long-distance dependencies in principle. Because <math>
+          <p>This is the mechanism that enables long-distance dependencies in principle. Because <math>
               <msub>
                 <mi>h</mi>
                 <mi>t</mi>
@@ -362,7 +362,7 @@
             that gives LSTMs and GRUs their long-range memory.</p>
 
           <div class="callout mechanism">
-            <div class="callout-label">How it works · in one line</div>
+            <div class="callout-label">Under the hood · in one line</div>
             <p>Recurrence gives an RNN the <em>capacity</em> to carry information across time. Gates give it the
               <em>trainability</em> to do so, by turning the multiplicative gradient path into a nearly additive one on
               any step where the gate says "keep".
@@ -1102,7 +1102,7 @@
           </p>
 
           <div class="callout mechanism">
-            <div class="callout-label">How it works · why bidirectional and stacked</div>
+            <div class="callout-label">Under the hood · why bidirectional and stacked</div>
             <p>Bidirectional gives context from both sides. Without it, the vector for <em>bank</em> in <em>"the bank of
                 the river"</em> would depend only on the words before <em>bank</em>. Stacked lets syntax and semantics
               live at different depths of the same tower, so the downstream model can choose which depth to lean on.</p>
@@ -1669,7 +1669,7 @@
             a separate step in phrase-based statistical MT systems. Attention absorbs alignment into the model.</p>
 
           <div class="callout mechanism">
-            <div class="callout-label">How it works · one-line summary of why</div>
+            <div class="callout-label">Under the hood · one-line summary of why</div>
             <p>Vanilla seq2seq forces one source vector to serve every target step. Attention gives every target step
               its own source vector, computed by a soft, differentiable lookup over the encoder's per-position states.
             </p>

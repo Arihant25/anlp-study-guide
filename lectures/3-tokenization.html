@@ -1025,7 +1025,7 @@
           <div class="slide-frame">
             <div class="tag">Slide 29 / 34</div>
             <img src="../assets/slides/L3-tokenization/slide-29.png"
-              alt="Byte Latent Transformer: Uses entropy-based grouping to dynamically segment bytes into patches. Patches are created based on the entropy of the next byte. 3 modules - Local Encoder, Latent Transformer, and Local Decoder. Incorporates byte n-gram embeddings and a cross-attention How it works.">
+              alt="Byte Latent Transformer: Uses entropy-based grouping to dynamically segment bytes into patches. Patches are created based on the entropy of the next byte. 3 modules - Local Encoder, Latent Transformer, and Local Decoder. Incorporates byte n-gram embeddings and a cross-attention mechanism.">
             <div class="slide-caption">slide 29 · BLT high-level</div>
           </div>
           <div class="slide-frame">
@@ -1046,7 +1046,7 @@
               <li>A <strong>lightweight local decoder</strong> that takes the latent transformer's patch output and
                 decodes the next patch of bytes.</li>
             </ol>
-            <h4>The How it works that makes this work</h4>
+            <h4>The mechanism that makes this work</h4>
             <p>The clever bit is how the encoder decides where one patch ends and the next begins. It uses
               <strong>entropy-based grouping</strong>: a small byte-level model predicts the next byte; when its
               prediction distribution has <em>high entropy</em> (the model is uncertain), a patch boundary is drawn.

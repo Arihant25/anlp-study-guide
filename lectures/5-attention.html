@@ -68,9 +68,9 @@
     <main>
       <section class="hero">
         <div class="kicker">Lecture 05 · 50 slides · August 20, 2026</div>
-        <h1>Attention — <em>the How it works itself</em>.</h1>
+        <h1>Attention — <em>the mechanism itself</em>.</h1>
         <p class="lead">
-          Attention is the How it works at the center of the course. This lecture
+          Attention is the mechanism at the center of the course. This lecture
           starts with scaled dot-product attention, explains the <em class="term">KV cache</em>,
           then compares practical ways to reduce its cost: sparse patterns,
           shared key/value projections in <strong>MQA</strong> and <strong>GQA</strong>,
@@ -137,7 +137,7 @@
             </p>
             <h4>What to take from it</h4>
             <p>The word on the slide is just <em>Attention</em>. Not "self-attention", not "the transformer" — the whole
-              lecture treats attention as a How it works you can take apart and modify, not as one particular fixed
+              lecture treats attention as a mechanism you can take apart and modify, not as one particular fixed
               formula. That framing matters, because half of the deck is a tour of models that <em>changed</em> the How
               it works while still calling it attention.</p>
           </div>
@@ -156,7 +156,7 @@
                 Attention</strong> block circled in red. It is one of three attention blocks in the whole architecture —
               the other two are the <em class="term">masked</em> multi-head attention at the bottom of the decoder
               (which stops a token from looking at its own future) and the <em class="term">cross</em> multi-head
-              attention above it (which lets the decoder look back at the encoder). All three are the same How it works
+              attention above it (which lets the decoder look back at the encoder). All three are the same mechanism
               with different inputs.</p>
             <h4>What to take from it</h4>
             <p>Reading the diagram vertically: token embeddings enter at the bottom, get an additive positional signal
@@ -513,7 +513,7 @@
           <div class="slide-frame">
             <div class="tag">Slide 09 / 50</div>
             <img src="../assets/slides/L5-attention/slide-09.png"
-              alt="KV Cache — Motivation: Optimization for compute efficiency; Store intermediate K and V computations for reuse during inference; caching How it works that stores previously generated key and value vectors; Avoid unnecessary re-computations.">
+              alt="KV Cache — Motivation: Optimization for compute efficiency; Store intermediate K and V computations for reuse during inference; caching mechanism that stores previously generated key and value vectors; Avoid unnecessary re-computations.">
             <div class="slide-caption">slide 09 · why cache</div>
           </div>
           <div class="explain">
@@ -713,7 +713,7 @@
           <div class="slide-frame">
             <div class="tag">Slide 16 / 50</div>
             <img src="../assets/slides/L5-attention/slide-16.png"
-              alt="Longformer — Motivation: Solve quadratic scaling of self-attention; Introduce attention How it works that linearly scales with sequence length; Useful for long documents; Sparsify the full self-attention matrix according to an 'attention pattern'; Local windowed attention with task-specific global attention. Cites Beltagy, Peters & Cohan 2020.">
+              alt="Longformer — Motivation: Solve quadratic scaling of self-attention; Introduce attention mechanism that linearly scales with sequence length; Useful for long documents; Sparsify the full self-attention matrix according to an 'attention pattern'; Local windowed attention with task-specific global attention. Cites Beltagy, Peters & Cohan 2020.">
             <div class="slide-caption">slide 16 · Longformer motivation</div>
           </div>
           <div class="explain">
@@ -1671,7 +1671,7 @@
               <li><strong>Qwen 3:</strong> GQA.</li>
             </ul>
             <p>The second table (slide 50) is the 2026 frontier and is worth reading slowly — it is the reason there is
-              a whole next lecture. Almost none of these models use a single How it works from this deck any more. They
+              a whole next lecture. Almost none of these models use a single mechanism from this deck any more. They
               stack ideas:</p>
             <ul>
               <li><strong>Gemma 4</strong>: five sliding-window layers for every one GQA layer.</li>
@@ -1679,7 +1679,7 @@
               </li>
               <li><strong>Kimi k3</strong>: three layers of "Kimi Delta Attention" (a linear-attention variant) for
                 every one MLA layer.</li>
-              <li><strong>Qwen 3.5, 3.6</strong>: Gated DeltaNet — a state-space-like How it works replacing attention
+              <li><strong>Qwen 3.5, 3.6</strong>: Gated DeltaNet — a state-space-like mechanism replacing attention
                 entirely.</li>
               <li><strong>Sarvam</strong>: MLA with an added KV-norm.</li>
             </ul>
@@ -1695,7 +1695,7 @@
               <div class="callout-label">✦ the two-year arc</div>
               <p>From 2017 to 2023 the industry standardised on MHA; from 2023 to 2024 it standardised on GQA; in 2024
                 MLA emerged; in 2025–2026 the frontier stopped standardising at all and started stacking. The one
-                constant is that everyone is still trying to make the KV cache smaller — the specific How it works just
+                constant is that everyone is still trying to make the KV cache smaller — the specific mechanism just
                 keeps changing.</p>
             </div>
           </div>

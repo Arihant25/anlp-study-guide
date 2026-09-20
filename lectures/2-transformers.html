@@ -246,7 +246,7 @@
               the loss and the "input" is a parameter. So the gradient answers: if I nudge this weight by a tiny amount,
               does the loss go up or down, and by how much?</p>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>Every training step is: (1) evaluate the loss, (2) compute the gradient of the loss with respect to
                 every parameter, (3) move each parameter a small step downhill. The rest of this section is the
                 machinery for step 2.</p>
@@ -489,7 +489,7 @@
               prediction. Backward: compute the error (prediction minus target), then propagate that error backwards
               through the same weights, accumulating a gradient for each parameter along the way.</p>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>In PyTorch: the forward pass builds a graph, <code>loss.backward()</code> walks it in reverse and fills
                 in <code>.grad</code> on every tensor. That is literally the API the two slides describe.</p>
             </div>
@@ -895,7 +895,7 @@
               cell state to keep, an <em>input gate</em> that decides how much of the newly-computed candidate to add,
               and an <em>output gate</em> that decides how much of the cell state to expose as the hidden state.</p>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>Why does this fix vanishing gradients? Because the cell state is passed forward via <em>addition</em>,
                 not repeated multiplication. Additive updates give the gradient a straight path back to the beginning of
                 the sequence. No more exponential decay.</p>
@@ -1044,7 +1044,7 @@
               <li>The attention output is concatenated with the decoder state and used to predict the next word.</li>
             </ol>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>The attention distribution changes at every output token; that is why we see three different peaked bar
                 charts in three consecutive slides. Same encoder, same decoder, different soft look-ups.</p>
             </div>
@@ -1183,7 +1183,7 @@
               (the adjectives that modify it). Meanwhile "shelf" absorbs "bright" and "corner".</p>
             <h4>Why this matters</h4>
             <p>This is exactly the "contextual embedding" property that Word2Vec did not have and BERT did.
-              Self-attention <em>is</em> the How it works that turns a static word embedding into a sentence-dependent
+              Self-attention <em>is</em> the mechanism that turns a static word embedding into a sentence-dependent
               one.</p>
           </div>
         </div>
@@ -1249,7 +1249,7 @@
               values.
             </p>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>The scale factor &radic;<em>d<sub>k</sub></em> is not cosmetic. Without it, large key dimensions give
                 dot products with huge variance, which push softmax into saturated regions where its gradient is tiny.
                 Dividing by &radic;<em>d<sub>k</sub></em> keeps the pre-softmax scores at unit variance and gradients
@@ -1422,7 +1422,7 @@
               tokens from itself during training. Slide 64 stacks <em>h</em> of those heads, concatenates, and applies
               the output projection <em>W<sup>O</sup></em>.</p>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>The mask is just a matrix of the same <em>n</em>&times;<em>n</em> shape as <em>QK<sup>T</sup></em>,
                 with a value of &minus;&infin; wherever you want to hide a position and 0 elsewhere. Adding
                 &minus;&infin; before the softmax makes that cell exactly zero afterwards. In a causal (decoder-side)
@@ -1689,7 +1689,7 @@
               lower triangle and &minus;&infin; on the upper triangle. After softmax those &minus;&infin; entries become
               zero, so no position can attend to a later one.</p>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>This is called <em class="term">causal masking</em>. It is the one architectural difference between an
                 <em class="term">encoder-only</em> model (BERT, no mask, every position sees every other position) and a
                 <em class="term">decoder-only</em> model (GPT, causal mask, each position sees only its predecessors).
@@ -1766,7 +1766,7 @@
                 range as they pass through many layers.</li>
             </ul>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>Layer norm normalises <em>across the feature dimension of one token</em>, not across the batch (that is
                 batch norm) or across positions (that is instance norm). Because it never mixes information between
                 positions, it plays cleanly with variable sequence lengths, which is precisely what sequence models
@@ -1844,7 +1844,7 @@
               come from the encoder's output. This is what lets the decoder "read" the source.</p>
             <div class="callout link">
               <div class="callout-label">→ Keep reading</div>
-              <p>Cross-attention is not just for translation. It is the How it works behind any two-tower model: an
+              <p>Cross-attention is not just for translation. It is the mechanism behind any two-tower model: an
                 image encoder feeding a text decoder (image captioning), an audio encoder feeding a text decoder
                 (speech-to-text, Whisper), a retrieved-document encoder feeding a generator (Fusion-in-Decoder). Learn
                 the pattern once, use it everywhere.</p>
@@ -1959,7 +1959,7 @@
               </p>
             </div>
             <div class="callout mechanism">
-              <div class="callout-label">How it works</div>
+              <div class="callout-label">Under the hood</div>
               <p>You can also read the FFN's <em>d</em>&times;4<em>d</em> weight matrices as "one key-value memory per
                 row". Two facts: (1) most of the model's factual knowledge sits in these matrices, (2)
                 mixture-of-experts (MoE) works because you can shard <em>them</em> across experts without touching
@@ -1977,7 +1977,7 @@
           Six slides. The lecture closes with a survey: how have transformer
           configurations drifted from 2017 to 2026, does "long context" actually
           work, and if it doesn't, where does it break? These slides do not
-          teach a new How it works; they orient you for the rest of the
+          teach a new mechanism; they orient you for the rest of the
           semester by naming names.
         </p>
 
