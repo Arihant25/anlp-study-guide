@@ -169,7 +169,7 @@
               It works surprisingly well for English on carefully curated text. But even in the table, the pink cells
               already hint at trouble — <em>it's</em> is arguably two tokens (<em>it</em> + <em>is</em>), <em>I've</em>
               is <em>I</em> + <em>have</em>. And that is before we look at any other language.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">◇ the working definition</div>
               <p>A token is whatever unit your model treats as indivisible — the thing that gets a single row in the
                 embedding matrix and a single position in the input sequence.</p>
@@ -319,7 +319,7 @@
               valid UTF-8), it handles every writing system, and it turns any string into a stream of bytes — a fixed
               alphabet of 256 symbols. That fixed alphabet is what makes <em>byte-level</em> tokenization possible, and
               we will meet it again on slide 22 when GPT-2's byte-level BPE shows up.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">◇ UTF-8 in one line</div>
               <p>The high bits of the first byte say how many bytes make up this character (0xxx = 1 byte, 110x = 2,
                 1110 = 3, 11110 = 4). The slide says "1-3 bytes"; in practice the full standard runs to 4. Continuation
@@ -651,7 +651,7 @@
             </p>
             <p>Second, the vocab is built by <strong>ULM</strong> under the hood. So "SentencePiece" is best read as
               "SentencePiece(Unigram)" — although the same library can also run BPE if you ask it to.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">◇ why it matters</div>
               <p>Language-agnostic tokenisation is essential for multilingual models. T5, mT5, ALBERT, XLNet, and most
                 multilingual BERTs all use SentencePiece for exactly this reason.</p>
@@ -748,7 +748,7 @@
             <p>The scoring rule is the difference from WordPiece: BPE just picks the pair with the highest <em>raw
                 count</em>. No likelihood, no probability. This is why BPE is fast to train and deterministic — there's
               no EM loop.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">◇ the trained artefact</div>
               <p>What you save at the end of training is <em>the ordered list of merges</em>. At inference time you
                 apply them to a new word in the exact order they were learned: split into characters, then greedily
@@ -834,7 +834,7 @@
               <em>every possible input string</em> is representable — there is no OOV, ever, for any character in any
               script. You've bought perfect coverage at the cost of one extra layer of encoding.
             </p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">◇ the 256-symbol foundation</div>
               <p>The base alphabet is finite and universal. Merges built on top of it may still learn "the byte sequence
                 for common Chinese characters" as single tokens, so common text stays short — but the fallback all the

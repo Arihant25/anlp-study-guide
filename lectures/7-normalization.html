@@ -352,8 +352,8 @@
               inside one sample. Variable-length sequences don't matter — again the statistic is per-token. Training
               and inference behave the same because there's no running average to maintain. That's why every big
               language model uses LayerNorm (or one of its cousins), not BatchNorm.</p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>In transformers the "sample" is usually one <em>token</em>: for each token position, you look at its
                 <em>d</em>-dimensional embedding, standardise those <em>d</em> numbers among themselves, then apply
                 per-feature γ and β. Two tokens in the same sequence are normalised independently.
@@ -472,8 +472,8 @@
               <em>F</em>'s local Jacobian collapses to zero, the gradient still has a straight-through path of
               magnitude 1 back to earlier layers. Additive contributions dominate multiplicative decay.
             </p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>Read
                 <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
                   <msub>

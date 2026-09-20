@@ -361,7 +361,7 @@
             gradient flows across that time step nearly unchanged. This is the additive skip connection through time
             that gives LSTMs and GRUs their long-range memory.</p>
 
-          <div class="callout How it works">
+          <div class="callout mechanism">
             <div class="callout-label">How it works · in one line</div>
             <p>Recurrence gives an RNN the <em>capacity</em> to carry information across time. Gates give it the
               <em>trainability</em> to do so, by turning the multiplicative gradient path into a nearly additive one on
@@ -1101,7 +1101,7 @@
             embedding is not just the top layer but a mixture across layers.
           </p>
 
-          <div class="callout How it works">
+          <div class="callout mechanism">
             <div class="callout-label">How it works · why bidirectional and stacked</div>
             <p>Bidirectional gives context from both sides. Without it, the vector for <em>bank</em> in <em>"the bank of
                 the river"</em> would depend only on the words before <em>bank</em>. Stacked lets syntax and semantics
@@ -1668,7 +1668,7 @@
             </math> also give a free, interpretable soft alignment between source and target words, which was previously
             a separate step in phrase-based statistical MT systems. Attention absorbs alignment into the model.</p>
 
-          <div class="callout How it works">
+          <div class="callout mechanism">
             <div class="callout-label">How it works · one-line summary of why</div>
             <p>Vanilla seq2seq forces one source vector to serve every target step. Attention gives every target step
               its own source vector, computed by a soft, differentiable lookup over the encoder's per-position states.

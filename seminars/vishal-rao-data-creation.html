@@ -360,8 +360,8 @@
               the whole game is figuring out <em>which</em> 2%. DCLM's contribution is standardising the pool, the
               training recipe, and the 53-benchmark evaluation harness so that different filtering strategies can be
               compared apples-to-apples.</p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>DCLM freezes everything except the filtering choice. You submit a filtering strategy, DCLM applies it,
                 trains a model with a fixed recipe at a fixed scale, and reports the downstream scores. The point is
                 that the leaderboard is comparing <em>data</em>, not modelling tricks.</p>
@@ -697,8 +697,8 @@
               Self-Instruct generates the <em>label first</em> and then constructs an input that fits it. This is a
               small but important trick: it's how the pipeline preserves label diversity, which is a specific facet of
               the general diversity requirement.</p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>The filter step is what keeps this from being pure amplification of the model's biases. Every new
                 generation is checked against the existing pool for near-duplicate instructions (ROUGE overlap) and
                 for basic quality signals (well-formed, non-empty output, executable code where relevant). Failures go

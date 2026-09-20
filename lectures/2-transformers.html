@@ -245,7 +245,7 @@
                 n&thinsp;x<sup>n-1</sup></em> tells you the slope at any point. In a neural network the "function" is
               the loss and the "input" is a parameter. So the gradient answers: if I nudge this weight by a tiny amount,
               does the loss go up or down, and by how much?</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>Every training step is: (1) evaluate the loss, (2) compute the gradient of the loss with respect to
                 every parameter, (3) move each parameter a small step downhill. The rest of this section is the
@@ -488,7 +488,7 @@
             <p>The two halves of a training step. Forward: multiply the input by the weights layer by layer to produce a
               prediction. Backward: compute the error (prediction minus target), then propagate that error backwards
               through the same weights, accumulating a gradient for each parameter along the way.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>In PyTorch: the forward pass builds a graph, <code>loss.backward()</code> walks it in reverse and fills
                 in <code>.grad</code> on every tensor. That is literally the API the two slides describe.</p>
@@ -894,7 +894,7 @@
               plus three sigmoid <em class="term">gates</em>: a <em>forget gate</em> that decides how much of the old
               cell state to keep, an <em>input gate</em> that decides how much of the newly-computed candidate to add,
               and an <em>output gate</em> that decides how much of the cell state to expose as the hidden state.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>Why does this fix vanishing gradients? Because the cell state is passed forward via <em>addition</em>,
                 not repeated multiplication. Additive updates give the gradient a straight path back to the beginning of
@@ -1043,7 +1043,7 @@
                   output</em>.</li>
               <li>The attention output is concatenated with the decoder state and used to predict the next word.</li>
             </ol>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>The attention distribution changes at every output token; that is why we see three different peaked bar
                 charts in three consecutive slides. Same encoder, same decoder, different soft look-ups.</p>
@@ -1248,7 +1248,7 @@
               down by &radic;<em>d<sub>k</sub></em>, softmax across the row, then use those weights to average the
               values.
             </p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>The scale factor &radic;<em>d<sub>k</sub></em> is not cosmetic. Without it, large key dimensions give
                 dot products with huge variance, which push softmax into saturated regions where its gradient is tiny.
@@ -1421,7 +1421,7 @@
                 class="term">attention mask</em> added before the softmax, which is how the decoder gets to hide future
               tokens from itself during training. Slide 64 stacks <em>h</em> of those heads, concatenates, and applies
               the output projection <em>W<sup>O</sup></em>.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>The mask is just a matrix of the same <em>n</em>&times;<em>n</em> shape as <em>QK<sup>T</sup></em>,
                 with a value of &minus;&infin; wherever you want to hide a position and 0 elsewhere. Adding
@@ -1688,7 +1688,7 @@
             <p>The fix for "looks at future words". In the decoder, before the softmax, we add a matrix that is 0 on the
               lower triangle and &minus;&infin; on the upper triangle. After softmax those &minus;&infin; entries become
               zero, so no position can attend to a later one.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>This is called <em class="term">causal masking</em>. It is the one architectural difference between an
                 <em class="term">encoder-only</em> model (BERT, no mask, every position sees every other position) and a
@@ -1765,7 +1765,7 @@
                 variance, then multiply by learned gain and add learned bias. This keeps activations in a well-behaved
                 range as they pass through many layers.</li>
             </ul>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>Layer norm normalises <em>across the feature dimension of one token</em>, not across the batch (that is
                 batch norm) or across positions (that is instance norm). Because it never mixes information between
@@ -1958,7 +1958,7 @@
                 say "the transformer is mostly a stack of MLPs with a small amount of routing", this is what they mean.
               </p>
             </div>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">How it works</div>
               <p>You can also read the FFN's <em>d</em>&times;4<em>d</em> weight matrices as "one key-value memory per
                 row". Two facts: (1) most of the model's factual knowledge sits in these matrices, (2)

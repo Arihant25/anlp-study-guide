@@ -362,7 +362,7 @@
               another to the subject-verb agreement, another to the discourse antecedent. The final linear lets the
               model mix those specialists back into a single stream.
             </p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">⚙ the shape of one head</div>
               <p>Given input <em>X</em> of shape (<em>n</em>, <em>d</em>): <em>Q</em> = <em>X W<sub>Q</sub></em>,
                 <em>K</em> = <em>X W<sub>K</sub></em>, <em>V</em> = <em>X W<sub>V</sub></em>, each of shape (<em>n</em>,
@@ -526,7 +526,7 @@
               for tokens 1…<em>t</em> are the same whether you are generating token <em>t</em>+1 or <em>t</em>+2. So we
               compute them once, park them in GPU memory, and on the next step we only compute K and V for the single
               new token and append them.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">⚙ the loop, per layer, per step</div>
               <p>New token <em>x<sub>t</sub></em> comes in → project it to <em>q<sub>t</sub></em>,
                 <em>k<sub>t</sub></em>, <em>v<sub>t</sub></em>. Append <em>k<sub>t</sub></em>, <em>v<sub>t</sub></em> to
@@ -765,7 +765,7 @@
               <em>L</em>·<em>w</em>/2 — the way a stack of 3×3 convolutions can eventually see the whole image. Distant
               tokens can still influence each other, just indirectly, over several layers.
             </p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">⚙ layer-varying <em>w</em></div>
               <p>Longformer sometimes uses small <em>w</em> in the lower layers (focus on local context) and larger
                 <em>w</em> in the higher layers (broader synthesis). The receptive-field argument still works, just with
@@ -938,7 +938,7 @@
               questions in a slightly different way but the answers all come from the same knowledge, you can share the
               answer store. Each head still does its own softmax and its own weighted sum — it is only the K and V
               projections that are shared.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">⚙ the arithmetic saving</div>
               <p>MHA cache scales as <em>2 · h · d<sub>h</sub> · n · l</em> (factor of 2 for K and V). MQA cache scales
                 as <em>2 · d<sub>h</sub> · n · l</em> — the <em>h</em> is gone. For our 1B model with <em>h</em> = 16,
@@ -1105,7 +1105,7 @@
               gives you a way to reuse the existing investment: take a released MHA model, average the projections
               group-wise, uptrain for ~5% of the original compute, and ship. LLaMA-2 was released using this exact
               recipe.</p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">⚙ mean-pool in matrix form</div>
               <p>For each group of <em>h</em>/<em>G</em> heads, the group's K projection is <em>K</em><sub>group</sub> =
                 mean(<em>K</em><sub><em>i</em><sub>1</sub></sub>, …,
@@ -1287,7 +1287,7 @@
             <p>Only two things are cached: the latent <em>c<sub>t</sub><sup>KV</sup></em> and the rotary key
               <em>k<sub>t</sub><sup>R</sup></em>. Everything else is recomputed from those on the fly.
             </p>
-            <div class="callout How it works">
+            <div class="callout mechanism">
               <div class="callout-label">⚙ the split-rope trick</div>
               <p>RoPE rotates key vectors by an angle proportional to position. If you cached compressed keys, you could
                 not un-cache the rotation cheaply. DeepSeek's fix is to leave the content path un-rotated (cache the

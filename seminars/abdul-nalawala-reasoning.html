@@ -248,8 +248,8 @@
               Every other method in this deck is either an improvement on
               CoT (get better traces via SFT) or a way to reward the LM
               for producing good CoT-style outputs via RL.</p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>Mechanically, the LM is a next-token predictor. When you
                 force intermediate arithmetic to appear in its output, the
                 final answer is conditioned on tokens that already
@@ -1014,8 +1014,8 @@
               <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>R</mi><mi>θ</mi></msub></math>
               — one that assigns higher numbers to preferred outputs. That
               scalar is the reward the RL phase then maximises.</p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>The RL-phase objective at the bottom of the slide is
                 literally the PPO objective plus a KL penalty to
                 <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><msub><mi>π</mi><mtext>ref</mtext></msub></math>

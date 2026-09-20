@@ -259,8 +259,8 @@
               <em>L</em>·<em>w</em>/2, so with enough depth it can still influence a distant token indirectly, the way
               information flows across a CNN.
             </p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>Every family in this lecture reduces to <em>which cells of the attention matrix do I actually
                   compute</em>. Sliding attention is the case where the answer is a band of width <em>w</em>. All the
                 arithmetic tricks follow from that mask.</p>
@@ -435,8 +435,8 @@
                 <em>ask</em>, cheaply, then look only at the winners. This is a form of <em class="term">learned
                   sparsity</em>: the mask is dynamic, per-query, per-layer.
               </p>
-              <div class="callout How it works">
-                <div class="callout-label">⚙ How it works</div>
+              <div class="callout mechanism">
+                <div class="callout-label">Under the hood</div>
                 <p>Think of it as a two-stage attention. Stage 1: a lightweight, low-precision "lightning attention"
                   scores every past token; this is cheap because the scores are approximate and never fed to softmax.
                   Stage 2: sort those scores, take the top <em>k</em>, and do <em>real</em> attention over just those
@@ -925,8 +925,8 @@
                   <mo>)</mo>
                 </math>.
               </p>
-              <div class="callout How it works">
-                <div class="callout-label">⚙ How it works</div>
+              <div class="callout mechanism">
+                <div class="callout-label">Under the hood</div>
                 <p>Both <em>S</em> and <em>z</em> are sums over <em>j</em> that <strong>do not depend on
                     <em>i</em></strong>. Compute them once, in one pass through the sequence, then every query is an
                   <em>O</em>(<em>d</em>′<em>d</em>) contraction with the same <em>S</em> and <em>z</em>. Total:

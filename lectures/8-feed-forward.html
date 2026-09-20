@@ -237,8 +237,8 @@
               functions can't approximate anything interesting no matter how many you stack: they can't do XOR,
               can't do arithmetic, can't do language. The FFN's ReLU (or GELU, or SwiGLU) is what breaks that
               linearity and lets the network learn actual functions.</p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>The nonlinearity is applied <em>inside</em> the FFN, between its two linear layers. So each block's
                 pattern is: attention (mostly linear on the residual stream) → residual add → FFN (linear × nonlinearity
                 × linear) → residual add. The FFN is the block's one guaranteed source of nonlinear expressiveness.</p>
@@ -479,8 +479,8 @@
               <em>Bilinear</em> variant drops the sigmoid entirely — the gate is just <em>xW</em> — and works too,
               which tells you the win doesn't hinge on the specific squashing function.
             </p>
-            <div class="callout How it works">
-              <div class="callout-label">⚙ How it works</div>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
               <p>Think of it as attention over channels of your own hidden state. Each channel gets its own vote (the
                 gate) on whether the value on that channel should pass. Because both the gate and the value are
                 computed from the same <em>x</em>, the network can decide per-token which features are relevant.</p>
