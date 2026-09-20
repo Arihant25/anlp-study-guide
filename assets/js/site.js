@@ -10,6 +10,7 @@ const SITE_NAV = [
   { href: "lectures/5-attention.html", short: "05", label: "Attention", group: "lectures" },
   { href: "lectures/6-more-attention.html", short: "06", label: "More Attn", group: "lectures" },
   { href: "lectures/7-normalization.html", short: "07", label: "Normalization", group: "lectures" },
+  { href: "lectures/8-feed-forward.html", short: "08", label: "Feed Forward", group: "lectures" },
   { href: "seminars/sian-shinjo-linear-rnns.html", short: "S1", label: "Linear RNNs", group: "seminars" },
   { href: "seminars/vishal-rao-data-creation.html", short: "S2", label: "Data Creation", group: "seminars" },
   { href: "seminars/shruthi-m-efficient-deployment.html", short: "S3", label: "Efficient Deploy", group: "seminars" },

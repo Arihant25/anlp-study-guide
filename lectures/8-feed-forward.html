@@ -1,0 +1,1754 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Lecture 8 · Feed Forward NN — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Lecture 8 of Advanced NLP, Monsoon 2026 IIIT-H: feed forward networks in transformers — activations, initialisation, gated variants (GLU/SwiGLU/GeGLU), and the FFN as knowledge store.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/8-feed-forward.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Feed Forward Networks: where transformers store knowledge | ANLP">
+  <meta property="og:description"
+    content="A first-principles tour of the transformer's FFN: the 2017 ReLU block, the GLU family (SwiGLU, GeGLU, SiTU-GLU), and the shift from dense FFNs to Mixture-of-Experts.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/8-feed-forward.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L8-feed-forward/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP Feed Forward NN lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Feed Forward Networks: where transformers store knowledge | ANLP">
+  <meta name="twitter:description"
+    content="Everything the FFN block does inside a transformer: activations, gated units, and the MoE generalisation.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L8-feed-forward/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 8: Feed Forward NN","url":"https://arihant25.github.io/anlp-study-guide/lectures/8-feed-forward.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#deck">The deck at a glance</a>
+        <a href="#position">§1 · Where the FFN sits</a>
+        <a href="#what-ffn">§2 · What the FFN actually is</a>
+        <a href="#glu">§3 · Gated Linear Units</a>
+        <a href="#situ">§4 · SiTU-GLU &amp; activation spikes</a>
+        <a href="#why-moe">§5 · From dense FFN to MoE</a>
+        <a href="#experts">§6 · Experts</a>
+        <a href="#routing">§7 · Routing</a>
+        <a href="#load-balance">§8 · Load balancing</a>
+        <a href="#landscape">§9 · The FFN landscape today</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="7-normalization.html">← Lecture 7: Normalization</a>
+        <a href="../seminars/vishal-rao-data-creation.html">Next: Seminar · Data Creation →</a>
+        <a href="../index.html">Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Lecture 08 · 58 slides</div>
+        <h1>Feed Forward Networks: <em>where the transformer stores its knowledge.</em></h1>
+        <p class="lead">
+          Attention decides which tokens to look at. The feed forward
+          network — two-thirds of a modern transformer's parameters —
+          decides what to <em>do</em> once the tokens have been mixed.
+          This lecture starts with the position-wise FFN of the 2017
+          paper, walks through the gated variants that now dominate
+          (GLU, SwiGLU, GeGLU, SiTU-GLU), and ends with the biggest
+          bet of the 2020s: throwing away the dense FFN entirely and
+          replacing it with a Mixture of Experts.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Lecture 08</span>
+          <span class="pill">58 slides</span>
+          <span class="pill">Manish Shrivastava · Aparajitha Allamraju</span>
+        </div>
+      </section>
+
+      <section id="deck">
+        <h2><span class="num">§0</span>The deck at a glance</h2>
+        <p class="section-intro">
+          The lecture has four movements. The first (slides 1–9) is a
+          careful rebuild of the plain FFN block from the 2017
+          transformer: what it looks like, where it sits, why it
+          matters, and why it swallows more than half of the model's
+          parameters. The second (10–19) is the whole gated-linear-unit
+          family — GLU, Bilinear, ReGLU, GeGLU, SwiGLU, and the brand-new
+          SiTU-GLU from Kimi K3 — plus a quick tour of activation
+          functions and the numerical trouble they can cause. The third
+          (20–30) argues that a static, dense FFN is wasteful and
+          introduces Mixture-of-Experts as the fix. The fourth (31–56)
+          is a deep pass through what makes an MoE actually work:
+          experts, routing algorithms, and the load-balancing loss.
+          Two closing tables (57–58) show the exact activation and
+          layer choices of every big transformer from GPT-1 to the
+          2.8T-parameter Kimi K3.
+        </p>
+      </section>
+
+      <hr class="soft">
+
+      <section id="position">
+        <h2><span class="num">§1</span>Where the FFN sits</h2>
+        <p class="section-intro">
+          Slides 1–9 do the setup. A transformer block alternates
+          attention and FFN, over and over. Attention is the part that
+          moves information <em>across</em> tokens; the FFN is the
+          part that transforms information <em>within</em> a single
+          token. Once you accept that split, the FFN is easy to
+          describe: it's an ordinary two-layer MLP applied
+          independently to every position in the sequence.
+        </p>
+
+        <div class="slide" id="s1">
+          <div class="slide-frame">
+            <div class="tag">Slide 01 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-01.png"
+              alt="Title slide: Feed Forward NN, Advanced NLP M26, Manish Shrivastava and Aparajitha, IIIT Hyderabad, August 27 2026">
+            <div class="slide-caption">slide 01 · title</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Lecture 8 of Advanced NLP Monsoon 2026. The topic is the innocuously-named <em>feed forward network</em>
+              inside a transformer block — the part that is not attention, not normalization, not embedding.</p>
+            <h4>Why give a whole lecture to it</h4>
+            <p>Two reasons. Numerically, the FFN is where the majority of a transformer's parameters live (~57% for a
+              typical 1B-scale model — the next slide makes this precise). Conceptually, recent work suggests it is
+              where the model stores most of its <em>knowledge</em>: the attention layer moves facts around, but the
+              FFN is the giant key-value memory those facts live in. So although "feed forward" sounds like the
+              boring bit, the lecture is really about capacity, activations, and how to scale the block that holds the
+              model's actual world model.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s2">
+          <div class="slide-frame">
+            <div class="tag">Slide 02 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-02.png"
+              alt="Original transformer architecture from Vaswani et al. 2017, encoder-decoder diagram. The Feed Forward block in the encoder stack is highlighted in red and labelled FFNN.">
+            <div class="slide-caption">slide 02 · where the FFN lives in the block</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The canonical 2017 transformer diagram, with the encoder's Feed Forward sub-layer highlighted. Every
+              block goes <em>Multi-Head Attention → Add &amp; Norm → Feed Forward → Add &amp; Norm</em>, and this
+              pair is stacked <em>N</em> times.</p>
+            <h4>What to take from it</h4>
+            <p>Attention and FFN alternate. Attention lets each position peek at every other position; FFN then
+              transforms each position <em>in isolation</em>, using the same two-layer MLP applied position-wise.
+              That's it — no cross-token interaction inside the FFN. The alternation is the entire architecture: mix
+              tokens, then transform per-token, mix again, transform again. Both halves are needed. Without the FFN,
+              stacked attention layers collapse into one big linear function (slide 4 makes that argument formal).
+              Without attention, the FFN can't see the rest of the sentence at all.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s3">
+          <div class="slide-frame">
+            <div class="tag">Slide 03 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-03.png"
+              alt="Parameter count table for a ~1B model with V=32000, d=2048, n=2048, dq=128, h=l=16. Rows: Token Embedding 65M (6.95%), Positional Embedding 4.2M (0.44%), Attention 268M (28.63%), FFNN 536M (57.37%), Decoding 65M (6.95%), Bias + LayerNorm 0.3M (0.03%), Total 935.8M.">
+            <div class="slide-caption">slide 03 · the FFN is the majority of the parameters</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A worked example of where parameters go in a ~1B parameter transformer. FFN alone is
+              <strong>57%</strong> of the total, more than double attention (~29%) and eight times the token
+              embedding (~7%). The formula behind the FFN row is
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mn>2</mn>
+                <mo>·</mo>
+                <mi>d</mi>
+                <mo>·</mo>
+                <mn>4</mn>
+                <mi>d</mi>
+                <mo>·</mo>
+                <mi>l</mi>
+              </math>
+              — two weight matrices per layer, each of shape <em>d</em> × 4<em>d</em>, over <em>l</em> layers.
+            </p>
+            <h4>Why the "4d" convention exists</h4>
+            <p>The 2017 paper picked a hidden dimension of 4<em>d</em> for the FFN — four times the model
+              dimension — and everyone kept the convention. It's a deliberate <em>expansion</em>: project up to
+              a wider space, apply a nonlinearity there, project back down. Ratios larger than 4 don't buy much;
+              smaller ratios lose expressiveness. That single ratio is why the FFN dwarfs attention in parameter
+              count: attention has O(<em>d</em><sup>2</sup>) weights per layer, FFN has O(8<em>d</em><sup>2</sup>).
+              When someone talks about "growing the model", they usually mean growing 4<em>d</em>.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Every optimisation you do to the FFN — a cheaper activation, a smarter matrix shape, a mixture of
+                experts — is applied to <em>the largest single chunk of your model</em>. This is why FFN research is
+                the highest-leverage part of transformer engineering.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="what-ffn">
+        <h2><span class="num">§2</span>What the FFN actually is</h2>
+        <p class="section-intro">
+          Slides 4–9 rebuild the FFN from scratch: why it exists at all
+          (adds nonlinearity), what a plain MLP looks like (input →
+          hidden → output), and finally the exact formula used inside
+          a transformer block.
+        </p>
+
+        <div class="slide" id="s4">
+          <div class="slide-frame">
+            <div class="tag">Slide 04 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-04.png"
+              alt="FFNN Importance slide: two bullets. Adds non-linearity to the model. Without this Layer, the stacked attention layers would be linear.">
+            <div class="slide-caption">slide 04 · why the FFN is there at all</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two sentences. The FFN adds nonlinearity to the model; without it, stacked attention would collapse
+              to a single linear map.</p>
+            <h4>Why "linear stacked = linear" matters</h4>
+            <p>Attention itself is a series of linear projections (Q, K, V, output) with one non-linear step —
+              softmax on the attention scores. But the softmax operates on the <em>attention weights</em>, not the
+              residual stream. If you stack ten attention blocks with no FFN in between, the residual stream just
+              gets multiplied by ten more linear layers, and the whole composition is again linear. Linear
+              functions can't approximate anything interesting no matter how many you stack: they can't do XOR,
+              can't do arithmetic, can't do language. The FFN's ReLU (or GELU, or SwiGLU) is what breaks that
+              linearity and lets the network learn actual functions.</p>
+            <div class="callout How it works">
+              <div class="callout-label">⚙ How it works</div>
+              <p>The nonlinearity is applied <em>inside</em> the FFN, between its two linear layers. So each block's
+                pattern is: attention (mostly linear on the residual stream) → residual add → FFN (linear × nonlinearity
+                × linear) → residual add. The FFN is the block's one guaranteed source of nonlinear expressiveness.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s5">
+          <div class="slide-frame">
+            <div class="tag">Slide 05 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-05.png"
+              alt="A visual recap of a feed-forward neural network: three blue input nodes, four green hidden nodes fully connected to the inputs, and one pink output node connected to all hidden nodes. Boxes label the columns Input, Hidden Layer, Output.">
+            <div class="slide-caption">slide 05 · MLP recap, in a picture</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The classic MLP diagram. Three inputs, one hidden layer of four neurons, one output. Every input
+              connects to every hidden neuron; every hidden neuron connects to the output. That's what "fully
+              connected" means.</p>
+            <h4>What to take from it</h4>
+            <p>The FFN in a transformer is literally this — a plain two-layer MLP — with one extra convention: the
+              hidden layer is 4× wider than the input (see slide 3). Nothing exotic. The lecture spends the next
+              five slides just writing this picture as an equation, so it's worth internalising: an FFN is not a
+              new object, it's the oldest neural network in the book, applied per token.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s6">
+          <div class="slide-frame">
+            <div class="tag">Slide 06 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-06.png"
+              alt="Formal MLP recap. f is a function from R^Di to R^Do. y = f[x, phi]. For each hidden unit d: h_d = a[theta_{d0} + sum_{i=1..Di} theta_{di} x_i]. For each output unit j: y_j = phi_{j0} + sum_{d=1..D} phi_{jd} h_d.">
+            <div class="slide-caption">slide 06 · MLP recap, in equations</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The picture from slide 5, rewritten as equations. Each hidden unit
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub>
+                  <mi>h</mi>
+                  <mi>d</mi>
+                </msub>
+              </math>
+              is an <em>activation</em>
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mi>a</mi>
+              </math>
+              applied to a weighted sum of inputs plus a bias. Each output
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub>
+                  <mi>y</mi>
+                  <mi>j</mi>
+                </msub>
+              </math>
+              is a weighted sum of the hidden units.
+            </p>
+            <h4>What each symbol means</h4>
+            <ul>
+              <li><em>D<sub>i</sub></em> is the input dimension, <em>D<sub>o</sub></em> the output dimension,
+                <em>D</em> the hidden width.</li>
+              <li>The <em>θ</em> weights parametrise the first (input → hidden) linear layer; the <em>φ</em>
+                weights parametrise the second (hidden → output).</li>
+              <li>The <em>0</em> subscript on
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <msub><mi>θ</mi><mrow><mi>d</mi><mn>0</mn></mrow></msub>
+                </math>
+                is the bias.
+              </li>
+            </ul>
+            <p>The next slide isolates the one symbol that decides the character of the whole network: the
+              activation
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mi>a</mi>
+              </math>.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s7">
+          <div class="slide-frame">
+            <div class="tag">Slide 07 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-07.png"
+              alt="Same MLP equations from the previous slide, but with the activation function 'a' highlighted in a red box, emphasising that this is the single knob that determines the network's nonlinearity.">
+            <div class="slide-caption">slide 07 · the one symbol that changes the network's character</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The activation
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <mi>a</mi>
+              </math>
+              is boxed. Everything else in the FFN is a linear operation.
+              Which nonlinearity you pick — sigmoid, tanh, ReLU, GELU, Swish, or any of the gated variants coming up
+              in §2 — <em>is</em> the design decision.
+            </p>
+            <h4>Why this matters more than it looks</h4>
+            <p>The two matrix multiplies are boring; they're what every layer does. The activation is what breaks
+              linearity and it's also what breaks the gradient. A saturating activation (sigmoid, tanh) shrinks
+              gradients toward zero away from the origin and gives you vanishing-gradient problems in deep stacks.
+              A non-saturating one (ReLU, GELU) keeps gradients alive but has its own failure modes (dead ReLUs,
+              activation spikes — see slide 19). Fifteen years of activation-function research is just the story
+              of picking a curve that lets gradient descent finish before it dies.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s8">
+          <div class="slide-frame">
+            <div class="tag">Slide 08 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-08.png"
+              alt="FFN formula from the 2017 transformer paper: FFN(x, W1, W2, b1, b2) = max(0, xW1 + b1) W2 + b2. Text explains: FFN takes a vector x (the hidden representation at a particular position in the sequence) and passes it through two learned linear transformations with ReLU.">
+            <div class="slide-caption">slide 08 · the position-wise FFN of the 2017 transformer</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The exact FFN block from the original transformer. Take one token's hidden vector
+              <em>x</em>, multiply by
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>W</mi><mn>1</mn></msub>
+              </math>, add bias
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>b</mi><mn>1</mn></msub>
+              </math>, apply ReLU (max with zero), multiply by
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>W</mi><mn>2</mn></msub>
+              </math>, add bias
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>b</mi><mn>2</mn></msub>
+              </math>. That's the whole block.
+            </p>
+            <h4>Why "position-wise"</h4>
+            <p>The <em>same</em> two matrices are applied to <em>every</em> token position — no matter how long the
+              sequence, no matter which position in it. So each token is transformed independently, using the same
+              learned parameters. If your sequence has 2048 tokens, you run the FFN 2048 times per layer with the
+              same weights. That's why FFN cost scales linearly with sequence length, unlike attention which scales
+              quadratically. It's also why "position-wise" is really a stronger claim: the FFN cannot see other
+              positions at all. It can only reshape the information that attention has already gathered into this
+              one token's slot.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Read the transformer block as a two-step algorithm: <em>attention gathers context into each token
+                  vector</em>, then <em>the FFN thinks about that token</em>. The FFN is the "thinking" step; it
+                just happens per token.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s9">
+          <div class="slide-frame">
+            <div class="tag">Slide 09 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-09.png"
+              alt="Diagram: multi-head attention outputs — six 64-dimensional vectors are grouped into two heads, each producing a 64-dim vector. The two 64-dim vectors are concatenated into one 128-dim vector, which is then fed into the FFNN block.">
+            <div class="slide-caption">slide 09 · how the FFN plugs in after multi-head attention</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A little sketch of the data flow. Multi-head attention produces several 64-dimensional head outputs;
+              they are concatenated to form the full 128-dimensional hidden state; that hidden state is what the FFN
+              receives.</p>
+            <h4>What to take from it</h4>
+            <p>The FFN doesn't "know" that its input came from attention heads. From its point of view the input is
+              just a <em>d</em>-dimensional vector per token. Whatever structure the different heads captured has
+              already been flattened into one long vector by the time the FFN sees it. That's part of why increasing
+              the FFN width (or number of experts, in §5) is such an effective knob: the FFN is the single place
+              where the model has room to interpret the concatenated multi-head signal.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="glu">
+        <h2><span class="num">§3</span>Gated Linear Units: <em>the FFN block gets a gate</em></h2>
+        <p class="section-intro">
+          Slides 10–16 replace ReLU with a family of gated variants.
+          The idea, borrowed from LSTM and GRU cells: instead of just
+          "apply a nonlinearity to the up-projection", <em>compute a
+            gate from the input and multiply the up-projection by it</em>.
+          A learnable, input-dependent filter. The star of the family
+          is SwiGLU (Swish gate), which is what LLaMA, Mistral, Gemma,
+          Qwen, and DeepSeek all use today.
+        </p>
+
+        <div class="slide" id="s10">
+          <div class="slide-frame">
+            <div class="tag">Slide 10 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-10.png" alt="Section-title slide reading simply: Gated Linear Units.">
+            <div class="slide-caption">slide 10 · section marker — Gated Linear Units</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A section break. The next six slides are all about the GLU family.</p>
+            <h4>Why now</h4>
+            <p>The original 2017 FFN uses ReLU. In 2020 Noam Shazeer published a one-page paper ("GLU Variants
+              Improve Transformer") showing that swapping ReLU for a gated variant like SwiGLU gave a consistent
+              improvement in language-modelling perplexity for the same parameter count. The result was so clean
+              that within three years every major open LLM had switched. This section is that switch, worked out
+              from first principles.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s11">
+          <div class="slide-frame">
+            <div class="tag">Slide 11 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-11.png"
+              alt="Gating Principle slide: previously explored in GRUs and LSTMs. Motivation: create a learnable, input-dependent filter. Formula FFN_GLU(x, W, V, W2) = (sigma(xW) tensor xV) W2. Bullets explain: x is projected by W through a sigmoid to produce a gate in (0,1); simultaneously x is projected by V, and the element-wise product of gate and second projection is the filtered representation, then projected by W2. Bilinear variant removes the sigmoid.">
+            <div class="slide-caption">slide 11 · the gating principle</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The GLU formula:
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mtext>FFN</mtext><mtext>GLU</mtext></msub>
+                <mo>(</mo><mi>x</mi><mo>)</mo>
+                <mo>=</mo>
+                <mo>(</mo><mi>σ</mi><mo>(</mo><mi>x</mi><mi>W</mi><mo>)</mo>
+                <mo>⊗</mo>
+                <mi>x</mi><mi>V</mi><mo>)</mo>
+                <msub><mi>W</mi><mn>2</mn></msub>
+              </math>. Read the middle bit as two branches:
+            </p>
+            <ul>
+              <li><strong>Gate branch</strong>: project <em>x</em> through <em>W</em>, squash through a sigmoid.
+                Every entry is now in (0, 1) — a soft on/off switch.</li>
+              <li><strong>Value branch</strong>: project <em>x</em> through a second matrix <em>V</em>, no
+                nonlinearity.</li>
+              <li>Multiply the two element-wise (⊗). Where the gate is close to 0 that entry is suppressed; where
+                the gate is close to 1 the value passes through.</li>
+              <li>Project the filtered result back down through
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <msub><mi>W</mi><mn>2</mn></msub>
+                </math>.
+              </li>
+            </ul>
+            <h4>Why this generalises ReLU</h4>
+            <p>In the plain ReLU FFN, the "gate" is a hard threshold on the up-projection itself: negative entries
+              are zeroed, positive ones pass unchanged. GLU keeps that gating idea but computes the gate from a
+              <em>separately projected</em> version of the input. The gate isn't a fixed function of the up-projected
+              value; it's a <em>learnable</em>, input-dependent decision about which channels should fire. A
+              <em>Bilinear</em> variant drops the sigmoid entirely — the gate is just <em>xW</em> — and works too,
+              which tells you the win doesn't hinge on the specific squashing function.
+            </p>
+            <div class="callout How it works">
+              <div class="callout-label">⚙ How it works</div>
+              <p>Think of it as attention over channels of your own hidden state. Each channel gets its own vote (the
+                gate) on whether the value on that channel should pass. Because both the gate and the value are
+                computed from the same <em>x</em>, the network can decide per-token which features are relevant.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s12">
+          <div class="slide-frame">
+            <div class="tag">Slide 12 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-12.png"
+              alt="Diagram from Dauphin et al. 2017 (the gated convolutional language model). Left: input sentence 'The cat sat on the mat', embedded through a lookup table, then convolved into two branches A = E*W + b and B = E*V + c. The element-wise product A⊗σ(B) forms the gated hidden state H0. Right: stack L-1 more convolution+gating blocks, then softmax Y = softmax(W H_L) for the output distribution.">
+            <div class="slide-caption">slide 12 · where the gate idea came from — gated CNNs</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A diagram from Dauphin, Fan, Auli &amp; Grangier (2017), the first paper to use this
+              gated-linear-unit shape in a language model — as a convolutional block, not yet inside a transformer.
+              Two parallel projections <em>A</em> and <em>B</em> are combined as <em>A</em> ⊗ σ(<em>B</em>).</p>
+            <h4>Why the historical detour matters</h4>
+            <p>Before the GLU became a transformer component, it was already known to work in convolutional language
+              models. That gave Shazeer (2020) a strong prior that dropping the same primitive into a transformer's
+              FFN would work — the paper isn't a blind guess, it's transferring a known-good trick to a new
+              architecture. This is a general pattern in deep-learning research: a component that helps in one
+              architecture usually helps in another as long as the underlying computation (in this case: gated,
+              input-dependent feature selection) is what you needed.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s13">
+          <div class="slide-frame">
+            <div class="tag">Slide 13 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-13.png"
+              alt="Slide titled 'Why do they work?' with a famous quote from Noam Shazeer's GLU paper: 'We offer no explanation as to why these architectures seem to work; we attribute their success, as all else, to divine benevolence.' Below, a Hypothesis section: Richer Representations — input-dependent gating enables flexible, token-specific transformations. Dynamic Feature Selection — gates amplify relevant features and suppress irrelevant ones.">
+            <div class="slide-caption">slide 13 · why GLUs work — no one really knows</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The famous Shazeer disclaimer: <em>"We offer no explanation as to why these architectures seem to
+                work; we attribute their success, as all else, to divine benevolence."</em> Below it, a two-bullet
+              hypothesis: gates make representations richer and let the model select features dynamically.</p>
+            <h4>Reading the joke seriously</h4>
+            <p>The joke is honest: Shazeer's paper showed a consistent perplexity win on language modelling but did
+              not derive <em>why</em> from any principle. In practice, the current best-guess story is the two
+              bullets on the slide — a gate lets the network choose per-token which features to activate, which is
+              strictly more expressive than a fixed pointwise nonlinearity. It's the same reason attention beats a
+              fixed convolution. But no one has a proof that this is why the win exists, and it's normal in ML for
+              a component to be adopted years before its theory catches up.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s14">
+          <div class="slide-frame">
+            <div class="tag">Slide 14 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-14.png"
+              alt="Table of GLU variants. GLU: sigma(xW+b) tensor (xV+c). Bilinear: (xW+b) tensor (xV+c) — no sigmoid. ReGLU: max(0, xW+b) tensor (xV+c) — ReLU gate. GeGLU: GELU(xW+b) tensor (xV+c) — GELU gate. SwiGLU (starred as the popular one): Swish_beta(xW+b) tensor (xV+c), with Swish_beta(x) = x·sigma(beta·x) = x/(1+e^(-beta x)).">
+            <div class="slide-caption">slide 14 · the GLU family in one table</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Every GLU has the same skeleton — <em>gate ⊗ value</em>, then a down-projection. Only the
+              <strong>gate's nonlinearity</strong> changes:
+            </p>
+            <ul>
+              <li><strong>GLU</strong>: sigmoid gate. The original.</li>
+              <li><strong>Bilinear</strong>: no gate nonlinearity at all. Just a product of two linear projections.</li>
+              <li><strong>ReGLU</strong>: ReLU gate.</li>
+              <li><strong>GeGLU</strong>: GELU gate. Used by mT5-L.</li>
+              <li><strong>SwiGLU</strong>: Swish gate,
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <msub><mtext>Swish</mtext><mi>β</mi></msub>
+                  <mo>(</mo><mi>x</mi><mo>)</mo>
+                  <mo>=</mo>
+                  <mi>x</mi>
+                  <mo>·</mo>
+                  <mi>σ</mi>
+                  <mo>(</mo><mi>β</mi><mi>x</mi><mo>)</mo>
+                </math>.
+                The star of the family — used by LLaMA, Mistral, Gemma, Qwen, DeepSeek. When someone says "modern
+                LLM" in 2025+, they mean SwiGLU FFNs.
+              </li>
+            </ul>
+            <h4>Why Swish/GELU won over ReLU</h4>
+            <p>Both Swish and GELU are smooth around zero, unlike ReLU's hard corner. That smoothness gives cleaner
+              gradients right where most inputs sit (activations tend to be small after LayerNorm), and empirically
+              produces a small but real drop in language-modelling loss. The plots on slide 15 show how similar
+              these three curves actually are — the differences are subtle and worth staring at.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>All GLU variants have the same computational shape. If you know the plain FFN formula and you know
+                the shape <em>gate ⊗ value → W<sub>2</sub></em>, you know every one of them. The only real choice is
+                the gate function.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s15">
+          <div class="slide-frame">
+            <div class="tag">Slide 15 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-15.png"
+              alt="Six subplots of activation functions. Top row: Sigmoid (S-curve saturating at 0 and 1), Tanh (S-curve saturating at -1 and 1), ReLU (zero for x&lt;0, linear for x&gt;0). Bottom row: Leaky ReLU (small negative slope for x&lt;0), then a comparison plot showing ReLU, GELU, and Swish overlaid near the origin — all almost identical for x&gt;0, but GELU and Swish dip slightly negative around x = -1 before returning to zero.">
+            <div class="slide-caption">slide 15 · the activation-function tour</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Plots of the classical activations. Sigmoid and Tanh saturate at both ends — where the curve is flat,
+              the gradient is essentially zero, which is what causes vanishing gradients in deep sigmoidal networks.
+              ReLU and its "Leaky" cousin don't saturate on the positive side, which is why they let deep networks
+              train at all. The bottom-right compares ReLU, GELU, and Swish head-to-head near the origin.</p>
+            <h4>What to notice in the last panel</h4>
+            <p>ReLU, GELU, and Swish are almost the same function for <em>x</em> &gt; 0 — they're all approximately
+              the identity there. The only real difference is a small negative dip in GELU and Swish around
+              <em>x</em> ≈ −1, where ReLU would output zero. That tiny "leak" is the whole reason GELU and Swish
+              tend to win: they let a small negative gradient flow through, avoiding the "dead ReLU" failure where
+              a unit's inputs all go negative and the gradient vanishes forever. Empirically the difference between
+              GELU and Swish is smaller than the difference between either and ReLU.
+            </p>
+          </div>
+        </div>
+
+        <div class="slide" id="s16">
+          <div class="slide-frame">
+            <div class="tag">Slide 16 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-16.png"
+              alt="Slide titled '3 weight matrices'. Bullet 1: All GLU variants use 3 weight matrices (W, V, W2), against the standard 2. Bullet 2: To tackle this increase in parameters, we reduce the number of hidden units (d_ff) by a factor of 2/3.">
+            <div class="slide-caption">slide 16 · the 2/3 hidden-width trick</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A parameter-count reconciliation. A plain FFN has two weight matrices
+              (<math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>W</mi><mn>1</mn></msub>
+              </math>,
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>W</mi><mn>2</mn></msub>
+              </math>). A GLU FFN has three (<em>W</em>, <em>V</em>,
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>W</mi><mn>2</mn></msub>
+              </math>). To keep the parameter count roughly equal, shrink the hidden width
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>d</mi><mtext>ff</mtext></msub>
+              </math>
+              by a factor of 2/3.
+            </p>
+            <h4>Where 2/3 comes from</h4>
+            <p>Simple algebra. A standard FFN with hidden width 4<em>d</em> has parameter cost
+              2 · <em>d</em> · 4<em>d</em> = 8<em>d</em><sup>2</sup>. A GLU FFN with hidden width
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>d</mi><mtext>ff</mtext></msub>
+              </math>
+              has cost 3 · <em>d</em> ·
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>d</mi><mtext>ff</mtext></msub>
+              </math>. Setting these equal gives
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                <msub><mi>d</mi><mtext>ff</mtext></msub>
+              </math>
+              = (8/3)<em>d</em> ≈ 2.67<em>d</em>, which is exactly (2/3) · 4<em>d</em>. So a fair SwiGLU-vs-ReLU
+              comparison uses hidden width ≈ 2.67<em>d</em> for SwiGLU vs 4<em>d</em> for ReLU. Every reported
+              SwiGLU win in the literature includes this correction — the win isn't "we added parameters", it's
+              "same parameter budget, gated architecture wins".
+            </p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>If you code a SwiGLU FFN and forget the 2/3 factor, you accidentally inflate the model by ~50% in
+                the FFN block. Any "SwiGLU beats ReLU" claim without this correction is meaningless.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="situ">
+        <h2><span class="num">§4</span>SiTU-GLU and activation spikes: <em>the 2026 refinements</em></h2>
+        <p class="section-intro">
+          Slides 17–19 introduce a brand-new variant (SiTU-GLU, from
+          Kimi K3) that adds a soft cap to keep activations bounded,
+          then explains the numerical problem it exists to solve —
+          <em>activation spikes</em> that break post-training quantisation.
+        </p>
+
+        <div class="slide-strip cols-2" id="s17s18">
+          <div class="slide">
+            <div class="slide-frame">
+              <div class="tag">Slide 17 / 58</div>
+              <img src="../assets/slides/L8-feed-forward/slide-17.png"
+                alt="SiTU-GLU slide subtitled Sigmoid Tanh Unit - GLU. Kimi K3 proposed a new function. Applies the smooth cap softcap(x,beta) = beta·tanh(x/beta) to the linear factor of the Swish gate and independently to the up branch. Formula: SiTU-GLU(x) = [beta_1·tanh(W_g x / beta_1) ⊙ sigma(W_g x)] ⊙ [beta_2·tanh(W_u x / beta_2)].">
+              <div class="slide-caption">slide 17 · SiTU-GLU formula (Kimi K3, 2026)</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Kimi K3's new activation. The <em>softcap</em>
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <mtext>softcap</mtext>
+                  <mo>(</mo><mi>x</mi><mo>,</mo><mi>β</mi><mo>)</mo>
+                  <mo>=</mo>
+                  <mi>β</mi>
+                  <mo>·</mo>
+                  <mtext>tanh</mtext>
+                  <mo>(</mo><mi>x</mi><mo>/</mo><mi>β</mi><mo>)</mo>
+                </math>
+                is applied to both the gate's linear factor and the value branch. That's what "SiTU" (Sigmoid Tanh
+                Unit) refers to — the gate still uses sigmoid, but the input to the sigmoid is first passed through a
+                tanh-based soft cap.
+              </p>
+              <h4>What the softcap does</h4>
+              <p>For small <em>x</em>, tanh(<em>x</em>/β) ≈ <em>x</em>/β, so
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <mi>β</mi>
+                  <mo>·</mo>
+                  <mtext>tanh</mtext>
+                  <mo>(</mo><mi>x</mi><mo>/</mo><mi>β</mi><mo>)</mo>
+                </math>
+                ≈ <em>x</em>. The block behaves like SwiGLU in the normal range. But as |<em>x</em>| grows, the tanh
+                saturates and the output tops out at ±β. So each branch is bounded by β, and the whole SiTU-GLU output
+                by β<sub>1</sub>β<sub>2</sub>. It's SwiGLU with a soft ceiling.
+              </p>
+            </div>
+          </div>
+          <div class="slide">
+            <div class="slide-frame">
+              <div class="tag">Slide 18 / 58</div>
+              <img src="../assets/slides/L8-feed-forward/slide-18.png"
+                alt="Plot showing three curves as functions of x. SwiGLU (green) grows without bound and shoots off the top of the plot near x=0. SiTU-GLU (red) rises steeply near zero then flattens, capped at |f(x)| &lt;= beta_1·beta_2 = 100 by the dashed red line at 100. GLU (grey dashed) grows linearly with x, unbounded. An inset near x=0 shows the three curves nearly overlapping in the normal range.">
+              <div class="slide-caption">slide 18 · SiTU-GLU in a picture</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>SwiGLU shoots off the top of the plot for large positive <em>x</em> — it has no bound. Plain GLU is
+                approximately linear. SiTU-GLU asymptotes at |<em>f</em>| ≤ β<sub>1</sub>β<sub>2</sub> = 100 (in
+                Kimi's setting).</p>
+              <h4>Why bounded output matters</h4>
+              <p>Look at the inset near <em>x</em> = 0: SiTU-GLU and SwiGLU are indistinguishable there. That's the
+                point. The soft cap only kicks in at extreme values that empirically cause the numerical trouble on
+                the next slide. In the range that carries actual signal, SiTU-GLU behaves exactly like SwiGLU.</p>
+              <div class="callout aha">
+                <div class="callout-label">✦ Key takeaway</div>
+                <p>SiTU-GLU = SwiGLU + safety belt. Same behaviour in the working range; bounded at the extremes.
+                  Almost a free upgrade.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s19">
+          <div class="slide-frame">
+            <div class="tag">Slide 19 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-19.png"
+              alt="Slide titled Activation Spikes. Recent research shows that GLU gating can cause extreme activation spikes especially in early and late layers. They are harmless in full-precision training. These outliers hinder post-training quantization, as standard schemes can't capture both typical values and spikes.">
+            <div class="slide-caption">slide 19 · the problem SiTU-GLU exists to fix</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three sentences describing why the soft cap on the previous slide matters. GLU-style gating produces
+              occasional extreme activations — <em>activation spikes</em> — especially in early and late layers of
+              the transformer. In FP32 or BF16 training this is harmless. But when you try to quantise the model
+              post-training (to INT8 or INT4 for cheap inference), the huge outliers force the quantisation range
+              to be very wide, and the typical values collapse to a few bits of precision.</p>
+            <h4>The full picture</h4>
+            <p>Quantisation works by mapping a continuous range to a small number of buckets. If your activations
+              are usually in [−3, 3] but occasionally spike to ±100, you have to choose the [−100, 100] range for
+              your quantisation grid, which means the typical [−3, 3] range gets squeezed into 6/200 = 3% of the
+              grid — awful precision. Bounding the activations (SiTU-GLU) means the quantisation range stays
+              small, the typical values get full precision, and INT8 inference just works. This is a great example
+              of how downstream deployment requirements (int8 quantisation) reach back and change the model
+              architecture.</p>
+            <div class="callout link">
+              <div class="callout-label">→ Trend to watch</div>
+              <p>Almost every new frontier LLM (Kimi K3, DeepSeek V3/R1, Qwen3) is designed with post-training
+                quantisation in mind. Architectural choices — soft caps, QK-Norm, careful init scales — are being
+                driven by "what do we need so INT8 inference doesn't crash". Model-quality wins are secondary; the
+                real prize is a model that fits on a customer's GPU.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="why-moe">
+        <h2><span class="num">§5</span>From dense FFN to Mixture of Experts</h2>
+        <p class="section-intro">
+          Slides 20–30 argue that the dense FFN — the same weights
+          applied to every token — is fundamentally wasteful, and
+          introduce the fix: a <em>Mixture of Experts</em> (MoE)
+          layer that keeps many parallel FFNs but activates only a
+          few of them per token. This is the single biggest
+          architectural shift in transformer research since 2020.
+        </p>
+
+        <div class="slide" id="s20">
+          <div class="slide-frame">
+            <div class="tag">Slide 20 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-20.png"
+              alt="Slide titled FFNN Issues. Static, Dense design that is not content aware. Uniform Computational Load — applies the same massive computation to every token, highly inefficient. Static Knowledge Access — activates the entire FFN parameter set for every token, regardless of the knowledge needed.">
+            <div class="slide-caption">slide 20 · what's wrong with the dense FFN</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three problems with the plain FFN. It's <em>static</em> (same weights for every input),
+              <em>uniform</em> (same amount of compute per token, regardless of difficulty), and its knowledge
+              access is <em>global</em> (every parameter is touched by every token).</p>
+            <h4>Why these are wasteful</h4>
+            <p>Consider the token "the". It carries almost no semantic content and shouldn't need the same
+              billion-parameter transformation as the token "quantum" in "quantum entanglement". Yet the plain FFN
+              runs the full computation for both, using every neuron in the 4<em>d</em>-wide hidden layer. If most
+              neurons are only relevant to a small subset of inputs — which activation-sparsity studies suggest is
+              true — you're paying full FLOPs to compute mostly zeros. The next slide names the fix.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s21">
+          <div class="slide-frame">
+            <div class="tag">Slide 21 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-21.png"
+              alt="Slide titled Scaling through Sparsity. Bullet 1: Scaling Laws — as parameters, dataset size, and compute increase, model performance predictably improves. But this is not feasible for everyone. Bullet 2: MoE introduces the principle of sparse, conditional computation to the Transformer, allowing models to grow to enormous parameter counts while keeping the computational cost for any single input manageable.">
+            <div class="slide-caption">slide 21 · why sparsity is the answer</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two facts. First, more parameters give better models (scaling laws). Second, most people can't afford
+              to run every parameter for every input. MoE resolves the tension: build a huge model, but only
+              activate a small fraction of it for any given token.</p>
+            <h4>The precise trick</h4>
+            <p>Split the FFN into <em>N</em> smaller FFNs (experts). For each token, a small <em>router</em>
+              picks <em>K</em> ≪ <em>N</em> of them and only runs those. Total parameter count grows with <em>N</em>
+              (great — more capacity, more knowledge). Compute per token grows with <em>K</em> (~constant — same
+              price per input). DeepSeek V3 has 671B parameters but activates only 37B per token; Kimi K3 has 2.8T
+              parameters and activates 104B. That's the whole pitch.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s22">
+          <div class="slide-frame">
+            <div class="tag">Slide 22 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-22.png"
+              alt="Slide titled What are MoEs. Technique that uses multiple sub-models ('experts'). Scaling through Sparsity.">
+            <div class="slide-caption">slide 22 · MoE, in two bullets</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The one-line definition. An MoE is a technique that uses multiple sub-models called <em>experts</em>,
+              gated so that only a subset is used for each input. Slide 21 already gave the "why".</p>
+            <h4>What "expert" means (and doesn't)</h4>
+            <p>Don't take the name too seriously. An expert is not a hand-designed module for a specific subject; it
+              is just <em>one of N identically-shaped FFNs in a layer</em>. Whether an expert becomes "the numbers
+              expert" or "the punctuation expert" is emergent — it happens during training, and slides 35–36 show
+              real examples. The word "expert" is basically shorthand for "one of the parallel FFN heads that the
+              router might pick from".</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s23">
+          <div class="slide-frame">
+            <div class="tag">Slide 23 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-23.png"
+              alt="Slide titled MoE Advantages. Sparse models -> Much larger parameters -> More information. You can increase the number of experts without affecting FLOPs. Inherently parallel (Expert Parallelism). Sparse models are good to train with data parallelism, on machines which can host all parameters.">
+            <div class="slide-caption">slide 23 · MoE advantages</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three practical advantages: (1) more parameters for the same FLOPs, (2) experts are naturally
+              parallelisable (put each expert on a different GPU), (3) training with mixed data/expert parallelism
+              scales well when your cluster can fit all the parameters somewhere.</p>
+            <h4>Why the FLOP argument is subtle</h4>
+            <p>Adding experts is <em>free</em> in FLOPs per token as long as you keep <em>K</em> (number of active
+              experts) fixed. If you go from 8 experts to 128 experts but still activate 2 per token, the FLOP cost
+              per token is unchanged; only memory increases (you have to <em>store</em> all 128, even if you use
+              only 2 at a time). That's why MoE models tend to be memory-limited rather than compute-limited on
+              inference — a fundamentally different scaling regime than dense models.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s24">
+          <div class="slide-frame">
+            <div class="tag">Slide 24 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-24.png"
+              alt="Slide titled MoE Why was it not popular. Complex Architecture. Training objectives are somewhat heuristic. Unstable to train.">
+            <div class="slide-caption">slide 24 · why MoE took a decade to catch on</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three reasons MoE spent most of the 2010s in the "cute idea, doesn't work in practice" pile: the
+              architecture is complicated, the training objectives (load-balancing, auxiliary losses) are heuristic,
+              and until recently MoE models were notoriously unstable to train.</p>
+            <h4>What changed</h4>
+            <p>Google's Switch Transformer (2021) and GShard (2020) demonstrated MoE working reliably at massive
+              scale. Then DeepSeek V2/V3, Mixtral, and Qwen3 showed the same approach works for open-source
+              language models. The training instability has been reduced by the tricks we'll see in §7 (auxiliary
+              losses) and §8 (load-balancing). MoE is now the default for frontier models — the last three years'
+              worth of top-of-leaderboard open-weight models are almost all MoE.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s25">
+          <div class="slide-frame">
+            <div class="tag">Slide 25 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-25.png"
+              alt="Side-by-side comparison of two decoder blocks. Left (Transformer): inputs + positional embedding, layer norm, masked self-attention, add, layer norm, Feed forward network, add, repeat N times. Right (Mixture of Experts): identical up to the second layer norm, then a Router selects one of several parallel expert FFNs, then add. Caption 'Refer to Lecture 4 on FFNNs'.">
+            <div class="slide-caption">slide 25 · transformer vs Mixture-of-Experts, in a picture</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two decoder blocks drawn side by side. They are <em>identical</em> everywhere except the FFN. Where
+              the plain transformer has one dense feed-forward network, the MoE version has a <em>router</em>
+              followed by several parallel expert FFNs, of which only the selected ones ("Selected experts") run.</p>
+            <h4>What to notice</h4>
+            <p>Attention, normalization, residual connections, and the block structure all stay the same. MoE is a
+              drop-in replacement for the FFN block only. That's why it's so easy to convert a dense model to MoE
+              (or vice versa): everything before and after the FFN stays put. The MoE change is entirely
+              local — one sub-layer swap.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s26">
+          <div class="slide-frame">
+            <div class="tag">Slide 26 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-26.png"
+              alt="A concrete DeepSeek example. Left (dense): a stack of 61 transformer blocks, each with RoPE, Multi-head Latent Attention, RMSNorm, and a Feed forward (SwiGLU) sub-layer expanded on the side. Right (MoE): identical block, except the Feed forward is replaced by an MoE layer with 256 expert FFNs plus 1 shared expert, a router selecting the top experts. Resource savings box: Model size is 671B, but only 1 (shared) + 8 experts active per token, only 37B parameters active per inference step.">
+            <div class="slide-caption">slide 26 · a concrete example — DeepSeek V3 dense vs sparse</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The same comparison as slide 25, but drawn against a real production model — DeepSeek V3/R1. Left:
+              the dense architecture (Multi-head Latent Attention + SwiGLU FFN). Right: the MoE version, where the
+              FFN is replaced by 256 expert FFNs plus 1 shared expert. Only 8 of the 256 routed experts (plus the
+              shared one) are activated per token.</p>
+            <h4>The numbers on the slide</h4>
+            <p>DeepSeek V3's dense parameter count is <strong>671B</strong>, but only <strong>37B</strong> parameters
+              are used per inference step. That's ~18× fewer active parameters than total. The savings are enormous:
+              you get the capacity of a 671B model with the compute of a 37B model. That's the whole reason companies
+              are betting hundreds of millions of GPU-hours on MoE architectures.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>MoE's win is not "the model is smarter"; it's "the model has more capacity per unit of compute". You
+                store more, activate less. Great for open-weight distribution (people can host huge models on
+                consumer hardware), great for cloud economics (more cache hits, less bandwidth).</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s27">
+          <div class="slide-frame">
+            <div class="tag">Slide 27 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-27.png"
+              alt="Diagram titled 'Typically replace MLP with MoE Layer'. Left: a plain transformer block — Self-Attention, Add + Normalize, Sparse FFN Layer, Add + Normalize. Right: two tokens 'The' and 'Dog' each get routed by a router to one of four FFNs (FFN 1..FFN 4). 'The' goes to FFN 2, 'Dog' goes to FFN 1. Only the chosen FFN runs for each token.">
+            <div class="slide-caption">slide 27 · MoE replaces the FFN, not attention</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A clearer visual of what "replace MLP with MoE" means. Two tokens (<em>The</em> and <em>Dog</em>)
+              enter the layer; the router assigns each token to a different expert; only the chosen expert's FFN
+              runs.</p>
+            <h4>What to internalise</h4>
+            <p>Routing is <em>per token</em>, not per sequence. Every position in the sequence gets its own routing
+              decision. Two adjacent tokens in the same sentence can be sent to completely different experts. That's
+              the finest granularity of specialisation the block supports.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s28">
+          <div class="slide-frame">
+            <div class="tag">Slide 28 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-28.png"
+              alt="Diagram titled 'Less Common: Use MoE for Attention Heads'. Shows a block containing two stacked sub-layers: on top, four MLPs with a Router; below, four Attention heads with a Router. LayerNorm sits under each router.">
+            <div class="slide-caption">slide 28 · MoE for attention heads too (rare)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A rarer variant: apply the mixture-of-experts idea to attention heads as well as to FFNs. The router
+              picks a subset of attention heads for each token, not just a subset of FFNs.</p>
+            <h4>Why this hasn't caught on</h4>
+            <p>Two reasons. First, attention heads are already parameter-cheap compared to FFNs (recall from slide 3
+              that attention is ~29% of total parameters, FFN is ~57%), so the payoff for making attention sparse
+              is smaller. Second, routing attention heads breaks the assumption that every position attends to
+              every other with the same head structure, which makes the KV-cache and inference plumbing much
+              messier. So in production models MoE almost always means "MoE-FFN", and attention stays dense.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s29">
+          <div class="slide-frame">
+            <div class="tag">Slide 29 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-29.png"
+              alt="Slide titled MoE Components. Three bullets: Experts. Router/Gate. Load Balancer.">
+            <div class="slide-caption">slide 29 · the three moving parts of an MoE</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>An MoE has three ingredients, and the rest of the lecture is one section per ingredient:</p>
+            <ul>
+              <li><strong>Experts</strong> (§6): the parallel FFNs themselves. What do they learn, and how do we
+                design them?</li>
+              <li><strong>Router / Gate</strong> (§7): the little network that decides which expert(s) each token
+                goes to.</li>
+              <li><strong>Load Balancer</strong> (§8): the auxiliary loss that stops one expert from hogging every
+                token while others starve.</li>
+            </ul>
+            <h4>What to take from it</h4>
+            <p>The router is the hard part. Experts are just FFNs; load balancing is one extra loss term. But
+              routing is a discrete decision (which expert?), which means you can't backprop through it directly,
+              and you have to invent tricks (softmax-with-noise, straight-through estimators) to train it at all.
+              §7 is where the technical difficulty lives.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s30">
+          <div class="slide-frame">
+            <div class="tag">Slide 30 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-30.png"
+              alt="Slide titled MoE What can vary. Three bullets: Expert sizes. Routing Algorithms. Training Objectives.">
+            <div class="slide-caption">slide 30 · MoE design axes</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three knobs when you design an MoE: how big each expert is (many small vs few large), the routing
+              algorithm (top-K, hash, RL — see §7), and the training loss (do you add an auxiliary balancing loss,
+              a capacity penalty, etc.).</p>
+            <h4>What the field has converged on</h4>
+            <p>The current default: <em>many small experts</em> (256+ in DeepSeek, 512+ in Qwen 3.5), <em>top-K
+                routing with K = 8</em>, and <em>an auxiliary load-balancing loss</em>. Deviations from this exist,
+              but if you're just starting an MoE project this is the recipe you inherit.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="experts">
+        <h2><span class="num">§6</span>Experts: <em>what do they actually learn?</em></h2>
+        <p class="section-intro">
+          Slides 31–39 focus on the first ingredient. What does an
+          expert become during training? Are there "verb experts" and
+          "noun experts"? The answer is yes, sort of, but the
+          specialisation is messier than you might expect. Two
+          modern refinements — shared experts and fine-grained
+          experts — get their own slides.
+        </p>
+
+        <div class="slide" id="s31">
+          <div class="slide-frame">
+            <div class="tag">Slide 31 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-31.png"
+              alt="Section-title slide reading simply: Experts.">
+            <div class="slide-caption">slide 31 · section marker — Experts</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section break. The next nine slides are about the experts themselves.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s32">
+          <div class="slide-frame">
+            <div class="tag">Slide 32 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-32.png"
+              alt="Slide titled Experts. Four questions posed as bullets: What do the experts actually learn? How do we ensure complementary and non-redundant knowledge? Is it really 'divine benevolence'? How do we interpret these complex models? Footer: Refer to Lecture 4 on FFNNs.">
+            <div class="slide-caption">slide 32 · four open questions about experts</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four questions that don't have clean answers. What do experts learn? How do we make sure they
+              specialise on different things (not all learning the same thing)? Is expert-training really as
+              mysterious as Shazeer's "divine benevolence" line suggests? And can we interpret what any given
+              expert has learned?</p>
+            <h4>Why these are honest questions</h4>
+            <p>The MoE community understands routing and load-balancing well, but the question of "what did expert
+              #47 learn" is genuinely open. Some experts have interpretable specialisations (see slide 35), but
+              most do not — they end up as generic feature extractors that don't correspond to any human category.
+              The next few slides show what the interpretable ones look like.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s33">
+          <div class="slide-frame">
+            <div class="tag">Slide 33 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-33.png"
+              alt="Slide titled Experts. Four bullets: Sort of a 'misnomer'. At least one expert is activated in the process. Experts are typically FFNNs. Specialize on different things during training.">
+            <div class="slide-caption">slide 33 · four honest sentences about experts</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four blunt clarifications: (1) "expert" is a misnomer — nobody hand-designs them; (2) at least one
+              expert always runs (top-K with K ≥ 1); (3) each expert is just a plain FFNN; (4) specialisation is
+              emergent, not enforced.</p>
+            <h4>Why bullet 2 matters</h4>
+            <p>You can't have K = 0 — a token has to go <em>somewhere</em>. The choice is usually K = 1
+              (Switch Transformer's "hard routing"), K = 2 (GShard, Mixtral, Grok), or larger K (up to 8 in
+              DeepSeek). Larger K gives more parameter usage per token and more stable training but higher
+              inference cost. K = 1 gives maximum sparsity but is the hardest to train stably.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s34">
+          <div class="slide-frame">
+            <div class="tag">Slide 34 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-34.png"
+              alt="Dense Model vs Sparse Model comparison. Left (dense, pink box): all hidden neurons in a wide fully-connected FFN participate — most are shown as coloured (active). Right (sparse, teal box): the wide hidden layer is split into 4 experts (blocks of 3 neurons each). Only Expert 4 is coloured; Experts 1, 2, 3 are white and labeled 'not activated'. Expert 4 is labeled 'activated'.">
+            <div class="slide-caption">slide 34 · dense vs sparse, at the neuron level</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The dense-vs-sparse comparison zoomed all the way in. Left: a plain FFN — all hidden neurons run for
+              every input. Right: the same neurons split into 4 experts (groups), only one of which is activated
+              per input.</p>
+            <h4>What to take from it</h4>
+            <p>MoE isn't inventing new neurons; it's <em>grouping</em> existing neurons and adding a router that
+              picks one group. The total parameter count is (roughly) the same as a dense FFN with the same total
+              hidden width — but only one group's worth of computation runs per token. So "more experts" is
+              literally "same neurons, split into more groups, one group active per token".</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s35">
+          <div class="slide-frame">
+            <div class="tag">Slide 35 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-35.png"
+              alt="Table titled 'Expert specialization', from Zoph et al. 2022 (ST-MoE). Rows: Sentinel tokens (layers 1, 4, 6); Punctuation (layers 2, 6 — routed tokens include commas, colons, semicolons, dashes); Conjunctions and articles (layers 3, 6 — 'the the the the the', 'a and and and and'); Verbs (layer 1 — 'died falling identified fell closed left posted lost'); Visual descriptions with color and spatial position (layer 0 — 'her over her know dark upper dark outer center upper blue inner yellow'); Proper names (layer 1 — 'A Mart Gr Mart Kent Med Cor Tri Ca Mart R Mart Lorraine Colin Ken Sam'); Counting and numbers (layer 1 — '37 19. 6. 27 Seven 25 4, 54').">
+            <div class="slide-caption">slide 35 · what experts specialise on (Zoph et al., 2022)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A landmark result from the ST-MoE paper (Zoph, Bello, Fedus and others, 2022). They looked at what
+              tokens each expert was receiving after training and found clean, interpretable specialisations:
+              punctuation experts, verb experts, number experts, proper-name experts, colour-and-spatial-descriptor
+              experts. The specialisations show up at different depths — some are shallow (verbs at layer 1),
+              others deep (punctuation at layer 6).</p>
+            <h4>Why this is exciting and misleading</h4>
+            <p>Exciting because it validates the whole MoE premise — experts really do learn to specialise, and the
+              specialisations are the kind of linguistic categories a human would recognise. Misleading because
+              these are the <em>cleanest</em> examples cherry-picked from many experts; most experts don't
+              correspond to any single linguistic category. The paper's own message is that specialisation is real
+              but partial — the model doesn't cleanly decompose into "one expert per topic".</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s36">
+          <div class="slide-frame">
+            <div class="tag">Slide 36 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-36.png"
+              alt="Cartoon of a sparse model handling the input 'What is 1 + 1 ?'. Four experts labelled Punctuation, Verbs, Conjunctions, and Numbers. The router activates only the Numbers expert; the other three are labelled 'not activated'. The Numbers expert produces the output '2'.">
+            <div class="slide-caption">slide 36 · a toy example of expert selection</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Cartoon of the specialisation from slide 35 in action. The input is "What is 1 + 1 ?"; the router
+              sees a number-heavy prompt and routes to the "Numbers" expert; that expert produces "2".</p>
+            <h4>How literal to take this</h4>
+            <p>Not very. Real MoE routing decisions are made per token, not per sequence, and the "Numbers expert"
+              in slide 35 handles individual number tokens, not "arithmetic questions" as a whole. But the cartoon
+              is a fair mental model of what MoE is trying to achieve: send each token to the expert whose learned
+              specialisation matches it best.</p>
+          </div>
+        </div>
+
+        <div class="slide-strip cols-2" id="s37s38">
+          <div class="slide">
+            <div class="slide-frame">
+              <div class="tag">Slide 37 / 58</div>
+              <img src="../assets/slides/L8-feed-forward/slide-37.png"
+                alt="Full DeepSeek MoE + Multi-Head Latent Attention (MLA) block. Left column: transformer block ×L containing Attention with RMS Norm around it, then Feed-Forward Network with RMS Norm. Top-right zoom: DeepSeekMoE with Ns shared experts (green) always active, plus Nr routed experts (blue) of which the router picks Top-Kr. Bottom-right zoom: Multi-Head Latent Attention showing how Q and K are split into content and rotary parts, latent c_t^Q and c_t^{KV}, and the KV cache stored during inference.">
+              <div class="slide-caption">slide 37 · DeepSeek MoE — full block</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>The complete DeepSeek V2/V3 block, showing MoE and Multi-Head Latent Attention (MLA) together. The
+                FFN is replaced by a mixture of two kinds of experts: <em>shared</em> (green, always active) and
+                <em>routed</em> (blue, chosen by a router). MLA (bottom) is a separate innovation that compresses
+                the KV cache; we're focused on the top-right box.
+              </p>
+              <h4>What to notice</h4>
+              <p>DeepSeek's design has <em>two kinds</em> of experts — a small pool of shared experts that always
+                run, and a large pool of routed experts that fire selectively. The shared experts absorb generic
+                computations (grammar, common patterns) so the routed experts can specialise on the harder cases.
+                Zoom in on the next slide.</p>
+            </div>
+          </div>
+          <div class="slide">
+            <div class="slide-frame">
+              <div class="tag">Slide 38 / 58</div>
+              <img src="../assets/slides/L8-feed-forward/slide-38.png"
+                alt="Zoom of the DeepSeekMoE block from slide 37. The input hidden vector u_t is fed to a Router that outputs Top-K_r scores. Left group: N_s shared experts (green) that are always active on every token. Right group: N_r routed experts (blue); the router picks the top K_r of them (bar plot shows scores). Selected experts' outputs are weighted by their router scores and summed to produce Output Hidden h_t'.">
+              <div class="slide-caption">slide 38 · DeepSeek MoE — the routing box, close up</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Zoom of the MoE box. Shared experts (green,
+                <em>N<sub>s</sub></em>) all run every time. Routed experts (blue, <em>N<sub>r</sub></em>) have a
+                score computed by the router; only the top <em>K<sub>r</sub></em> fire, weighted by their scores,
+                and their outputs are summed with the shared experts' output.</p>
+              <h4>Why shared experts help</h4>
+              <p>Without shared experts, every routed expert has to learn some common baseline knowledge — every
+                expert needs to know how to handle punctuation, common function words, etc. That's wasteful
+                (redundancy across experts) and destabilising (a token routed to a poorly-trained expert produces
+                garbage). Shared experts pull that common knowledge into a always-on module, freeing the routed
+                experts to actually specialise.</p>
+              <div class="callout aha">
+                <div class="callout-label">✦ Key takeaway</div>
+                <p>Shared + routed is a form of <em>curriculum</em>: shared experts do the easy work, routed experts
+                  are free to be weird. It's a small architectural change with a large training-stability payoff.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s39">
+          <div class="slide-frame">
+            <div class="tag">Slide 39 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-39.png"
+              alt="Three MoE layout designs shown side by side. (a) Conventional Top-2 Routing: router picks K=2 of N experts. (b) + Fine-grained Expert Segmentation: each of the N experts is split into two smaller ones (now 2N experts total), and K=4 are chosen — same active parameters, more granularity. (c) + Shared Experts Isolation (DeepSeekMoE): one of the small experts is always active as a shared expert (green), and K=3 of the remaining routed experts are picked. Caption: 'Smaller (size), larger (count) number of routed experts + a few shared experts that are always on.'">
+            <div class="slide-caption">slide 39 · three generations of MoE design</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The evolution of MoE routing in one figure. (a) is the classical top-2 setup from GShard. (b) is
+              Shazeer's fine-grained variant: instead of <em>N</em> big experts pick top-2, you split each expert
+              in half to get 2<em>N</em> smaller experts and pick top-4. Same active parameters, more granularity.
+              (c) is DeepSeek's addition on top: one expert becomes a shared always-on module.</p>
+            <h4>Why fine-grained wins</h4>
+            <p>Combinatorially. Choosing 4 out of 2<em>N</em> experts gives many more possible "team combinations"
+              than choosing 2 out of <em>N</em>. So each token has richer specialisation, without changing the
+              per-token compute. The trade-off is more routing overhead (the router now has to score 2<em>N</em>
+              experts instead of <em>N</em>) — but routing is cheap compared to the FFN itself, so it's essentially
+              free.</p>
+            <div class="callout link">
+              <div class="callout-label">→ Trend to watch</div>
+              <p>Modern MoE models keep pushing this: DeepSeek V3 has 256 routed experts + 1 shared, Qwen 3.5 has
+                512, and the general direction is "even smaller, even more numerous". The limit is set by memory
+                bandwidth — at some point the router itself becomes the bottleneck.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="routing">
+        <h2><span class="num">§7</span>Routing: <em>how does a token pick an expert?</em></h2>
+        <p class="section-intro">
+          Slides 40–51 dig into the router — the second MoE
+          ingredient and the hardest one to train. Three algorithms
+          are covered: <em>hash routing</em> (fixed hash function,
+          mostly academic), <em>top-K routing</em> (learnable, the
+          current standard), and <em>reinforcement learning routing</em>
+          (used in early MoE work, mostly abandoned). Then the
+          familiar failure mode: without care, the same handful of
+          experts get all the tokens.
+        </p>
+
+        <div class="slide" id="s40">
+          <div class="slide-frame">
+            <div class="tag">Slide 40 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-40.png"
+              alt="Section-title slide reading simply: Routing.">
+            <div class="slide-caption">slide 40 · section marker — Routing</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section break. The next twelve slides are about how the router works, how it's trained, and how it
+              fails.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s41">
+          <div class="slide-frame">
+            <div class="tag">Slide 41 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-41.png"
+              alt="Slide titled Routing/Gating. Bullets: Most critical component of MoE architecture. Used to choose the expert. Also a FFNN. Outputs probabilities which are used to select the best matching expert.">
+            <div class="slide-caption">slide 41 · the router, in four bullets</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four claims: the router is the most important MoE component, it picks the expert, it's itself an
+              FFNN, and it outputs a probability distribution over experts.</p>
+            <h4>Why "most critical"</h4>
+            <p>Experts are ordinary FFNs — you can't really design them wrong. Load balancing is one loss term. But
+              the router has to make a discrete choice (which expert?) using continuous gradients, has to spread
+              tokens roughly evenly across experts, and has to converge to a stable routing policy without
+              collapsing into "always send everyone to expert #3". Get any of those wrong and the whole MoE trains
+              badly. So the router is where the technical trickiness lives.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s42">
+          <div class="slide-frame">
+            <div class="tag">Slide 42 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-42.png"
+              alt="Slide titled Routing Algorithms. Three families: Hash Routing (mostly academic use). Top K Routing (with two sub-bullets Token Choice and Expert Choice). Reinforcement Learning.">
+            <div class="slide-caption">slide 42 · the three families of routing algorithm</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A map of the routing landscape. Three families: hash routing (deterministic, non-learned), top-K
+              routing (learned, dominates production), and reinforcement-learning routing (learned by policy
+              gradient, mostly historical).</p>
+            <h4>What the sub-bullets under Top-K mean</h4>
+            <p>Top-K comes in two flavours: <em>Token Choice</em> (each token picks its K favourite experts) and
+              <em>Expert Choice</em> (each expert picks its favourite tokens, up to a fixed capacity). The two are
+              duals of each other — one is the transpose of the other. Slide 45 has the picture.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s43">
+          <div class="slide-frame">
+            <div class="tag">Slide 43 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-43.png"
+              alt="Diagram of an MoE Layer. Router box contains a small FFNN feeding a Softmax; output is a probability distribution over experts (e.g., .45, .19, .05, .31). The 'selected expert' with highest probability (FFNN 1 with p=.45) is activated; FFNN 2, FFNN 3, FFNN 4 are not activated. The activation of FFNN 1 is multiplied by its gate value p=.45 as a weighted activation.">
+            <div class="slide-caption">slide 43 · what a router actually looks like</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A single MoE layer, drawn in detail. The router is a tiny FFNN + softmax. It outputs a probability
+              distribution over the <em>N</em> experts (e.g., .45, .19, .05, .31 for four experts). The expert with
+              the highest score (FFNN 1, p = .45) runs; its output is multiplied by that gate value (0.45) before
+              being emitted.</p>
+            <h4>Why we multiply by the gate value</h4>
+            <p>Two reasons. First, it lets the router's gradients flow back through the multiplication — the router
+              gets a training signal proportional to how well its chosen expert performed. Second, it acts as a
+              soft weighting: an expert chosen with p = 0.9 contributes more strongly than one chosen with p = 0.4,
+              which is a mild regularisation on the router's confidence.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s44">
+          <div class="slide-frame">
+            <div class="tag">Slide 44 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-44.png"
+              alt="Hash Routing diagram. Two tokens x_1 ('The') and x_2 ('Dog') each go through a Hash Function that deterministically assigns them to an expert. 'The' -> FFN 2; 'Dog' -> FFN 4. The selected expert produces the output that flows into Add + Normalize.">
+            <div class="slide-caption">slide 44 · hash routing — the non-learned baseline</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Hash routing. Each token's identity is passed through a fixed hash function, and the hash chooses
+              the expert. No learning involved.</p>
+            <h4>Why it works, and why it's still not used</h4>
+            <p>Because good hash functions distribute inputs evenly, hash routing automatically load-balances — no
+              auxiliary loss needed. It's a nice sanity check that MoE can work at all even with a stupid router.
+              But because the routing is fixed, experts can't specialise on <em>meaning</em> — the token "bank"
+              (river vs financial) will always go to the same expert regardless of context, wasting the whole
+              point of MoE. Hash routing appears in academic papers as a strong baseline; production MoE always
+              uses learned routing.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s45">
+          <div class="slide-frame">
+            <div class="tag">Slide 45 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-45.png"
+              alt="Three panels showing Top-k Routing variants. Each panel has a matrix of experts (E1..E5) × tokens (T1..T3) filled with router scores. (a) Token chooses expert: for each column (token), highlight the top-K rows — pick K experts per token. (b) Expert chooses token: for each row (expert), highlight the top-K columns — pick K tokens per expert. (c) Global routing via optimization: solve a joint assignment problem over the whole matrix at once.">
+            <div class="slide-caption">slide 45 · three flavours of Top-K routing</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The router produces a score matrix: rows are experts, columns are tokens. Three ways to pick who
+              goes where:</p>
+            <ul>
+              <li><strong>(a) Token chooses expert</strong>: for each token (column), take the top-K experts by
+                score. The classic Switch/GShard approach.</li>
+              <li><strong>(b) Expert chooses token</strong>: for each expert (row), take the top-K tokens by score,
+                up to that expert's capacity. Guarantees each expert gets exactly the same number of tokens.</li>
+              <li><strong>(c) Global routing via optimisation</strong>: solve the full assignment problem across all
+                tokens and experts jointly (e.g., balanced Sinkhorn assignment).</li>
+            </ul>
+            <h4>Trade-offs</h4>
+            <p>(a) is what most models use — simple, fast, but requires an explicit load-balancing loss to prevent
+              expert collapse. (b) automatically balances the load but can drop tokens (if too many tokens want
+              the same expert, some are ignored). (c) has the best balance but adds an optimisation step in the
+              forward pass, which is expensive and hard to parallelise. In practice (a) with a good aux loss wins
+              on ease of implementation.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s46">
+          <div class="slide-frame">
+            <div class="tag">Slide 46 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-46.png"
+              alt="Top-2 Routing diagram. Two tokens x_1='The' and x_2='Dog'. Each goes through the Router, which produces a probability distribution over four experts. For 'The', the top two are FFN 1 (p=0.65) and FFN 4 (p=0.3); both run. For 'Dog', the top two are FFN 1 (p=0.8) and FFN 3 (p=0.15). Each token's output is a weighted sum of the two selected expert outputs.">
+            <div class="slide-caption">slide 46 · top-2 routing in action</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The most common concrete instance. For each token, the top 2 experts by router score both run; their
+              outputs are weighted by their router probabilities and summed. This is the GShard / Mixtral scheme.</p>
+            <h4>Why K = 2 specifically</h4>
+            <p>K = 1 (Switch Transformer) is the simplest but hardest to stabilise — a single bad routing decision
+              wastes the whole token. K = 2 gives each token a "backup" expert whose gradient still flows, which
+              stabilises training substantially. K &gt; 2 gives diminishing returns because you spend more compute
+              for smaller quality gains. So K = 2 hit a sweet spot for years. DeepSeek's fine-grained approach
+              pushes K higher (up to 8) but only because the experts themselves are much smaller — the total active
+              parameter count stays comparable.</p>
+          </div>
+        </div>
+
+        <div class="slide-strip cols-2" id="s47s48">
+          <div class="slide">
+            <div class="slide-frame">
+              <div class="tag">Slide 47 / 58</div>
+              <img src="../assets/slides/L8-feed-forward/slide-47.png"
+                alt="Slide titled Expert Selection and Output. Three steps: 1) Multiply the input x by the router matrix W: H(x) = x * W. 2) Apply softmax to create probability distribution: G(x) = Softmax(H(x)). 3) Multiply the output of each router with each selected expert and sum: y = sum G(x) * E(x).">
+              <div class="slide-caption">slide 47 · the router in three formulas</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>The router's forward pass, written down. <em>H</em>(<em>x</em>) = <em>xW</em> is the raw score
+                vector. <em>G</em>(<em>x</em>) = Softmax(<em>H</em>(<em>x</em>)) is the probability distribution.
+                <em>y</em> = ∑ <em>G</em>(<em>x</em>) · <em>E</em>(<em>x</em>) is the final output — sum of expert
+                outputs weighted by router probabilities.
+              </p>
+              <h4>Where top-K enters</h4>
+              <p>These formulas describe the <em>dense</em> mixture — if you actually ran all experts and combined
+                them, that's what you'd get. Top-K routing modifies step 3 to sum only over the top-K experts,
+                zeroing the rest. That's the actual compute saving: you don't run <em>E</em>(<em>x</em>) for
+                experts that got low router scores.</p>
+            </div>
+          </div>
+          <div class="slide">
+            <div class="slide-frame">
+              <div class="tag">Slide 48 / 58</div>
+              <img src="../assets/slides/L8-feed-forward/slide-48.png"
+                alt="Diagram of Expert Selection and Output. Input x -> Router W (small matrix) -> raw scores H(x) -> Softmax -> gate distribution G(x) (bar chart). The top expert (FFNN 1) is highlighted; FFNN 2, 3, 4 are dimmed. FFNN 1's activation E(x) is multiplied element-wise by the top gate value and the result y is emitted.">
+              <div class="slide-caption">slide 48 · the router in a diagram</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>The formulas from slide 47, drawn as boxes. Input matrix <em>x</em> → router weights <em>W</em> →
+                raw scores <em>H</em>(<em>x</em>) → softmax → gates <em>G</em>(<em>x</em>) → element-wise
+                multiplication with the selected expert's output <em>E</em>(<em>x</em>) → final <em>y</em>.</p>
+              <h4>Why this picture is worth staring at</h4>
+              <p>All the interesting design decisions in MoE compress into the little bar chart in the middle. Is
+                the top gate very confident (a spiked bar)? Then routing is stable and one expert dominates. Is the
+                distribution flat? Then routing is uncertain and you're paying for compute you can't use well. Load
+                balancing loss (§8) is essentially "make the average of these bar charts, across the batch, look
+                uniform".</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s49">
+          <div class="slide-frame">
+            <div class="tag">Slide 49 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-49.png"
+              alt="Slide titled 'Models using Top k'. Bullets: Switch Transformer - K=1. Gshard - K=2. Grok. Mixtral. Qwen. DeepSeek.">
+            <div class="slide-caption">slide 49 · who uses what</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Real models and their K values. Switch Transformer picks 1 expert per token; GShard picks 2. Grok,
+              Mixtral, Qwen, DeepSeek all use top-K variants.</p>
+            <h4>What this tells you</h4>
+            <p>The top-K family owns production MoE. Every model on the slide uses learned, per-token, top-K
+              routing — no exceptions. Hash routing and RL routing are not on this list. The next slide is one of
+              those rare "wait, RL routing existed?" moments.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s50">
+          <div class="slide-frame">
+            <div class="tag">Slide 50 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-50.png"
+              alt="Diagram of Reinforcement Learning routing. Two tokens x_1='The' and x_2='Dog' each go through the Router; instead of a differentiable softmax, the router makes a hard choice and receives an RL loss of the form Loss += -log(p) * R where R is a reward signal. Note in top right: 'Used in earlier works, not popular anymore'.">
+            <div class="slide-caption">slide 50 · RL routing — the abandoned road</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Reinforcement-learning routing. The router picks one expert (a hard, discrete choice), the network
+              computes its loss, and that loss is fed back to the router as a reward using a
+              log-likelihood-times-reward gradient — REINFORCE, essentially. Note the label in the top right: "used
+              in earlier works, not popular anymore".</p>
+            <h4>Why it fell out of favour</h4>
+            <p>Because REINFORCE gradients are noisy — the router gets a scalar reward per token and has to figure
+              out which of its many possible actions was the right one. That's a hard credit-assignment problem
+              and it makes MoE training very slow. Top-K with a softmax gate is trained end-to-end with dense
+              gradients (through the gate value), which is orders of magnitude more sample-efficient. Once the
+              community figured out that trick, RL routing was retired.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s51">
+          <div class="slide-frame">
+            <div class="tag">Slide 51 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-51.png"
+              alt="Slide titled 'Routing Challenges'. Same expert(s) always chosen — uneven distribution (load) on experts. Some experts are hardly trained. Some experts train faster than others.">
+            <div class="slide-caption">slide 51 · what goes wrong with vanilla routing</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The classic MoE failure mode. Without any intervention, top-K routing tends to collapse: a handful
+              of experts win the initial routing scores, receive most of the training signal, become better at
+              the task, get chosen even more, and so on — a positive feedback loop that leaves most experts
+              starved and untrained.</p>
+            <h4>Why this happens</h4>
+            <p>The router is trained to send tokens to the expert that will give the lowest loss. Early in
+              training, one expert is randomly better than the others, so it gets picked more, so its gradient
+              signal is stronger, so it improves faster, so it gets picked even more. Meanwhile the losers get
+              no training signal because they don't run. The system converges to using ~1 expert regardless of
+              how many were defined. §8 is the entire fix for this — the auxiliary load-balancing loss.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>If you build an MoE and forget to add a load-balancing loss, it will train to something that looks
+                superficially fine but is really just a dense model in disguise. Always check expert utilisation
+                during training.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="load-balance">
+        <h2><span class="num">§8</span>Load balancing: <em>keeping every expert busy</em></h2>
+        <p class="section-intro">
+          Slides 52–56 are the fix for the collapse from slide 51.
+          Three techniques: adding Gaussian noise to router scores
+          (make the top-K decision noisy so losers occasionally win),
+          switching from "token chooses expert" to "expert chooses
+          token" (forces even distribution), and adding an auxiliary
+          loss that penalises uneven expert usage.
+        </p>
+
+        <div class="slide" id="s52">
+          <div class="slide-frame">
+            <div class="tag">Slide 52 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-52.png"
+              alt="Section-title slide reading simply: Load Balancing.">
+            <div class="slide-caption">slide 52 · section marker — Load Balancing</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section break. The last five slides of the MoE arc are all load balancing.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s53">
+          <div class="slide-frame">
+            <div class="tag">Slide 53 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-53.png"
+              alt="Slide titled Load Balancing. Bullet: To achieve equal importance among experts during training and inference.">
+            <div class="slide-caption">slide 53 · the load-balancing goal</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>One sentence: we want each expert to be used roughly equally, both during training (so each expert
+              gets enough gradient) and inference (so each expert's compute contributes to the answer, and
+              hardware isn't idle waiting on one over-loaded expert).</p>
+            <h4>What "equal" means in practice</h4>
+            <p>Not exactly uniform. Some experts genuinely handle harder or rarer inputs; a slightly uneven
+              distribution is fine. What you're really trying to prevent is the pathological case from slide 51 —
+              one expert doing all the work, the others essentially unused. A common target is that the most-used
+              expert should get at most 3-4× the tokens of the least-used one.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s54">
+          <div class="slide-frame">
+            <div class="tag">Slide 54 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-54.png"
+              alt="Slide titled Load Balancing How. Three bullets: Add Gaussian Noise. Token Choice Routing. Load Balancing Loss (Auxiliary Loss).">
+            <div class="slide-caption">slide 54 · three ways to enforce balance</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three balancing techniques, in increasing sophistication:</p>
+            <ul>
+              <li><strong>Add Gaussian noise</strong> to router scores. This is called <em>noisy top-K</em>. It gives
+                losing experts an occasional lucky win, breaking the winner-take-all feedback loop.</li>
+              <li><strong>Token Choice / Expert Choice Routing</strong>. Expert Choice (from slide 45) automatically
+                balances because each expert takes a fixed capacity of tokens.</li>
+              <li><strong>Auxiliary Loss</strong>. Add a loss term to the total training loss that penalises uneven
+                expert usage. Slide 56 makes this precise.</li>
+            </ul>
+            <p>Modern MoE uses all three, but the auxiliary loss is the workhorse — it does the majority of the
+              balancing.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s55">
+          <div class="slide-frame">
+            <div class="tag">Slide 55 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-55.png"
+              alt="Slide titled Expert Capacity. Terminology: Experts split across devices, each with unique parameters and standard feed-forward computation. Expert Capacity: batch size of each expert, calculated as (tokens_per_batch / num_experts) × capacity_factor. Capacity Factor: used when calculating expert capacity — allows more buffer to help mitigate token overflow during routing. Two diagrams show three devices, each with one expert. Capacity Factor 1.0 (tight fit, some tokens dropped shown as red dashed arrow); Capacity Factor 1.5 (extra empty slots, no drops but across-device communication).">
+            <div class="slide-caption">slide 55 · expert capacity and the capacity factor</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two related terms.</p>
+            <ul>
+              <li><strong>Expert capacity</strong> is the max number of tokens one expert can accept in a batch. If
+                more want to route to it, the excess get "dropped" (their FFN output is just the identity — they
+                skip the FFN altogether).</li>
+              <li><strong>Capacity factor</strong> = how much headroom you allow. Capacity factor 1.0 means each
+                expert accepts exactly (batch tokens / num experts) — no headroom, uneven routing drops tokens.
+                Capacity factor 1.5 means 50% headroom — fewer drops, but each expert holds empty slots and hardware
+                is under-utilised.</li>
+            </ul>
+            <h4>The trade-off in a picture</h4>
+            <p>Left panel (capacity factor 1.0): tight; one token gets dropped (red dashed arrow) because its
+              preferred expert is already full. Right panel (capacity factor 1.5): looser; no drops, but two
+              devices have empty slots. This is a hardware-level knob: cranking capacity factor higher wastes
+              compute but avoids drops; lowering it saves compute but loses information.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s56">
+          <div class="slide-frame">
+            <div class="tag">Slide 56 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-56.png"
+              alt="Slide titled Load Balancing Loss. Step 1: Sum the router values for each expert over the entire batch — Importance Score per expert = sum G(x). Step 2: Calculate Coefficient of Variation, CV = sigma / mu. Step 3: Auxiliary loss aims to lower the CV — Load balancing Loss = w * CV, where w is a constant scaling factor.">
+            <div class="slide-caption">slide 56 · the auxiliary load-balancing loss</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The concrete formula. Three steps:</p>
+            <ol>
+              <li>For each expert, sum the router probabilities across the batch — call this the <em>importance
+                  score</em> of that expert.</li>
+              <li>Compute the coefficient of variation
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+                  <mtext>CV</mtext>
+                  <mo>=</mo>
+                  <mi>σ</mi>
+                  <mo>/</mo>
+                  <mi>μ</mi>
+                </math>
+                of these importance scores. High CV = uneven usage. Low CV = balanced usage.
+              </li>
+              <li>Add <em>w</em> · CV to the total training loss, for some small scaling constant <em>w</em>.</li>
+            </ol>
+            <h4>Why this specific formula</h4>
+            <p>The coefficient of variation is a scale-invariant measure of dispersion — it doesn't matter whether
+              your importance scores are on the order of 100 or 10<sup>6</sup>, the CV captures how <em>relatively
+                uneven</em> they are. So the same loss weight works across model sizes without re-tuning. The
+              constant <em>w</em> is typically 0.01–0.1 — small enough not to dominate the main task loss, big
+              enough to keep the router balanced. If you set <em>w</em> too high the router just spreads tokens
+              uniformly regardless of the actual task, and specialisation dies.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>All of load balancing is one auxiliary loss term. It's a two-line change to the training code and
+                it's the difference between an MoE that trains and an MoE that collapses to one expert.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="landscape">
+        <h2><span class="num">§9</span>The FFN landscape today</h2>
+        <p class="section-intro">
+          Two closing slides. A historical table of what activation
+          and layer type each big transformer used (2017 → 2025), then
+          a 2026 snapshot showing where things are now: MoE
+          everywhere, active parameters an order of magnitude below
+          total parameters, and Kimi K3's SiTU-GLU already in the
+          table.
+        </p>
+
+        <div class="slide" id="s57">
+          <div class="slide-frame">
+            <div class="tag">Slide 57 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-57.png"
+              alt="Table titled 'Transformer Models over Years'. Rows: Original Base — FF layer, ReLU activation. GPT — FF, GeLU. mT5-L — FF, GeGLU. GPT3 — (blank layer), GeLU. LLaMA — FF, SwiGLU. Mistral — FF, SwiGLU. LLaMA 3.2 — FF, SwiGLU. DeepSeek V3 — MoE, SwiGLU. Qwen 3 — MoE, SwiGLU. Kimi K2 — MoE, SwiGLU.">
+            <div class="slide-caption">slide 57 · the evolution of FFN choices, one row per model</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Ten famous transformers, each labelled with its layer type (FF vs MoE) and its activation function.
+              Read down the column and you can trace the whole story of this lecture.</p>
+            <h4>What to notice</h4>
+            <ul>
+              <li>Activations went <em>ReLU → GELU → GLU-family (GeGLU, SwiGLU)</em>. SwiGLU has been the
+                consensus choice since LLaMA (2023).</li>
+              <li>Layer type went <em>FF → MoE</em>. All three of the most recent models on the list
+                (DeepSeek V3, Qwen 3, Kimi K2) are MoE.</li>
+              <li>Nobody uses ReLU any more. The 2017 default has been retired.</li>
+            </ul>
+            <p>Every one of these transitions was covered in this lecture. If you understand this table, you
+              understand what the lecture is about.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s58">
+          <div class="slide-frame">
+            <div class="tag">Slide 58 / 58</div>
+            <img src="../assets/slides/L8-feed-forward/slide-58.png"
+              alt="Table titled 'Transformer Models over Years - 2026'. Columns: Model, NN type, Num Experts, Activation, total Params, Active Params (in red). Rows: Qwen 3.5 — MoE, 512 experts, 397B total / 17B active. Sarvam — MoE, 128, 105B / 10.3B. Nemotron 3 Ultra — Mamba + Latent MoE, 550B / 55B. Mistral 4 — MoE, 128, 119B / 6B. Gemma 4 — FFNN, 12B / dash. Qwen 3.6 — MoE, 256, 35B / 3B. DeepSeek V4 — MoE, 384, SwiGLU, 1.6T / 49B. Kimi k3 — FFNN + LatentMoE, 896, SiTU-GLU, 2.8T / 104B.">
+            <div class="slide-caption">slide 58 · the 2026 snapshot</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The equivalent table for 2026. Eight of the most recent big models, with total parameters and (in red)
+              active parameters per token. Kimi K3's SiTU-GLU is on the last row.</p>
+            <h4>What to take from it</h4>
+            <ul>
+              <li>The ratio of total-to-active parameters is dramatic — 1.6T / 49B for DeepSeek V4 is a ~33×
+                compression at inference; 2.8T / 104B for Kimi K3 is ~27×. This is the MoE bet, taken to its logical
+                conclusion.</li>
+              <li>Expert counts have exploded. Kimi K3 has 896 experts per layer, Qwen 3.5 has 512. Compare to
+                Switch Transformer (2021)'s 128.</li>
+              <li>Gemma 4 is a lonely dense model in a MoE-dominated table — presumably a deliberate choice for
+                edge / on-device deployment, where memory bandwidth is more precious than compute.</li>
+              <li>Kimi K3's SiTU-GLU is the newest data point in the deck. It's already competing with SwiGLU as
+                the default gated activation.</li>
+            </ul>
+            <div class="callout link">
+              <div class="callout-label">→ Where the field is going</div>
+              <p>Two directions from here. First, fine-grained MoE keeps growing — expect models with thousands of
+                tiny experts in the next year. Second, activation functions are being redesigned specifically for
+                low-precision inference (SiTU-GLU is the first example). Both are FFN-block innovations. Every
+                other part of the transformer is roughly stable in 2026; the FFN is the only sub-layer still
+                evolving fast. Which is why this lecture is so long.</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="section-intro" style="margin-top:1.5rem">
+          Zoom out. The FFN is the single largest chunk of a
+          transformer and it does the model's actual thinking. The
+          2017 recipe — two dense linear layers with a ReLU — has
+          been progressively upgraded: gated (SwiGLU family), soft-capped
+          (SiTU-GLU), and then split into sparsely-activated experts
+          (MoE). Every big model in production today is the composition
+          of these three moves: SwiGLU-flavoured gates, applied inside
+          MoE-style expert FFNs, with careful load balancing so the
+          router doesn't collapse. Once you understand this stack,
+          you can read almost any new frontier-model paper on
+          publication day.
+        </p>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="7-normalization.html">
+          <span class="dir">← back</span>
+          <span class="lbl">07 · Normalization</span>
+        </a>
+        <a class="next" href="../seminars/vishal-rao-data-creation.html">
+          <span class="dir">next →</span>
+          <span class="lbl">Seminar · Data Creation</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Lecture 08 · Feed Forward NN · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#deck">at a glance</a>
+        <a href="#position">§1 where the FFN sits</a>
+        <a href="#what-ffn">§2 what the FFN is</a>
+        <a href="#glu">§3 gated linear units</a>
+        <a href="#situ">§4 SiTU-GLU &amp; spikes</a>
+        <a href="#why-moe">§5 dense → MoE</a>
+        <a href="#experts">§6 experts</a>
+        <a href="#routing">§7 routing</a>
+        <a href="#load-balance">§8 load balancing</a>
+        <a href="#landscape">§9 landscape today</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>
