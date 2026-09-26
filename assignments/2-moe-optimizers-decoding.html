@@ -1831,8 +1831,8 @@ def update(self, finite):
       <section id="viva">
         <h2><span class="num">§10</span>Viva scripts</h2>
         <p class="section-intro">
-          Each answer below is written to be said out loud or drawn on a whiteboard. The first five are the
-          "walk me through" questions; practise them with the shape table of §5 open.
+          Each answer below is written to be said out loud or drawn on a whiteboard. Practise the
+          "walk me through" ones with the shape table of §5 open. RoPE is left out here because it was asked in the A1 viva; §4 still has the derivation.
         </p>
         <ol class="qa">
           <li>
@@ -1867,19 +1867,71 @@ def update(self, finite):
           </li>
           <li>
             <details>
-              <summary>Explain RoPE mathematically. Why does it encode relative position?</summary>
+              <summary>Did your experts specialise by language?</summary>
               <div class="a">
-                <p>Draw a 2-D vector and rotate it. Then write:</p>
-                <p>"Split each 64-dim head vector into 32 pairs (feature i with feature i+32). At position m, rotate
-                  pair i by the angle m·θᵢ, where θᵢ = 10000^(−2i/64). As a matrix, q′ = R(mθ)q and k′ = R(nθ)k.
-                  The attention score is q′ᵀk′ = qᵀR(mθ)ᵀR(nθ)k. A rotation's transpose is the rotation by the
-                  negative angle, and rotations compose by adding angles, so this is qᵀR((n−m)θ)k. Only n − m is
-                  left: the score depends on the distance, not on where the pair sits. Rotations preserve length,
-                  so RoPE changes direction only. In code, x1 and x2 are the two halves, and the output is
-                  [x1·cos − x2·sin, x1·sin + x2·cos], which is the two rows of the rotation matrix."</p>
-                <p>If they push: the 32 frequencies span from 1 radian per token to about 10⁻⁴, like clock hands at
-                  different speeds, so both short and long distances are resolved. Only q and k are rotated, not v.
-                  It is applied in every layer, not once at the input.</p>
+                <p>"Only weakly. The routing heatmaps count which expert each token picks, split by language (vi, ja)
+                  and by side (source or English target). I measure how different two rows are with the total
+                  variation distance, ½·Σ|p − q|, where 0 means identical routing. Between Vietnamese and Japanese
+                  source tokens it never goes above 0.19 in any layer of any variant, and for top-2 it stays at or
+                  below 0.09. The bigger split is source versus target: for top-1 it reaches 0.55 in the last layer.
+                  So experts divided the work more by <em>what the token is doing</em>, reading the input or writing
+                  English, than by which language the input is in. The load-balancing loss also pushes every
+                  expert towards an equal share, which works against strong specialisation."</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Why did the active-matched MoE do best and top-1 worst?</summary>
+              <div class="a">
+                <p>"All four total-matched variants have 37.5M parameters, but a top-1 token only uses 24.9M of them
+                  and top-2 or shared+top-1 uses 29.1M, while the dense model uses all 37.5M. BLEU follows active
+                  parameters: top-1 is lowest (vi 43.97, ja 34.34), top-2 and shared are in the middle, dense is at
+                  45.21 and 35.54. The active-matched variant uses the same 37.5M per token as dense but has 54M in
+                  total, and it is the only one to beat dense (45.40, 35.76). So at this scale, quality is set
+                  mostly by compute per token, and MoE's extra total parameters add a little on top."</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Walk me through one top-p sampling step.</summary>
+              <div class="a">
+                <p>"I take the last position's logits, (B, V), divide by the temperature, and sort each row from high
+                  to low. Softmax gives the sorted probabilities, and cumsum the running total. A token is removed
+                  if the mass before it, cum − prob, is already at least p, so the token that crosses p is kept and
+                  the first token is always kept. Removed logits become −∞, and scatter puts the sorted values back
+                  in vocabulary order. Softmax again renormalises the kept tokens, and multinomial draws one per
+                  row. For probabilities 0.5, 0.3, 0.15, 0.05 and p = 0.7 it keeps the first two, which become 0.625
+                  and 0.375."</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Walk me through a Sophia step, including where the Hessian comes from.</summary>
+              <div class="a">
+                <p>"Every step: momentum m = β₁m + (1−β₁)g, weight decay, then each weight moves by
+                  −η·sign(m)·min(|m| / (ρ·bs·h + ε), 1). That is a Newton-style step, momentum divided by curvature,
+                  clipped so no weight moves more than η. Every 10 steps I refresh h. I sample fake labels from the
+                  model's own predicted distribution, compute the cross-entropy against them and backpropagate.
+                  The squared gradient ĝ⊙ĝ estimates the diagonal of the Gauss–Newton matrix, and
+                  h = β₂h + (1−β₂)ĝ². The loss is a mean over bs tokens, so h is multiplied by bs in the step to undo
+                  that scaling."</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Which optimiser won, and why might that be?</summary>
+              <div class="a">
+                <p>"At 1× the dataset the validation losses were Muon 3.917, MARS 4.068, AdamW 4.105, Sophia 4.383
+                  and Lion 4.496, and Muon also had the highest BLEU (1.28). Muon orthogonalises each weight matrix's
+                  update, so every direction of the matrix moves by a similar amount instead of a few dominant
+                  directions taking the whole step. That seems to make faster progress per token in this short,
+                  small-model regime. MARS beat AdamW slightly through its gradient-difference correction. Lion and
+                  Sophia were behind at the learning rates the sweep picked. The sweep only ran on 0.2× of the data,
+                  so their best settings for the full run may differ."</p>
               </div>
             </details>
           </li>
