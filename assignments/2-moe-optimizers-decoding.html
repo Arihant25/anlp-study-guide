@@ -1,0 +1,2056 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Assignment 2 · MoE, Optimizers, Decoding — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Every line of the Assignment 2 code for Advanced NLP, Monsoon 2026 IIIT-H, explained with tensor shapes: the PyTorch operations, the decoder-only transformer, RoPE derived mathematically, Mixture of Experts, five optimisers written from scratch, and greedy/top-k/top-p/beam decoding.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical"
+    href="https://arihant25.github.io/anlp-study-guide/assignments/2-moe-optimizers-decoding.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="MoE, Optimizers and Decoding, line by line | ANLP Assignment 2">
+  <meta property="og:description"
+    content="Every line of a decoder-only transformer, a Mixture-of-Experts layer, AdamW/MARS/Lion/Muon/Sophia and four decoding strategies, with the shape of every tensor.">
+  <meta property="og:url"
+    content="https://arihant25.github.io/anlp-study-guide/assignments/2-moe-optimizers-decoding.html">
+  <meta name="twitter:card" content="summary">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"MoE, Optimizers and Decoding, line by line","url":"https://arihant25.github.io/anlp-study-guide/assignments/2-moe-optimizers-decoding.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"assignment","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+  <style>
+    /* page-local: line-by-line tables, where column 1 is code and the last column is a shape */
+    table.tbl.lines td:first-child { white-space: nowrap; }
+    table.tbl.lines td:first-child code { font-size: .8em; }
+    table.tbl td.shape, table.tbl th.shape { font-family: var(--font-mono); font-size: .8rem; white-space: nowrap; color: var(--ink-2); }
+    pre.code.io { border-style: solid; font-size: .8rem; }
+  </style>
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#read">§0 · How to read this page</a>
+        <a href="#toolkit">§1 · The tensor toolkit</a>
+        <a href="#math">§2 · The only maths you need</a>
+        <a href="#model">§3 · model.py, line by line</a>
+        <a href="#rope">§4 · RoPE, derived</a>
+        <a href="#trace">§5 · One forward pass, every shape</a>
+        <a href="#p1">§6 · Part 1 · Mixture of Experts</a>
+        <a href="#p2">§7 · Part 2 · Optimisers</a>
+        <a href="#p3">§8 · Part 3 · Decoding</a>
+        <a href="#rest">§9 · utils.py, main.py, tests</a>
+        <a href="#viva">§10 · Viva scripts</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="../index.html">← Home</a>
+        <a href="1-transformers-from-scratch.html">A1 · Transformers from Scratch</a>
+        <a href="../lectures/4-positional-encoding.html">L4 · Positional Encoding</a>
+        <a href="../lectures/5-attention.html">L5 · Attention</a>
+        <a href="../lectures/8-feed-forward.html">L8 · Feed Forward</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Assignment 02 · due 4 Oct 2026</div>
+        <h1>MoE, optimisers, decoding — <em>every line, every shape</em>.</h1>
+        <p class="lead">
+          This page walks through the Assignment 2 code one line at a time. For every line it says what the
+          operation does, what the tensor looks like before and after, and the maths behind it. It assumes you
+          know Python and nothing about PyTorch or machine learning.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Assignment 02</span>
+          <span class="pill">decoder-only transformer</span>
+          <span class="pill">MoE · AdamW · MARS · Lion · Muon · Sophia</span>
+          <span class="pill">greedy · top-k · top-p · beam</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ §0 -->
+      <section id="read">
+        <h2><span class="num">§0</span>How to read this page</h2>
+        <p class="section-intro">
+          Almost every confusing line in ML code is a <strong>shape change</strong>: a block of numbers gets
+          split, stacked, reordered or multiplied. If you can say the shape before and after each line, you can
+          explain the forward pass. So this page writes a shape next to every line, using the letters below.
+        </p>
+
+        <table class="tbl">
+          <thead>
+            <tr><th>Letter</th><th>Meaning</th><th>Value in this repo</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>B</strong></td><td>batch: how many sequences go through the model at once</td><td>varies; Part 2 uses 32 (run as 2 chunks of 16), Part 3 uses 64 prompts</td></tr>
+            <tr><td><strong>L</strong></td><td>sequence length: tokens per sequence</td><td>≤ 256 in Part 1, 512 in Part 2</td></tr>
+            <tr><td><strong>D</strong></td><td><code>d_model</code>, the length of the vector that represents one token</td><td>512 (Pythia: 768)</td></tr>
+            <tr><td><strong>H</strong></td><td><code>n_heads</code>, number of attention heads</td><td>8</td></tr>
+            <tr><td><strong>hd</strong></td><td><code>head_dim = D / H</code>, vector length inside one head</td><td>64</td></tr>
+            <tr><td><strong>V</strong></td><td>vocabulary size: how many different tokens exist</td><td>24,000 (Part 1), 16,000 (Part 2), 50,304 (Pythia)</td></tr>
+            <tr><td><strong>F</strong></td><td><code>d_ff</code>, hidden width of the dense MLP</td><td>2048</td></tr>
+            <tr><td><strong>E</strong></td><td>number of routed experts</td><td>4 (3 in the shared-expert variant)</td></tr>
+            <tr><td><strong>k</strong></td><td><code>top_k</code>, experts each token is sent to</td><td>1 or 2</td></tr>
+            <tr><td><strong>N</strong></td><td>B · L, all tokens of a batch laid out in one list</td><td>—</td></tr>
+            <tr><td><strong>W</strong></td><td>beam width</td><td>1, 2, 4</td></tr>
+          </tbody>
+        </table>
+
+        <p>
+          When a shape is written <code>(B, L, D)</code>, read it as "B sequences, each of L tokens, each token a list
+          of D numbers". In Python terms it is a list of B lists of L lists of D floats. The shape traces in §5
+          were printed by running the real <code>src/model.py</code> with B = 2 and L = 6, so they are not guesses.
+        </p>
+
+        <div class="callout mechanism">
+          <div class="callout-label">what the three parts are</div>
+          <p><strong>Part 1</strong> trains a small GPT-style model (37M parameters) to translate Vietnamese and
+            Japanese into English, with five different feed-forward layers: one dense MLP and four
+            Mixture-of-Experts variants.</p>
+          <p><strong>Part 2</strong> takes the dense model and pretrains it on English text five times, once with
+            each optimiser written from scratch: AdamW, MARS, Lion, Muon and Sophia-G.</p>
+          <p><strong>Part 3</strong> loads the pretrained Pythia-160M model and writes greedy, top-k, top-p and beam
+            search decoding on top of its <code>forward()</code>.</p>
+        </div>
+      </section>
+
+      <!-- ================================================================ §1 -->
+      <section id="toolkit">
+        <h2><span class="num">§1</span>The tensor toolkit: every strange function name</h2>
+        <p class="section-intro">
+          A <em class="term">tensor</em> is a rectangular block of numbers: a Python nested list where every inner
+          list has the same length. PyTorch stores it as one flat run of numbers in memory plus a shape that says
+          how to read it. Every function below either builds a tensor, changes how it is read (its shape), or does
+          arithmetic on it. Each one has a tiny input and output, copied from a real run.
+        </p>
+
+        <h3 id="tk-build">§1.1 · Making tensors</h3>
+        <table class="tbl lines">
+          <thead><tr><th>Call</th><th>What it does</th><th>Example → result</th></tr></thead>
+          <tbody>
+            <tr><td><code>torch.arange(n)</code></td><td>Python's <code>range</code>, but returns a tensor</td><td><code>arange(5)</code> → <code>[0,1,2,3,4]</code>; <code>arange(0,8,2)</code> → <code>[0,2,4,6]</code></td></tr>
+            <tr><td><code>torch.zeros(shape)</code>, <code>ones</code></td><td>a block of 0s or 1s</td><td><code>zeros(2,3)</code> → 2 rows of 3 zeros</td></tr>
+            <tr><td><code>torch.full(shape, v)</code></td><td>a block filled with <code>v</code></td><td><code>full((2,4), pad_id)</code> → a 2×4 grid of pad tokens</td></tr>
+            <tr><td><code>torch.empty(shape)</code></td><td>allocate without filling (contents are garbage until written)</td><td>used when every slot is written right after</td></tr>
+            <tr><td><code>zeros_like(x)</code>, <code>full_like(x, v)</code></td><td>same shape, dtype and device as <code>x</code></td><td><code>zeros_like(p)</code> → an optimiser buffer shaped like the weight</td></tr>
+            <tr><td><code>torch.tensor(list)</code></td><td>turn a Python list into a tensor</td><td><code>tensor([5,6,7])</code></td></tr>
+            <tr><td><code>torch.randn(shape)</code></td><td>random numbers from a normal distribution (mean 0, std 1)</td><td>used in tests</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="tk-shape">§1.2 · Reading a shape: <code>dim</code>, <code>-1</code>, <code>keepdim</code></h3>
+        <p>
+          <code>x.shape</code> is a tuple like <code>(2, 6, 512)</code>. <code>x.size(0)</code> is its first entry, <code>x.dim()</code>
+          is how many entries it has (3), <code>x.numel()</code> is their product (6,144 numbers). An <em>axis</em>
+          (also called a dim) is one position in that tuple. Negative numbers count from the end, exactly like
+          Python list indexing, so <code>dim=-1</code> always means the last axis.
+        </p>
+        <p>
+          A <em class="term">reduction</em> such as <code>sum</code>, <code>mean</code>, <code>max</code> or <code>softmax</code> works
+          along one axis. <code>x.sum(-1)</code> on a <code>(2, 3)</code> tensor adds the 3 numbers in each row and returns
+          shape <code>(2,)</code>: the axis you reduce over disappears. With <code>keepdim=True</code> it stays as a
+          length-1 axis, giving <code>(2, 1)</code>. You keep it so the result can later be divided back into the
+          original, as in RMSNorm (§3.2).
+        </p>
+        <pre class="code"><code>x = torch.tensor([[1., 2., 3.],
+                  [4., 5., 6.]])      # shape (2, 3)
+x.sum(-1)                             # tensor([ 6., 15.])        shape (2,)
+x.sum(-1, keepdim=True)               # tensor([[ 6.], [15.]])    shape (2, 1)
+x / x.sum(-1, keepdim=True)           # each row divided by its own sum -&gt; rows add to 1</code></pre>
+
+        <h3 id="tk-view">§1.3 · <code>view</code> and <code>reshape</code>: same numbers, new shape</h3>
+        <p>
+          The numbers sit in memory in <strong>row-major order</strong>: the last index changes fastest, like
+          reading a book left to right, then down. <code>view</code> keeps that flat run and only changes how it is cut
+          into rows. The product of the new shape must equal the old one. One entry may be <code>-1</code>, meaning
+          "work this out for me".
+        </p>
+        <pre class="code"><code>x = torch.arange(12)                  # [0, 1, 2, ..., 11]        shape (12,)
+x.view(3, 4)                          # [[ 0,  1,  2,  3],
+                                      #  [ 4,  5,  6,  7],
+                                      #  [ 8,  9, 10, 11]]        shape (3, 4)
+x.view(2, -1).shape                   # (2, 6)  -- 12 / 2 = 6 was inferred</code></pre>
+        <p>
+          <code>reshape</code> does the same thing, but it also works when the numbers are no longer laid out in
+          row-major order (after a <code>transpose</code>, below); then it quietly makes a copy. <code>view</code> refuses
+          and raises an error in that case. That is the only difference.
+        </p>
+        <p>
+          <code>flatten(0, 1)</code> merges axes 0 and 1: <code>(B, L, V)</code> becomes <code>(B·L, V)</code>. It is the same as
+          <code>reshape(B*L, V)</code>. Losses use it so that every token is one row.
+        </p>
+
+        <h3 id="tk-unsqueeze">§1.4 · <code>unsqueeze</code>, <code>squeeze</code>, <code>[None]</code>: adding and removing size-1 axes</h3>
+        <p>
+          <code>x.unsqueeze(i)</code> inserts a new axis of length 1 at position <code>i</code>. No numbers change; only the
+          shape gains a 1. <code>x.squeeze(i)</code> removes a length-1 axis. Indexing with <code>None</code> is shorthand
+          for the same thing: <code>x[None]</code> is <code>x.unsqueeze(0)</code> and <code>x[:, None]</code> is
+          <code>x.unsqueeze(1)</code>.
+        </p>
+        <pre class="code"><code>t = torch.arange(3)                   # [0, 1, 2]                 shape (3,)
+t.unsqueeze(0)                        # [[0, 1, 2]]               shape (1, 3)   one row
+t.unsqueeze(1)                        # [[0], [1], [2]]           shape (3, 1)   one column
+t[:, None]                            # same as unsqueeze(1)</code></pre>
+        <p>
+          Why would anyone want a length-1 axis? Because of broadcasting, the next rule. A length-1 axis is a
+          promise: "use this same value for every position along this axis".
+        </p>
+
+        <h3 id="tk-broadcast">§1.5 · Broadcasting: how tensors of different shapes combine</h3>
+        <p>
+          When you add or multiply two tensors of different shapes, PyTorch lines the shapes up <strong>from the
+          right</strong>. For each pair of axes, the sizes must be equal, or one of them must be 1. A size-1 axis
+          is stretched (without copying) to match the other. A missing axis on the left counts as 1.
+        </p>
+        <table class="tbl">
+          <thead><tr><th>Left</th><th>Right</th><th>Result</th><th>Where it appears</th></tr></thead>
+          <tbody>
+            <tr><td class="shape">(B, L, D)</td><td class="shape">(B, L, 1)</td><td class="shape">(B, L, D)</td><td>RMSNorm divides each token by its own RMS</td></tr>
+            <tr><td class="shape">(B, L, D)</td><td class="shape">(D,)</td><td class="shape">(B, L, D)</td><td>RMSNorm multiplies every token by the same gain vector</td></tr>
+            <tr><td class="shape">(B, H, L, 32)</td><td class="shape">(B, 1, L, 32)</td><td class="shape">(B, H, L, 32)</td><td>RoPE uses the same angles in every head</td></tr>
+            <tr><td class="shape">(1, P, P)</td><td class="shape">(B, 1, P)</td><td class="shape">(B, P, P)</td><td>causal mask AND padding mask in greedy decoding</td></tr>
+            <tr><td class="shape">(n, D)</td><td class="shape">(n, 1)</td><td class="shape">(n, D)</td><td>each MoE expert output scaled by its token's gate</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="tk-expand">§1.6 · <code>expand</code> vs <code>repeat</code> vs <code>repeat_interleave</code></h3>
+        <p>
+          <code>expand</code> is broadcasting done on purpose: it makes a size-1 (or missing) axis look bigger without
+          copying anything. <code>repeat</code> and <code>repeat_interleave</code> really copy.
+        </p>
+        <pre class="code"><code>torch.arange(4).expand(2, 4)          # [[0, 1, 2, 3],
+                                      #  [0, 1, 2, 3]]   no copy: both rows are the same memory
+torch.arange(2).repeat_interleave(3)  # [0, 0, 0, 1, 1, 1]   each element copied 3 times in a row</code></pre>
+        <p>
+          <code>model.py</code> uses <code>torch.arange(start, start + L).expand(B, L)</code> to give every sequence in the
+          batch the same position numbers 0…L−1. Beam search uses <code>arange(B).repeat_interleave(W)</code> to say
+          "row 0 of the prompt batch becomes rows 0…W−1 of the beam batch".
+        </p>
+
+        <h3 id="tk-permute">§1.7 · <code>permute</code> and <code>transpose</code>: reordering axes</h3>
+        <p>
+          <code>x.transpose(1, 2)</code> swaps axes 1 and 2. <code>x.permute(2, 0, 3, 1, 4)</code> is a general reorder: the
+          new axis 0 is the old axis 2, the new axis 1 is the old axis 0, and so on. This really changes which
+          number is at which index, unlike <code>view</code>, which never moves a number relative to the flat order.
+        </p>
+        <pre class="code"><code>a = torch.arange(6).view(2, 3)        # [[0, 1, 2],
+                                      #  [3, 4, 5]]
+a.transpose(0, 1)                     # [[0, 3], [1, 4], [2, 5]]   rows became columns
+a.view(3, 2)                          # [[0, 1], [2, 3], [4, 5]]   NOT the same thing</code></pre>
+        <div class="callout gotcha">
+          <div class="callout-label">why attention writes <code>.transpose(1, 2).reshape(...)</code></div>
+          <p>After a transpose the numbers are no longer in row-major order in memory, so <code>view</code> would raise
+            an error. <code>reshape</code> makes the needed copy. You will see
+            <code>out.transpose(1, 2).reshape(B, L, D)</code> at the end of attention for exactly this reason.</p>
+        </div>
+
+        <h3 id="tk-chunk">§1.8 · <code>chunk</code>, <code>cat</code>, <code>stack</code>: splitting and joining</h3>
+        <pre class="code"><code>a = torch.arange(8).view(2, 4)        # [[0, 1, 2, 3], [4, 5, 6, 7]]
+x1, x2 = a.chunk(2, dim=-1)           # x1 = [[0, 1], [4, 5]]   x2 = [[2, 3], [6, 7]]
+torch.cat([x1, x2], dim=-1)           # back to [[0, 1, 2, 3], [4, 5, 6, 7]]
+torch.stack([x1, x2])                 # shape (2, 2, 2): a NEW axis in front</code></pre>
+        <p>
+          <code>cat</code> joins along an axis that already exists. <code>stack</code> creates a new axis. RoPE uses
+          <code>chunk</code> to split each head vector into two halves and <code>cat</code> to glue the rotated halves back.
+        </p>
+
+        <h3 id="tk-index">§1.9 · Indexing with tensors</h3>
+        <p>Plain slicing works like Python lists, with one slice per axis:</p>
+        <ul>
+          <li><code>logits[:, -1]</code> on <code>(B, L, V)</code> takes the last position of every sequence: result
+            <code>(B, V)</code>. The indexed axis disappears.</li>
+          <li><code>seqs[:, -1:]</code> keeps the axis: result <code>(B, 1)</code>.</li>
+          <li><code>cache.k[layer][:, :, 5:9] = k</code> writes into positions 5…8 of the third axis.</li>
+        </ul>
+        <p>
+          <strong>Indexing with an integer tensor</strong> replaces every integer with the row it names. If
+          <code>cos</code> has shape <code>(257, 32)</code> and <code>pos</code> has shape <code>(B, L)</code> of integers, then
+          <code>cos[pos]</code> has shape <code>(B, L, 32)</code>: each position number became its row of 32 cosines. This is
+          also exactly what an embedding table does with token ids.
+        </p>
+        <p>
+          <strong>Indexing with a boolean tensor</strong> keeps only the entries where it is <code>True</code> and
+          flattens them into one axis. <code>topi[sel]</code> with <code>topi</code> of shape <code>(B, L, k)</code> and
+          <code>sel</code> of shape <code>(B, L)</code> gives <code>(count of True, k)</code>.
+        </p>
+        <p>
+          Comparisons such as <code>topi == e</code> or <code>logits &lt; kth</code> return boolean tensors of the same shape.
+          <code>&amp;</code>, <code>|</code> and <code>~</code> are element-wise AND, OR and NOT on them.
+        </p>
+
+        <h3 id="tk-misc">§1.10 · The remaining names, alphabetically</h3>
+        <table class="tbl lines">
+          <thead><tr><th>Call</th><th>What it does</th><th>Example → result</th></tr></thead>
+          <tbody>
+            <tr><td><code>x.argmax(-1)</code></td><td>index of the largest value along the axis</td><td><code>[0.1, 0.7, 0.2]</code> → <code>1</code></td></tr>
+            <tr><td><code>x.clamp(min=0)</code></td><td>replace values below 0 with 0 (and/or above a max)</td><td><code>[-1, -1, 0, 1]</code> → <code>[0, 0, 0, 1]</code></td></tr>
+            <tr><td><code>x.cumsum(-1)</code></td><td>running total along the axis</td><td><code>[0, 0, 1, 1, 1]</code> → <code>[0, 0, 1, 2, 3]</code></td></tr>
+            <tr><td><code>torch.eye(n)</code></td><td>identity matrix: True/1 on the diagonal only</td><td><code>eye(3)</code> → 1s at (0,0), (1,1), (2,2)</td></tr>
+            <tr><td><code>F.one_hot(t, E)</code></td><td>each integer becomes a length-E vector with a single 1</td><td><code>2</code> → <code>[0, 0, 1, 0]</code></td></tr>
+            <tr><td><code>torch.bincount(t, minlength=E)</code></td><td>how often each integer 0…E−1 occurs</td><td><code>[0, 2, 2, 3]</code> → <code>[1, 0, 2, 1]</code></td></tr>
+            <tr><td><code>out.index_add_(0, idx, y)</code></td><td>for each j: <code>out[idx[j]] += y[j]</code></td><td>MoE: add each expert's output back to its token's row</td></tr>
+            <tr><td><code>x.index_select(0, idx)</code></td><td>pick rows <code>idx</code> (repeats allowed)</td><td>beam search: copy the cache rows of surviving beams</td></tr>
+            <tr><td><code>x.masked_fill(mask, v)</code></td><td>put <code>v</code> wherever <code>mask</code> is True</td><td>set filtered-out logits to −∞</td></tr>
+            <tr><td><code>torch.multinomial(p, 1)</code></td><td>draw one index at random, with probabilities <code>p</code></td><td><code>[0.625, 0.375]</code> → 0 about 62.5% of the time</td></tr>
+            <tr><td><code>(t == e).nonzero(as_tuple=True)</code></td><td>the coordinates of every True, one index tensor per axis</td><td><code>[[T,F],[F,T]]</code> → <code>([0, 1], [0, 1])</code></td></tr>
+            <tr><td><code>torch.outer(a, b)</code></td><td>every product <code>a[i]·b[j]</code>, as a matrix</td><td><code>outer([0,1,2], [1, 0.1])</code> → <code>[[0, 0], [1, 0.1], [2, 0.2]]</code></td></tr>
+            <tr><td><code>x.scatter(-1, idx, src)</code></td><td>write <code>src[..., j]</code> into position <code>idx[..., j]</code></td><td>top-p: put sorted logits back in vocabulary order</td></tr>
+            <tr><td><code>x.sort(-1, descending=True)</code></td><td>sorted values plus the original index of each</td><td><code>[0.5, 0.05, 0.3]</code> → values <code>[0.5, 0.3, 0.05]</code>, indices <code>[0, 2, 1]</code></td></tr>
+            <tr><td><code>x.topk(k, -1)</code></td><td>the k largest values and their indices</td><td><code>[0.1, 0.6, 0.3].topk(2)</code> → <code>([0.6, 0.3], [1, 2])</code></td></tr>
+            <tr><td><code>torch.tril(x)</code></td><td>keep the lower triangle (row ≥ column), zero the rest</td><td>the causal mask: token i may see tokens 0…i</td></tr>
+            <tr><td><code>torch.where(c, a, b)</code></td><td>element-wise <code>a if c else b</code></td><td>finished sequences keep emitting pad</td></tr>
+            <tr><td><code>x.softmax(-1)</code>, <code>log_softmax</code>, <code>logsumexp</code></td><td>see §2.3</td><td></td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="tk-inplace">§1.11 · The trailing underscore, and the optimiser helpers</h3>
+        <p>
+          A method ending in <code>_</code> changes the tensor <strong>in place</strong> instead of returning a new
+          one: <code>p.mul_(0.9)</code> means <code>p *= 0.9</code>. The optimisers use these because they update big weight
+          tensors every step and do not want copies. Three of them combine several operations:
+        </p>
+        <table class="tbl lines">
+          <thead><tr><th>Call</th><th>Means</th></tr></thead>
+          <tbody>
+            <tr><td><code>m.lerp_(g, w)</code></td><td><code>m = m + w·(g − m) = (1 − w)·m + w·g</code>, a weighted average ("linear interpolation")</td></tr>
+            <tr><td><code>v.addcmul_(a, b, value=c)</code></td><td><code>v = v + c·a·b</code> (element-wise product)</td></tr>
+            <tr><td><code>p.addcdiv_(a, b, value=c)</code></td><td><code>p = p + c·a / b</code> (element-wise division)</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="tk-dtype">§1.12 · dtype, device, gradients</h3>
+        <ul>
+          <li><strong>dtype</strong> is the number format. <code>float32</code> (fp32) is the normal float.
+            <code>float16</code> (fp16) and <code>bfloat16</code> (bf16) use half the memory and run faster on GPUs, but
+            fp16's largest value is 65,504 and its smallest positive normal value is about 6·10⁻⁵, so big sums and
+            tiny gradients go wrong. <code>.float()</code> converts to fp32, <code>.to(dtype)</code> to anything,
+            <code>.type_as(x)</code> to whatever <code>x</code> is, <code>.long()</code> to 64-bit integers.</li>
+          <li><strong>device</strong> is where the tensor lives: <code>"cpu"</code> or <code>"cuda"</code> (the GPU).
+            Tensors must be on the same device to be combined. <code>.to(dev)</code> moves one.</li>
+          <li><strong>gradients</strong>: PyTorch records every operation so that <code>loss.backward()</code> can
+            compute, for every weight <code>p</code>, how much the loss would change if <code>p</code> changed. The answer is
+            stored in <code>p.grad</code>, with the same shape as <code>p</code>. <code>@torch.no_grad()</code> turns the recording
+            off (for evaluation and inside optimisers). <code>.detach()</code> gives a copy of a value with no history.
+            <code>float(t)</code> or <code>t.item()</code> turns a one-number tensor into a Python float, <code>.tolist()</code>
+            into a Python list.</li>
+        </ul>
+
+        <h3 id="tk-nn">§1.13 · The <code>nn</code> building blocks</h3>
+        <table class="tbl lines">
+          <thead><tr><th>Name</th><th>What it is</th></tr></thead>
+          <tbody>
+            <tr><td><code>nn.Module</code></td><td>a class with learnable weights and a <code>forward</code> method. Calling <code>model(x)</code> runs <code>forward(x)</code>.</td></tr>
+            <tr><td><code>nn.Parameter(t)</code></td><td>marks a tensor as a learnable weight, so the optimiser updates it</td></tr>
+            <tr><td><code>nn.Linear(a, b)</code></td><td>a weight matrix <code>W</code> of shape <code>(b, a)</code>. It maps the <strong>last axis</strong> from length a to length b: <code>y = x @ W.T</code>. <code>(B, L, a)</code> → <code>(B, L, b)</code>. Every other axis is untouched.</td></tr>
+            <tr><td><code>nn.Embedding(V, D)</code></td><td>a table of V rows of length D. Given integer ids of shape <code>(B, L)</code> it returns the rows: <code>(B, L, D)</code></td></tr>
+            <tr><td><code>nn.ModuleList([...])</code></td><td>a Python list of modules that PyTorch knows about (so their weights are found)</td></tr>
+            <tr><td><code>register_buffer(name, t)</code></td><td>a tensor that belongs to the module and moves with it to the GPU, but is not learned</td></tr>
+            <tr><td><code>model.train()</code> / <code>model.eval()</code></td><td>switch dropout on/off. Nothing else in this repo depends on it.</td></tr>
+            <tr><td><code>nn.Dropout(p)</code></td><td>during training, zero each value with probability p. Here p = 0, so it does nothing.</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="tk-a1">§1.14 · Worked example from A1: <code>mask = mp.view(B*nb, 1, 1, W)</code></h3>
+        <p>
+          This line comes from the A1 BLT local encoder. With §1.3–§1.5 you can now read it. The code first pads
+          the byte sequence up to a multiple of the window size W, then cuts it into windows and treats every
+          window as its own little sequence:
+        </p>
+        <pre class="code"><code>xp = _pad_to_multiple(x, W)        # (B, nb*W, D)   padded bytes
+nb = xp.size(1) // W               # number of windows per sequence
+xb = xp.view(B * nb, W, D)         # (B*nb, W, D)   each window is now one "sequence" in the batch
+mask = mp.view(B * nb, 1, 1, W)    # (B*nb, 1, 1, W) padding flag for each key in each window</code></pre>
+        <p>
+          Take B = 2 sequences of 300 bytes and W = 128. Padding gives 384 = 3 × 128, so nb = 3. The view turns
+          <code>(2, 384, D)</code> into <code>(6, 128, D)</code>. Because of row-major order, rows 0–2 are the three windows of
+          sequence 0 and rows 3–5 are the three windows of sequence 1. The padding mask <code>mp</code> has shape
+          <code>(2, 384)</code>, one flag per byte, and the same view cuts it the same way.
+        </p>
+        <p>
+          Inside attention the score tensor has shape <code>(B·nb, H, W, W)</code> = <code>(6, H, 128, 128)</code>: for each
+          window, each head, each query byte, each key byte. The mask is <code>(6, 1, 1, 128)</code>. Line them up from
+          the right:
+        </p>
+        <table class="tbl">
+          <thead><tr><th>Axis</th><th>scores</th><th>mask</th><th>Meaning of the mask's size</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>6</td><td>6</td><td>one mask per window</td></tr>
+            <tr><td>1</td><td>H</td><td>1</td><td>the same for every head</td></tr>
+            <tr><td>2</td><td>128 queries</td><td>1</td><td>the same for every query byte</td></tr>
+            <tr><td>3</td><td>128 keys</td><td>128</td><td>one flag per key byte</td></tr>
+          </tbody>
+        </table>
+        <p>
+          So the two 1s say: "if key byte t of window j is padding, no head and no query may look at it". In
+          that A1 code True meant "hide", which is why the causal mask was OR-ed in with
+          <code>mask | causal_mask(W)</code>: a <code>(128, 128)</code> causal mask broadcasts against
+          <code>(6, 1, 1, 128)</code> to <code>(6, 1, 128, 128)</code>, hiding a key if it is padding <em>or</em> in the
+          future. Finally <code>out.view(B, nb * W, D)[:, :L]</code> glues the windows back into sequences and cuts off
+          the padding. (A2 uses the opposite convention, True = "may attend", because that is what
+          <code>F.scaled_dot_product_attention</code> expects.)
+        </p>
+      </section>
+
+      <!-- ================================================================ §2 -->
+      <section id="math">
+        <h2><span class="num">§2</span>The only maths you need</h2>
+        <p class="section-intro">
+          Five ideas cover everything in this repo: the dot product, matrix multiplication, softmax, cross-entropy
+          and gradient descent. Each is short.
+        </p>
+
+        <h3 id="m-dot">§2.1 · Dot product</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>a</mi><mo>&#x000B7;</mo><mi>b</mi><mo>&#x0003D;</mo><munderover><mo>&#x02211;</mo><mrow><mi>i</mi><mo>&#x0003D;</mo><mn>1</mn></mrow><mrow><mi>d</mi></mrow></munderover><msub><mi>a</mi><mi>i</mi></msub><msub><mi>b</mi><mi>i</mi></msub></mrow></math></div>
+        <p>
+          Multiply matching entries and add. It is large and positive when the two vectors point the same way,
+          near 0 when they are unrelated, negative when they point opposite ways. Attention is "take the dot
+          product of a query with every key and see which keys score high".
+        </p>
+
+        <h3 id="m-matmul">§2.2 · Matrix multiplication and <code>nn.Linear</code></h3>
+        <p>
+          <code>A @ B</code> with A of shape <code>(n, m)</code> and B of shape <code>(m, p)</code> gives <code>(n, p)</code>: entry
+          (i, j) is the dot product of row i of A with column j of B. The inner sizes must match and disappear.
+          With more axes, <code>@</code> treats all but the last two as batch axes:
+          <code>(B, H, L, hd) @ (B, H, hd, L)</code> → <code>(B, H, L, L)</code>, one L×L matrix per sequence per head.
+        </p>
+        <p>
+          A linear layer is one matrix multiplication. <code>nn.Linear(512, 1536)</code> stores W of shape
+          <code>(1536, 512)</code> and computes <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>y</mi><mo>&#x0003D;</mo><mi>x</mi><msup><mi>W</mi><mo>&#x022A4;</mo></msup></mrow></math>. Each of the 1536 outputs is a dot product of the
+          input with one row of W, so it is a learned weighted sum of the 512 inputs. It has 512 × 1536 = 786,432
+          parameters. Training means finding good values for those numbers.
+        </p>
+
+        <h3 id="m-softmax">§2.3 · Softmax, log-softmax, logsumexp</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mtext>softmax</mtext><mo stretchy="false">&#x00028;</mo><mi>z</mi><msub><mo stretchy="false">&#x00029;</mo><mi>i</mi></msub><mo>&#x0003D;</mo><mfrac><mrow><msup><mi>e</mi><mrow><msub><mi>z</mi><mi>i</mi></msub></mrow></msup></mrow><mrow><msub><mo>&#x02211;</mo><mrow><mi>j</mi></mrow></msub><msup><mi>e</mi><mrow><msub><mi>z</mi><mi>j</mi></msub></mrow></msup></mrow></mfrac></mrow></math></div>
+        <p>
+          Softmax turns any list of real numbers ("<em class="term">logits</em>") into probabilities: all
+          positive, summing to 1, and the biggest logit gets the biggest share. Adding the same constant to every
+          logit changes nothing, so implementations subtract the maximum first to avoid overflow.
+          <code>log_softmax</code> is <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>log</mi><mtext>softmax</mtext><mo stretchy="false">&#x00028;</mo><mi>z</mi><mo stretchy="false">&#x00029;</mo></mrow></math> computed stably, and
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mtext>logsumexp</mtext><mo stretchy="false">&#x00028;</mo><mi>z</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><mi>log</mi><msub><mo>&#x02211;</mo><mi>j</mi></msub><msup><mi>e</mi><mrow><msub><mi>z</mi><mi>j</mi></msub></mrow></msup></mrow></math> is the log of the denominator. Setting a logit to −∞
+          gives it probability exactly 0, which is how every mask and filter in this repo works.
+        </p>
+        <p>
+          <strong>Temperature</strong> divides the logits first: <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mtext>softmax</mtext><mo stretchy="false">&#x00028;</mo><mi>z</mi><mo>&#x0002F;</mo><mi>T</mi><mo stretchy="false">&#x00029;</mo></mrow></math>. T &lt; 1 makes the
+          distribution sharper, T &gt; 1 flatter.
+        </p>
+
+        <h3 id="m-ce">§2.4 · Cross-entropy and perplexity</h3>
+        <p>
+          The model outputs, at every position, logits over the V tokens. The loss for that position is
+          <strong>minus the log of the probability it gave to the correct next token</strong>:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>&#x02113;</mi><mo>&#x0003D;</mo><mo>&#x02212;</mo><mi>log</mi><mtext>softmax</mtext><mo stretchy="false">&#x00028;</mo><mi>z</mi><msub><mo stretchy="false">&#x00029;</mo><mrow><mi>y</mi></mrow></msub><mo>&#x0002C;</mo><mspace width="2em" /><mi>&#x02112;</mi><mo>&#x0003D;</mo><mfrac><mrow><mn>1</mn></mrow><mrow><mi>N</mi></mrow></mfrac><munderover><mo>&#x02211;</mo><mrow><mi>t</mi><mo>&#x0003D;</mo><mn>1</mn></mrow><mrow><mi>N</mi></mrow></munderover><msub><mi>&#x02113;</mi><mi>t</mi></msub><mo>&#x0002C;</mo><mspace width="2em" /><mtext>PPL</mtext><mo>&#x0003D;</mo><msup><mi>e</mi><mrow><mi>&#x02112;</mi></mrow></msup></mrow></math></div>
+        <p>
+          If the model gives the right token probability 1 the loss is 0. If it gives 0.01 the loss is 4.6.
+          <strong>Perplexity</strong> is <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>e</mi><mrow><mtext>mean&#x000A0;loss</mtext></mrow></msup></mrow></math>: a perplexity of 3.4 means the model is, on
+          average, as unsure as if it were choosing uniformly among 3.4 tokens. <code>F.cross_entropy(logits, y)</code>
+          takes logits of shape <code>(N, V)</code> and targets <code>(N,)</code>. A target of <code>-100</code> is skipped
+          (<code>ignore_index=-100</code>), which is how padding and prompt tokens are left out of the loss.
+        </p>
+
+        <h3 id="m-gd">§2.5 · Gradient descent</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>w</mi><mo>&#x02190;</mo><mi>w</mi><mo>&#x02212;</mo><mi>&#x003B7;</mi><mspace width="0.167em" /><mfrac><mrow><mo>&#x02202;</mo><mi>&#x02112;</mi></mrow><mrow><mo>&#x02202;</mo><mi>w</mi></mrow></mfrac></mrow></math></div>
+        <p>
+          <code>loss.backward()</code> fills <code>p.grad</code> with <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02202;</mo><mi>&#x02112;</mi><mo>&#x0002F;</mo><mo>&#x02202;</mo><mi>p</mi></mrow></math> for every
+          weight. That gradient points in the direction that increases the loss fastest, so stepping against it
+          lowers the loss. <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003B7;</mi></mrow></math> is the <strong>learning rate</strong>. Every optimiser in Part 2 is a
+          smarter version of this one line. Gradients add up across <code>backward()</code> calls until
+          <code>opt.zero_grad()</code> clears them, which is what makes gradient accumulation over micro-batches work.
+        </p>
+        <p>
+          <strong>GELU</strong>, the non-linearity in the MLP, is <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mtext>GELU</mtext><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><mi>x</mi><mspace width="0.167em" /><mi>&#x003A6;</mi><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo></mrow></math> where Φ is
+          the standard normal CDF. It is about <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>x</mi></mrow></math> for large positive x, about 0 for large negative x, and
+          smooth in between. Without a non-linearity, two linear layers in a row would collapse into one.
+        </p>
+      </section>
+
+      <!-- ================================================================ §3 -->
+      <section id="model">
+        <h2><span class="num">§3</span><code>src/model.py</code>, line by line</h2>
+        <p class="section-intro">
+          One file holds the model for Parts 1 and 2. It is a <strong>decoder-only transformer</strong>, the GPT
+          design: token ids go in, and for every position the model outputs a score for every possible next
+          token. Translation in Part 1 is done by writing the source sentence, a separator, and then letting the
+          model continue with the English.
+        </p>
+
+        <h3 id="mo-config">§3.1 · <code>TransformerConfig</code></h3>
+        <pre class="code"><code>@dataclass
+class TransformerConfig:
+    vocab_size: int = 24000
+    d_model: int = 512  # Dimension of the model
+    n_ctx: int = 256  # Number of context tokens
+    n_layers: int = 8
+    n_heads: int = 8
+    dropout: float = 0.0
+    rope_base: float = 10000.0
+    tie_embeddings: bool = True
+    use_moe: bool = False  # Whether to use MoE or MLP
+    d_ff: int = 2048  # hidden size of the dense MLP
+    n_experts: int = 4  # routed experts
+    top_k: int = 1  # active routed experts per token
+    n_shared: int = 0  # always-active shared experts
+    d_expert: int = 512  # hidden size of every expert (routed and shared)
+    aux_loss_coef: float = 0.01  # Switch-style load-balancing loss
+    z_loss_coef: float = 1e-3  # router z-loss (ST-MoE)</code></pre>
+        <p>
+          Plain settings, overwritten by the YAML configs. <code>n_ctx</code> is the longest sequence the model is
+          built for. <code>rope_base</code> sets the RoPE frequencies (§4). The MoE fields only matter when
+          <code>use_moe</code> is True.
+        </p>
+
+        <h3 id="mo-rms">§3.2 · <code>RMSNorm</code></h3>
+        <pre class="code"><code>class RMSNorm(nn.Module):
+    def __init__(self, d: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(d))
+
+    def forward(self, x: torch.Tensor) -&gt; torch.Tensor:
+        xf = x.float()
+        xf = xf * torch.rsqrt(xf.pow(2).mean(-1, keepdim=True) + self.eps)
+        return xf.type_as(x) * self.weight</code></pre>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mtext>RMSNorm</mtext><mo stretchy="false">&#x00028;</mo><mi>x</mi><msub><mo stretchy="false">&#x00029;</mo><mi>i</mi></msub><mo>&#x0003D;</mo><mfrac><mrow><msub><mi>x</mi><mi>i</mi></msub></mrow><mrow><msqrt><mrow><mfrac><mrow><mn>1</mn></mrow><mrow><mi>D</mi></mrow></mfrac><msubsup><mo>&#x02211;</mo><mrow><mi>j</mi><mo>&#x0003D;</mo><mn>1</mn></mrow><mrow><mi>D</mi></mrow></msubsup><msubsup><mi>x</mi><mi>j</mi><mn>2</mn></msubsup><mo>&#x0002B;</mo><mi>&#x003F5;</mi></mrow></msqrt></mrow></mfrac><mspace width="0.278em" /><msub><mi>g</mi><mi>i</mi></msub></mrow></math></div>
+        <p>
+          It rescales each token vector so its root-mean-square is 1, then multiplies by a learned gain g. This
+          keeps the numbers in a stable range as they pass through 8 layers.
+        </p>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>nn.Parameter(torch.ones(d))</code></td><td>the gain g, one number per feature, starts at 1 (so at first the layer only normalises)</td><td class="shape">(D,)</td></tr>
+            <tr><td><code>xf = x.float()</code></td><td>work in fp32: squaring fp16 values above 256 would overflow 65,504</td><td class="shape">(B, L, D)</td></tr>
+            <tr><td><code>xf.pow(2)</code></td><td>square every entry</td><td class="shape">(B, L, D)</td></tr>
+            <tr><td><code>.mean(-1, keepdim=True)</code></td><td>mean square of each token vector</td><td class="shape">(B, L, 1)</td></tr>
+            <tr><td><code>+ self.eps</code></td><td>avoid dividing by zero</td><td class="shape">(B, L, 1)</td></tr>
+            <tr><td><code>torch.rsqrt(...)</code></td><td>reciprocal square root, 1/√·</td><td class="shape">(B, L, 1)</td></tr>
+            <tr><td><code>xf * ...</code></td><td>broadcast: each token divided by its own RMS</td><td class="shape">(B, L, D)</td></tr>
+            <tr><td><code>.type_as(x) * self.weight</code></td><td>back to the input dtype, then broadcast the gain over every token</td><td class="shape">(B, L, D)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Compared with LayerNorm it does not subtract the mean and has no bias, so it is cheaper and has D
+          parameters instead of 2D.
+        </p>
+
+        <h3 id="mo-kv">§3.3 · <code>KVCache</code></h3>
+        <pre class="code"><code>class KVCache:
+    def __init__(self, n_layers, batch, n_heads, max_len, head_dim, device, dtype):
+        shape = (batch, n_heads, max_len, head_dim)
+        self.k = [torch.zeros(shape, device=device, dtype=dtype) for _ in range(n_layers)]
+        self.v = [torch.zeros(shape, device=device, dtype=dtype) for _ in range(n_layers)]
+        self.len = 0
+
+    def update(self, layer: int, k: torch.Tensor, v: torch.Tensor):
+        L = k.size(2)
+        self.k[layer][:, :, self.len : self.len + L] = k
+        self.v[layer][:, :, self.len : self.len + L] = v
+        end = self.len + L
+        return self.k[layer][:, :, :end], self.v[layer][:, :, :end]</code></pre>
+        <p>
+          When generating text one token at a time, the keys and values of earlier tokens never change (a token
+          can only look backwards). So instead of re-running the whole sequence for every new token, the model
+          stores them. Each layer gets one key buffer and one value buffer of shape
+          <code>(B, H, max_len, hd)</code>. <code>update</code> writes the new keys <code>(B, H, L_new, hd)</code> into positions
+          <code>len … len+L_new−1</code> and returns everything stored so far, <code>(B, H, len+L_new, hd)</code>.
+          <code>self.len</code> is advanced by <code>Transformer.forward</code> after all layers have written, because every
+          layer writes to the same positions.
+        </p>
+        <p>
+          The saving: without a cache, generating T tokens costs 1 + 2 + … + T token-passes, about T²/2. With it,
+          each step processes one token, so T in total (attention still reads all cached keys).
+        </p>
+
+        <h3 id="mo-attn">§3.4 · <code>Attention</code></h3>
+        <pre class="code"><code>class Attention(nn.Module):
+    def __init__(self, cfg: TransformerConfig, rope: Rotary):
+        super().__init__()
+        self.n_heads = cfg.n_heads
+        self.head_dim = cfg.d_model // cfg.n_heads
+        self.qkv = nn.Linear(cfg.d_model, 3 * cfg.d_model, bias=False)
+        self.o_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
+        self.rope = rope
+        self.dropout = cfg.dropout
+
+    def forward(self, x, pos, mask=None, cache: KVCache | None = None, layer: int = 0):
+        B, L, D = x.shape
+        q, k, v = self.qkv(x).view(B, L, 3, self.n_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        q, k = self.rope(q, pos), self.rope(k, pos)
+        if cache is not None:
+            k, v = cache.update(layer, k, v)
+        if mask is None:
+            out = F.scaled_dot_product_attention(
+                q, k, v, is_causal=True, dropout_p=self.dropout if self.training else 0.0
+            )
+        else:
+            out = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=mask, dropout_p=self.dropout if self.training else 0.0
+            )
+        return self.o_proj(out.transpose(1, 2).reshape(B, L, D))</code></pre>
+        <p>
+          Each token makes three vectors from its own vector: a <strong>query</strong> ("what am I looking
+          for"), a <strong>key</strong> ("what do I contain") and a <strong>value</strong> ("what I hand over if
+          chosen"). Each token's output is a weighted average of the values of the tokens it may see, weighted by
+          how well its query matches their keys:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mtext>Attention</mtext><mo stretchy="false">&#x00028;</mo><mi>Q</mi><mo>&#x0002C;</mo><mi>K</mi><mo>&#x0002C;</mo><mi>V</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><mtext>softmax</mtext><mspace width="negativethinmathspace" /><mrow><mo stretchy="true" fence="true" form="prefix">&#x00028;</mo><mfrac><mrow><mi>Q</mi><msup><mi>K</mi><mo>&#x022A4;</mo></msup></mrow><mrow><msqrt><mrow><msub><mi>d</mi><mi>h</mi></msub></mrow></msqrt></mrow></mfrac><mo>&#x0002B;</mo><mi>M</mi><mo stretchy="true" fence="true" form="postfix">&#x00029;</mo></mrow><mi>V</mi></mrow></math></div>
+        <p>
+          M is 0 where attending is allowed and −∞ where it is not (future tokens, padding). With
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>d</mi><mi>h</mi></msub><mo>&#x0003D;</mo><mn>64</mn></mrow></math>, the division by 8 matters: the dot product of two random 64-long vectors with unit
+          variance entries has variance 64, and without scaling the softmax would put almost all weight on one
+          key, which gives tiny gradients. The work is split across H = 8 <strong>heads</strong>, each using its
+          own 64 of the 512 numbers, so each head can look for a different kind of relation.
+        </p>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape (B=2, L=6)</th></tr></thead>
+          <tbody>
+            <tr><td><code>self.qkv = nn.Linear(512, 1536)</code></td><td>the three projections <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>W</mi><mi>Q</mi></msub><mo>&#x0002C;</mo><msub><mi>W</mi><mi>K</mi></msub><mo>&#x0002C;</mo><msub><mi>W</mi><mi>V</mi></msub></mrow></math> stacked into one matrix, so one multiplication makes all three</td><td class="shape">W: (1536, 512)</td></tr>
+            <tr><td><code>B, L, D = x.shape</code></td><td>the input is the normalised token vectors</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td><code>self.qkv(x)</code></td><td>each token's 512 numbers become 1536: its q, k and v back to back</td><td class="shape">(2, 6, 1536)</td></tr>
+            <tr><td><code>.view(B, L, 3, 8, 64)</code></td><td>cut the 1536 as 3 × 8 × 64: which of q/k/v, which head, which feature</td><td class="shape">(2, 6, 3, 8, 64)</td></tr>
+            <tr><td><code>.permute(2, 0, 3, 1, 4)</code></td><td>reorder to (q/k/v, batch, head, position, feature), so each head's vectors for all positions sit together</td><td class="shape">(3, 2, 8, 6, 64)</td></tr>
+            <tr><td><code>q, k, v = ...</code></td><td>Python unpacks along the first axis</td><td class="shape">each (2, 8, 6, 64)</td></tr>
+            <tr><td><code>self.rope(q, pos)</code>, <code>self.rope(k, pos)</code></td><td>rotate q and k by their positions (§4); v is not rotated</td><td class="shape">(2, 8, 6, 64)</td></tr>
+            <tr><td><code>cache.update(layer, k, v)</code></td><td>only during generation: prepend the stored keys and values</td><td class="shape">k, v: (2, 8, T, 64), T = cached + 6</td></tr>
+            <tr><td>inside SDPA: <code>q @ k.transpose(-2, -1) / 8</code></td><td>every query dotted with every key</td><td class="shape">(2, 8, 6, T)</td></tr>
+            <tr><td>inside SDPA: mask, then <code>softmax(-1)</code></td><td>forbidden keys get −∞, each row becomes weights summing to 1</td><td class="shape">(2, 8, 6, T)</td></tr>
+            <tr><td>inside SDPA: <code>weights @ v</code></td><td>weighted average of values</td><td class="shape">(2, 8, 6, 64)</td></tr>
+            <tr><td><code>out.transpose(1, 2)</code></td><td>back to (batch, position, head, feature)</td><td class="shape">(2, 6, 8, 64)</td></tr>
+            <tr><td><code>.reshape(B, L, D)</code></td><td>glue the 8 heads of 64 back into 512 (reshape, not view, because of the transpose)</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td><code>self.o_proj(...)</code></td><td>a 512 → 512 linear layer that mixes information from the different heads</td><td class="shape">(2, 6, 512)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          <code>F.scaled_dot_product_attention</code> (SDPA) is PyTorch's fused version of the formula above. The
+          assignment allows it. <code>is_causal=True</code> builds the "no looking at the future" mask itself (used in
+          training, where there is no padding on the left). When a <code>mask</code> is passed it must be boolean with
+          True = "may attend" and broadcastable to <code>(B, H, L, T)</code>. The attention layer has
+          512·1536 + 512·512 = 1,048,576 parameters.
+        </p>
+
+        <h3 id="mo-block">§3.5 · <code>Block</code>: one transformer layer</h3>
+        <pre class="code"><code>class Block(nn.Module):
+    def __init__(self, cfg: TransformerConfig, rope: Rotary, layer: int):
+        super().__init__()
+        from src.part1.ffn import MLP, MoE  # local import keeps model.py standalone
+
+        self.layer = layer
+        self.norm1 = RMSNorm(cfg.d_model)
+        self.attn = Attention(cfg, rope)
+        self.norm2 = RMSNorm(cfg.d_model)
+        self.ffn = MoE(cfg) if cfg.use_moe else MLP(cfg.d_model, cfg.d_ff)
+        self.drop = nn.Dropout(cfg.dropout)
+
+    def forward(self, x, pos, mask=None, cache=None, token_mask=None):
+        x = x + self.drop(self.attn(self.norm1(x), pos, mask, cache, self.layer))
+        return x + self.drop(self.ffn(self.norm2(x), token_mask))</code></pre>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>h</mi><mo>&#x0003D;</mo><mi>x</mi><mo>&#x0002B;</mo><mtext>Attn</mtext><mo stretchy="false">&#x00028;</mo><msub><mtext>RMSNorm</mtext><mn>1</mn></msub><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo stretchy="false">&#x00029;</mo><mo>&#x0002C;</mo><mspace width="2em" /><mtext>out</mtext><mo>&#x0003D;</mo><mi>h</mi><mo>&#x0002B;</mo><mtext>FFN</mtext><mo stretchy="false">&#x00028;</mo><msub><mtext>RMSNorm</mtext><mn>2</mn></msub><mo stretchy="false">&#x00028;</mo><mi>h</mi><mo stretchy="false">&#x00029;</mo><mo stretchy="false">&#x00029;</mo></mrow></math></div>
+        <p>
+          This is a <strong>pre-norm residual</strong> block. Each sub-layer reads a normalised copy of the
+          running vector and <em>adds</em> its result to it instead of replacing it. Two consequences: the
+          original information is never lost, and during backpropagation the gradient flows straight through the
+          <code>x +</code> path to early layers. Attention moves information <em>between</em> tokens. The FFN (dense
+          MLP or MoE) then processes each token <em>on its own</em>. All shapes stay <code>(B, L, 512)</code>.
+          <code>token_mask</code> is only used by the MoE to leave padding out of its statistics.
+        </p>
+
+        <h3 id="mo-tf">§3.6 · <code>Transformer</code></h3>
+        <pre class="code"><code>class Transformer(nn.Module):
+    def __init__(self, config: TransformerConfig):
+        super().__init__()
+        self.config = cfg = config
+        self.embed = nn.Embedding(cfg.vocab_size, cfg.d_model)
+        rope = Rotary(cfg.d_model // cfg.n_heads, cfg.n_ctx + 1, cfg.rope_base)
+        self.blocks = nn.ModuleList([Block(cfg, rope, i) for i in range(cfg.n_layers)])
+        self.norm = RMSNorm(cfg.d_model)
+        self.lm_head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
+        if cfg.tie_embeddings:
+            self.lm_head.weight = self.embed.weight
+        self.apply(self._init)
+        # scaled init for residual projections (GPT-2)
+        for n, p in self.named_parameters():
+            if n.endswith("o_proj.weight") or n.endswith("fc2.weight"):
+                nn.init.normal_(p, 0.0, 0.02 / (2 * cfg.n_layers) ** 0.5)</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What it builds</th></tr></thead>
+          <tbody>
+            <tr><td><code>nn.Embedding(24000, 512)</code></td><td>one learned 512-vector per token id: 12,288,000 numbers</td></tr>
+            <tr><td><code>Rotary(64, 257, 10000)</code></td><td>the RoPE sine/cosine tables, built once and shared by all 8 layers (they are the same in every layer)</td></tr>
+            <tr><td><code>ModuleList([Block ...])</code></td><td>8 layers, each knowing its index so it can find its slot in the KV cache</td></tr>
+            <tr><td><code>self.norm</code></td><td>a final RMSNorm before the output</td></tr>
+            <tr><td><code>nn.Linear(512, 24000)</code></td><td>the <strong>LM head</strong>: turns a 512-vector into 24,000 logits, one per possible next token</td></tr>
+            <tr><td><code>lm_head.weight = embed.weight</code></td><td><strong>weight tying</strong>: both are <code>(24000, 512)</code>, so one matrix serves both. The logit for token v is the dot product of the final vector with v's embedding. Saves 12.3M parameters (a third of the model).</td></tr>
+            <tr><td><code>self.apply(self._init)</code></td><td>runs <code>_init</code> on every sub-module: all weights drawn from a normal distribution with std 0.02</td></tr>
+            <tr><td><code>normal_(p, 0, 0.02 / √16)</code></td><td>the two matrices that write into the residual stream (<code>o_proj</code>, <code>fc2</code>) start 4× smaller (std 0.005). The residual stream is a sum of 16 such writes, and this keeps its size from growing with depth.</td></tr>
+          </tbody>
+        </table>
+        <pre class="code"><code>def forward(self, idx, pos=None, mask=None, cache=None, token_mask=None):
+    # Input shape: (B, L) token ids -&gt; Output shape: (B, L, N_vocab) logits
+    B, L = idx.shape
+    if pos is None:
+        start = cache.len if cache is not None else 0
+        pos = torch.arange(start, start + L, device=idx.device).expand(B, L)
+    x = self.embed(idx)
+    for blk in self.blocks:
+        x = blk(x, pos, mask, cache, token_mask)
+    if cache is not None:
+        cache.len += L
+    return self.lm_head(self.norm(x))</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>idx</code></td><td>token ids</td><td class="shape">(B, L) integers</td></tr>
+            <tr><td><code>arange(start, start+L).expand(B, L)</code></td><td>default positions: 0…L−1 (or continuing after the cache) for every row</td><td class="shape">(B, L)</td></tr>
+            <tr><td><code>self.embed(idx)</code></td><td>look up each id's row</td><td class="shape">(B, L, 512)</td></tr>
+            <tr><td><code>for blk in self.blocks</code></td><td>8 blocks, each <code>(B, L, 512)</code> → <code>(B, L, 512)</code></td><td class="shape">(B, L, 512)</td></tr>
+            <tr><td><code>cache.len += L</code></td><td>the new tokens are now stored</td><td class="shape"></td></tr>
+            <tr><td><code>self.norm(x)</code></td><td>final RMSNorm</td><td class="shape">(B, L, 512)</td></tr>
+            <tr><td><code>self.lm_head(...)</code></td><td>logits for the next token at every position</td><td class="shape">(B, L, 24000)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The output at position t is the model's guess for token t+1, having seen tokens 0…t only (the causal
+          mask). So one forward pass over a sequence gives L predictions at once, which is why training is
+          parallel.
+        </p>
+        <pre class="code"><code>def moe_layers(self):
+    return [b.ffn for b in self.blocks if hasattr(b.ffn, "router")]
+
+def aux_loss(self) -&gt; torch.Tensor:
+    losses = [m.last_aux_loss for m in self.moe_layers() if m.last_aux_loss is not None]
+    if not losses:
+        return torch.zeros((), device=self.embed.weight.device)
+    return torch.stack(losses).sum()
+
+def param_counts(self) -&gt; dict:
+    total = sum(p.numel() for p in self.parameters())
+    active = total
+    for m in self.moe_layers():
+        per_expert = sum(p.numel() for p in m.experts[0].parameters())
+        active -= per_expert * (len(m.experts) - m.top_k)
+    ffn = sum(p.numel() for b in self.blocks for p in b.ffn.parameters())
+    return {"total": total, "active": active, "ffn_total": ffn}</code></pre>
+        <p>
+          <code>aux_loss</code> adds the MoE balancing losses from all 8 layers into one number (a zero-dimensional
+          tensor, shape <code>()</code>) that training adds to the main loss. <code>param_counts</code> counts every
+          weight once (<code>parameters()</code> yields the tied matrix only once) and, for the "active" count,
+          subtracts the experts a token does <em>not</em> use: E − k of them per layer. For the dense model:
+          embedding 12,288,000 + 8 × (attention 1,048,576 + MLP 2,097,152 + two norms 1,024) + final norm 512 =
+          <strong>37,462,528</strong>.
+        </p>
+
+        <h3 id="mo-greedy">§3.7 · <code>greedy_generate</code>: batched decoding with a cache</h3>
+        <p>
+          Used for BLEU in Parts 1 and 2. Prompts have different lengths, and the batch must be a rectangle, so
+          short prompts are padded. They are padded on the <strong>left</strong>, so that the last column is the
+          last real token of every prompt, and that is where the next-token prediction is read from.
+        </p>
+        <pre class="code"><code>B = len(prompts)
+P = max(len(p) for p in prompts)
+ids = torch.full((B, P), pad_id, dtype=torch.long, device=device)
+keep = torch.zeros((B, P), dtype=torch.bool, device=device)
+for i, p in enumerate(prompts):
+    ids[i, P - len(p) :] = torch.tensor(p, device=device)
+    keep[i, P - len(p) :] = True
+total = P + max_new
+key_keep = torch.zeros((B, total), dtype=torch.bool, device=device)
+key_keep[:, :P] = keep
+pos = (keep.long().cumsum(-1) - 1).clamp(min=0)
+cache = model.new_cache(B, total, dtype=amp_dtype() if device.type == "cuda" else None)
+causal = torch.ones(P, P, dtype=torch.bool, device=device).tril()
+mask = (causal[None] &amp; keep[:, None, :]).unsqueeze(1)  # (B,1,P,P)
+mask = mask | torch.eye(P, dtype=torch.bool, device=device)[None, None]
+logits = model(ids, pos, mask, cache)[:, -1]
+next_pos = pos[:, -1] + 1</code></pre>
+        <p>Worked example with two prompts, <code>[7, 8]</code> and <code>[1, 2, 3, 4]</code>, so B = 2 and P = 4:</p>
+        <table class="tbl lines">
+          <thead><tr><th>Variable</th><th>Value</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>ids</code></td><td><code>[[pad, pad, 7, 8], [1, 2, 3, 4]]</code></td><td class="shape">(2, 4)</td></tr>
+            <tr><td><code>keep</code></td><td><code>[[F, F, T, T], [T, T, T, T]]</code>: which columns are real tokens</td><td class="shape">(2, 4)</td></tr>
+            <tr><td><code>key_keep</code></td><td><code>keep</code> followed by <code>max_new</code> False columns, switched on as tokens are generated</td><td class="shape">(2, 4 + max_new)</td></tr>
+            <tr><td><code>keep.long().cumsum(-1) - 1</code></td><td>row 0: <code>[0,0,1,2] − 1 = [−1, −1, 0, 1]</code></td><td class="shape">(2, 4)</td></tr>
+            <tr><td><code>.clamp(min=0)</code> → <code>pos</code></td><td><code>[[0, 0, 0, 1], [0, 1, 2, 3]]</code>: the first real token is position 0 in both rows, so RoPE sees the same positions as in training</td><td class="shape">(2, 4)</td></tr>
+            <tr><td><code>causal[None]</code></td><td>lower triangle of 1s, with a batch axis added</td><td class="shape">(1, 4, 4)</td></tr>
+            <tr><td><code>keep[:, None, :]</code></td><td>"is this key real", the same for every query row</td><td class="shape">(2, 1, 4)</td></tr>
+            <tr><td><code>(... &amp; ...).unsqueeze(1)</code></td><td>allowed if the key is not in the future AND is real; then a head axis</td><td class="shape">(2, 1, 4, 4)</td></tr>
+            <tr><td><code>| eye(4)[None, None]</code></td><td>let every position see itself (see below)</td><td class="shape">(2, 1, 4, 4)</td></tr>
+          </tbody>
+        </table>
+        <p>For prompt 0 the mask before and after the <code>eye</code> fix is (rows = queries, columns = keys):</p>
+        <pre class="code"><code>before            after | eye
+[[0, 0, 0, 0],    [[1, 0, 0, 0],     row 0 (a pad) had nothing to look at
+ [0, 0, 0, 0],     [0, 1, 0, 0],     row 1 (a pad) likewise
+ [0, 0, 1, 0],     [0, 0, 1, 0],     token 7 sees itself
+ [0, 0, 1, 1]]     [0, 0, 1, 1]]     token 8 sees 7 and itself</code></pre>
+        <p>
+          A row with no allowed key would be a softmax over all −∞, which is 0/0 = NaN, and the NaN would spread.
+          Letting pad rows see themselves avoids that. Their outputs are never read. The prefill call returns
+          <code>(B, P, V)</code> logits and <code>[:, -1]</code> keeps the last column, <code>(B, V)</code>.
+        </p>
+        <pre class="code"><code>out = torch.full((B, max_new), pad_id, dtype=torch.long, device=device)
+done = torch.zeros(B, dtype=torch.bool, device=device)
+for t in range(max_new):
+    tok = logits.float().argmax(-1)
+    tok = torch.where(done, torch.full_like(tok, pad_id), tok)
+    out[:, t] = tok
+    done |= tok == eos_id
+    if done.all():
+        break
+    key_keep[:, P + t] = True
+    m = key_keep[:, : P + t + 1][:, None, None, :]
+    logits = model(tok[:, None], next_pos[:, None], m, cache)[:, -1]
+    next_pos = next_pos + 1</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>logits.float().argmax(-1)</code></td><td>greedy: the single most likely token per prompt</td><td class="shape">(B,)</td></tr>
+            <tr><td><code>torch.where(done, pad, tok)</code></td><td>prompts that already produced EOS just emit pad</td><td class="shape">(B,)</td></tr>
+            <tr><td><code>done |= tok == eos_id</code></td><td>mark newly finished prompts</td><td class="shape">(B,)</td></tr>
+            <tr><td><code>key_keep[:, P + t] = True</code></td><td>the token about to be fed in becomes a visible key</td><td class="shape">(B, P + max_new)</td></tr>
+            <tr><td><code>key_keep[:, :P+t+1][:, None, None, :]</code></td><td>one query row, the same for every head: which of the P+t+1 cached keys are real</td><td class="shape">(B, 1, 1, P+t+1)</td></tr>
+            <tr><td><code>tok[:, None]</code>, <code>next_pos[:, None]</code></td><td>feed only the new token and its position</td><td class="shape">(B, 1)</td></tr>
+            <tr><td><code>model(...)[:, -1]</code></td><td>logits for the token after it</td><td class="shape">(B, V)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          No causal mask is needed in the loop: the single new query is the latest token, so every cached key is
+          in its past. At the end, each row is cut at its first EOS.
+        </p>
+      </section>
+
+      <!-- ================================================================ §4 -->
+      <section id="rope">
+        <h2><span class="num">§4</span>RoPE, derived from scratch</h2>
+        <p class="section-intro">
+          Attention on its own has no idea of order: shuffle the tokens and every dot product is the same. RoPE
+          (rotary position embedding) fixes this by <strong>rotating</strong> each query and key by an angle
+          proportional to its position. Then the dot product between a query at position m and a key at position
+          n depends only on the <strong>distance</strong> m − n. Below is the full derivation, then the code.
+        </p>
+
+        <h3 id="rope-2d">§4.1 · Step 1: rotating one 2-D vector</h3>
+        <p>
+          Rotating the vector <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo stretchy="false">&#x00028;</mo><msub><mi>x</mi><mn>1</mn></msub><mo>&#x0002C;</mo><msub><mi>x</mi><mn>2</mn></msub><mo stretchy="false">&#x00029;</mo></mrow></math> counter-clockwise by angle α is a multiplication by a rotation
+          matrix:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>&#x003B1;</mi><mo stretchy="false">&#x00029;</mo><mo>&#x00028;</mo><mtable><mtr><mtd><msub><mi>x</mi><mn>1</mn></msub></mtd></mtr><mtr><mtd><msub><mi>x</mi><mn>2</mn></msub></mtd></mtr></mtable><mo>&#x00029;</mo><mo>&#x0003D;</mo><mo>&#x00028;</mo><mtable><mtr><mtd><mi>cos</mi><mi>&#x003B1;</mi></mtd><mtd><mo>&#x02212;</mo><mi>sin</mi><mi>&#x003B1;</mi></mtd></mtr><mtr><mtd><mi>sin</mi><mi>&#x003B1;</mi></mtd><mtd><mi>cos</mi><mi>&#x003B1;</mi></mtd></mtr></mtable><mo>&#x00029;</mo><mo>&#x00028;</mo><mtable><mtr><mtd><msub><mi>x</mi><mn>1</mn></msub></mtd></mtr><mtr><mtd><msub><mi>x</mi><mn>2</mn></msub></mtd></mtr></mtable><mo>&#x00029;</mo><mo>&#x0003D;</mo><mo>&#x00028;</mo><mtable><mtr><mtd><msub><mi>x</mi><mn>1</mn></msub><mi>cos</mi><mi>&#x003B1;</mi><mo>&#x02212;</mo><msub><mi>x</mi><mn>2</mn></msub><mi>sin</mi><mi>&#x003B1;</mi></mtd></mtr><mtr><mtd><msub><mi>x</mi><mn>1</mn></msub><mi>sin</mi><mi>&#x003B1;</mi><mo>&#x0002B;</mo><msub><mi>x</mi><mn>2</mn></msub><mi>cos</mi><mi>&#x003B1;</mi></mtd></mtr></mtable><mo>&#x00029;</mo></mrow></math></div>
+        <p>Rotation matrices have three facts we need, each easy to check by multiplying out:</p>
+        <ul>
+          <li><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>&#x003B1;</mi><msup><mo stretchy="false">&#x00029;</mo><mo>&#x022A4;</mo></msup><mo>&#x0003D;</mo><mi>R</mi><mo stretchy="false">&#x00028;</mo><mo>&#x02212;</mo><mi>&#x003B1;</mi><mo stretchy="false">&#x00029;</mo></mrow></math>: transposing undoes the rotation.</li>
+          <li><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>&#x003B1;</mi><mo stretchy="false">&#x00029;</mo><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>&#x003B2;</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>&#x003B1;</mi><mo>&#x0002B;</mo><mi>&#x003B2;</mi><mo stretchy="false">&#x00029;</mo></mrow></math>: two rotations add their angles.</li>
+          <li><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo fence="false" stretchy="false">&#x02016;</mo><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>&#x003B1;</mi><mo stretchy="false">&#x00029;</mo><mi>x</mi><mo fence="false" stretchy="false">&#x02016;</mo><mo>&#x0003D;</mo><mo fence="false" stretchy="false">&#x02016;</mo><mi>x</mi><mo fence="false" stretchy="false">&#x02016;</mo></mrow></math>: rotation never changes a vector's length.</li>
+        </ul>
+
+        <h3 id="rope-rel">§4.2 · Step 2: why the dot product only sees the distance</h3>
+        <p>
+          Rotate a query q by <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>m</mi><mi>&#x003B8;</mi></mrow></math> (it sits at position m) and a key k by <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>n</mi><mi>&#x003B8;</mi></mrow></math> (position n).
+          Their dot product is:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>&#x027E8;</mi><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>m</mi><mi>&#x003B8;</mi><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><mi>q</mi><mo>&#x0002C;</mo><mspace width="0.278em" /><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>n</mi><mi>&#x003B8;</mi><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><mi>k</mi><mi>&#x027E9;</mi><mo>&#x0003D;</mo><msup><mi>q</mi><mo>&#x022A4;</mo></msup><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>m</mi><mi>&#x003B8;</mi><msup><mo stretchy="false">&#x00029;</mo><mo>&#x022A4;</mo></msup><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>n</mi><mi>&#x003B8;</mi><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><mi>k</mi></mrow></math></div>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mo>&#x0003D;</mo><msup><mi>q</mi><mo>&#x022A4;</mo></msup><mi>R</mi><mo stretchy="false">&#x00028;</mo><mo>&#x02212;</mo><mi>m</mi><mi>&#x003B8;</mi><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>n</mi><mi>&#x003B8;</mi><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><mi>k</mi><mo>&#x0003D;</mo><msup><mi>q</mi><mo>&#x022A4;</mo></msup><mi>R</mi><mo minsize="1.2em" maxsize="1.2em">(</mo><mo stretchy="false">&#x00028;</mo><mi>n</mi><mo>&#x02212;</mo><mi>m</mi><mo stretchy="false">&#x00029;</mo><mi>&#x003B8;</mi><mo minsize="1.2em" maxsize="1.2em">)</mo><mspace width="0.167em" /><mi>k</mi></mrow></math></div>
+        <p>
+          The absolute positions m and n have vanished. Only n − m remains. Moving both tokens 100 places to the
+          right gives the same score. Multiplying out the 2-D case gives the explicit form, with
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C6;</mi><mo>&#x0003D;</mo><mo stretchy="false">&#x00028;</mo><mi>n</mi><mo>&#x02212;</mo><mi>m</mi><mo stretchy="false">&#x00029;</mo><mi>&#x003B8;</mi></mrow></math>:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>&#x027E8;</mi><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>m</mi><mi>&#x003B8;</mi><mo stretchy="false">&#x00029;</mo><mi>q</mi><mo>&#x0002C;</mo><mi>R</mi><mo stretchy="false">&#x00028;</mo><mi>n</mi><mi>&#x003B8;</mi><mo stretchy="false">&#x00029;</mo><mi>k</mi><mi>&#x027E9;</mi><mo>&#x0003D;</mo><mo stretchy="false">&#x00028;</mo><msub><mi>q</mi><mn>1</mn></msub><msub><mi>k</mi><mn>1</mn></msub><mo>&#x0002B;</mo><msub><mi>q</mi><mn>2</mn></msub><msub><mi>k</mi><mn>2</mn></msub><mo stretchy="false">&#x00029;</mo><mi>cos</mi><mi>&#x003C6;</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><msub><mi>q</mi><mn>2</mn></msub><msub><mi>k</mi><mn>1</mn></msub><mo>&#x02212;</mo><msub><mi>q</mi><mn>1</mn></msub><msub><mi>k</mi><mn>2</mn></msub><mo stretchy="false">&#x00029;</mo><mi>sin</mi><mi>&#x003C6;</mi></mrow></math></div>
+        <p>
+          The first bracket is the ordinary dot product (content match). The cosine and sine modulate it by the
+          distance. At distance 0 it is exactly the plain dot product.
+        </p>
+        <div class="callout aha">
+          <div class="callout-label">tiny numeric check</div>
+          <p>One pair, θ = 1 rad. q = (1, 0) at position m = 1 becomes (cos 1, sin 1) = (0.540, 0.841). k = (1, 0)
+            at n = 3 becomes (cos 3, sin 3) = (−0.990, 0.141). Dot product: 0.540·(−0.990) + 0.841·0.141 = −0.416,
+            which is cos 2 = cos(3 − 1). Put q at 101 and k at 103 and you get cos 2 again.</p>
+          <p>I checked the real <code>Rotary</code> module the same way with random 64-long vectors: positions (5, 3) and
+            (105, 103) both gave a score of −4.1601, and the vector's length was 7.1445 before and after rotating
+            to position 77.</p>
+        </div>
+
+        <h3 id="rope-hd">§4.3 · Step 3: from 2 dimensions to 64</h3>
+        <p>
+          A head vector has hd = 64 numbers. RoPE splits them into 32 pairs and rotates each pair by its own
+          frequency <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mrow></math>. This code uses the <strong>half-split</strong> convention: pair i is
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo stretchy="false">&#x00028;</mo><msub><mi>x</mi><mi>i</mi></msub><mo>&#x0002C;</mo><msub><mi>x</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub><mo stretchy="false">&#x00029;</mo></mrow></math>, feature i of the first half with feature i of the second half.
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>&#x003B8;</mi><mi>i</mi></msub><mo>&#x0003D;</mo><msup><mtext>base</mtext><mrow><mo>&#x02212;</mo><mn>2</mn><mi>i</mi><mo>&#x0002F;</mo><msub><mi>h</mi><mi>d</mi></msub></mrow></msup><mo>&#x0003D;</mo><msup><mn>10000</mn><mrow><mo>&#x02212;</mo><mn>2</mn><mi>i</mi><mo>&#x0002F;</mo><mn>64</mn></mrow></msup><mo>&#x0002C;</mo><mspace width="2em" /><mi>i</mi><mo>&#x0003D;</mo><mn>0</mn><mo>&#x0002C;</mo><mn>1</mn><mo>&#x0002C;</mo><mo>&#x02026;</mo><mo>&#x0002C;</mo><mn>31</mn></mrow></math></div>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mo>&#x00028;</mo><mtable><mtr><mtd><msubsup><mi>x</mi><mi>i</mi><mi>&#x02032;</mi></msubsup></mtd></mtr><mtr><mtd><msubsup><mi>x</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow><mi>&#x02032;</mi></msubsup></mtd></mtr></mtable><mo>&#x00029;</mo><mo>&#x0003D;</mo><mo>&#x00028;</mo><mtable><mtr><mtd><mi>cos</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mtd><mtd><mo>&#x02212;</mo><mi>sin</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mtd></mtr><mtr><mtd><mi>sin</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mtd><mtd><mi>cos</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mtd></mtr></mtable><mo>&#x00029;</mo><mo>&#x00028;</mo><mtable><mtr><mtd><msub><mi>x</mi><mi>i</mi></msub></mtd></mtr><mtr><mtd><msub><mi>x</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub></mtd></mtr></mtable><mo>&#x00029;</mo></mrow></math></div>
+        <p>
+          The whole operation is one 64×64 matrix <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>R</mi><mi>m</mi></msub></mrow></math> made of 32 independent 2×2 rotations, and the
+          derivation of §4.2 applies to each pair separately, so the full score is a sum over pairs:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>s</mi><mrow><mi>m</mi><mi>n</mi></mrow></msub><mo>&#x0003D;</mo><msup><mi>q</mi><mo>&#x022A4;</mo></msup><msub><mi>R</mi><mrow><mi>n</mi><mo>&#x02212;</mo><mi>m</mi></mrow></msub><mspace width="0.167em" /><mi>k</mi><mo>&#x0003D;</mo><munderover><mo>&#x02211;</mo><mrow><mi>i</mi><mo>&#x0003D;</mo><mn>0</mn></mrow><mrow><mn>31</mn></mrow></munderover><mo minsize="1.623em" maxsize="1.623em">[</mo><msub><mi>a</mi><mi>i</mi></msub><mi>cos</mi><mo minsize="1.2em" maxsize="1.2em">(</mo><mo stretchy="false">&#x00028;</mo><mi>n</mi><mo>&#x02212;</mo><mi>m</mi><mo stretchy="false">&#x00029;</mo><msub><mi>&#x003B8;</mi><mi>i</mi></msub><mo minsize="1.2em" maxsize="1.2em">)</mo><mo>&#x0002B;</mo><msub><mi>b</mi><mi>i</mi></msub><mi>sin</mi><mo minsize="1.2em" maxsize="1.2em">(</mo><mo stretchy="false">&#x00028;</mo><mi>n</mi><mo>&#x02212;</mo><mi>m</mi><mo stretchy="false">&#x00029;</mo><msub><mi>&#x003B8;</mi><mi>i</mi></msub><mo minsize="1.2em" maxsize="1.2em">)</mo><mo minsize="1.623em" maxsize="1.623em">]</mo></mrow></math></div>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>a</mi><mi>i</mi></msub><mo>&#x0003D;</mo><msub><mi>q</mi><mi>i</mi></msub><msub><mi>k</mi><mi>i</mi></msub><mo>&#x0002B;</mo><msub><mi>q</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub><msub><mi>k</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>b</mi><mi>i</mi></msub><mo>&#x0003D;</mo><msub><mi>q</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub><msub><mi>k</mi><mi>i</mi></msub><mo>&#x02212;</mo><msub><mi>q</mi><mi>i</mi></msub><msub><mi>k</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub></mrow></math></div>
+        <p>
+          The frequencies run from <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>&#x003B8;</mi><mn>0</mn></msub><mo>&#x0003D;</mo><mn>1</mn></mrow></math> radian per token down to
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>&#x003B8;</mi><mrow><mn>31</mn></mrow></msub><mo>&#x0003D;</mo><msup><mn>10000</mn><mrow><mo>&#x02212;</mo><mn>62</mn><mo>&#x0002F;</mo><mn>64</mn></mrow></msup><mo>&#x02248;</mo><mn>1.3</mn><mo>&#x000D7;</mo><msup><mn>10</mn><mrow><mo>&#x02212;</mo><mn>4</mn></mrow></msup></mrow></math>. Think of 32 clock hands turning at
+          different speeds. Pair 0 goes round every 2π ≈ 6.3 tokens, so it tells apart neighbouring positions.
+          Pair 31 needs about 47,000 tokens for one turn, so inside a 256-token context it barely moves and
+          behaves like a position-free content channel. Together they encode distance at every scale.
+        </p>
+        <p>
+          The original paper pairs <em>adjacent</em> features <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo stretchy="false">&#x00028;</mo><msub><mi>x</mi><mrow><mn>2</mn><mi>i</mi></mrow></msub><mo>&#x0002C;</mo><msub><mi>x</mi><mrow><mn>2</mn><mi>i</mi><mo>&#x0002B;</mo><mn>1</mn></mrow></msub><mo stretchy="false">&#x00029;</mo></mrow></math> instead. The two are the
+          same up to a fixed reordering of the 64 features, and the learned <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>W</mi><mi>Q</mi></msub><mo>&#x0002C;</mo><msub><mi>W</mi><mi>K</mi></msub></mrow></math> absorb any fixed
+          reordering, so they are equally good. If asked, say "half-split, as in GPT-NeoX and Llama's HF code".
+        </p>
+
+        <h3 id="rope-complex">§4.4 · The same thing in complex numbers (the one-line version)</h3>
+        <p>
+          Treat each pair as a complex number <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>z</mi><mi>i</mi></msub><mo>&#x0003D;</mo><msub><mi>x</mi><mi>i</mi></msub><mo>&#x0002B;</mo><mi>&#x00069;</mi><mspace width="0.167em" /><msub><mi>x</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub></mrow></math>. Rotating by an angle is
+          multiplying by <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mi>e</mi><mrow><mi>&#x00069;</mi><mi>&#x003B1;</mi></mrow></msup></mrow></math>, so RoPE is:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msubsup><mi>z</mi><mi>i</mi><mi>&#x02032;</mi></msubsup><mo>&#x0003D;</mo><msub><mi>z</mi><mi>i</mi></msub><mspace width="0.167em" /><msup><mi>e</mi><mrow><mi>&#x00069;</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mrow></msup><mo>&#x0002C;</mo><mspace width="2em" /><mtext>Re</mtext><mo minsize="1.2em" maxsize="1.2em">[</mo><msubsup><mi>z</mi><mrow><mi>q</mi><mo>&#x0002C;</mo><mi>i</mi></mrow><mi>&#x02032;</mi></msubsup><mspace width="0.167em" /><mover><mrow><msubsup><mi>z</mi><mrow><mi>k</mi><mo>&#x0002C;</mo><mi>i</mi></mrow><mi>&#x02032;</mi></msubsup></mrow><mo accent="true">&#x02015;</mo></mover><mo minsize="1.2em" maxsize="1.2em">]</mo><mo>&#x0003D;</mo><mtext>Re</mtext><mo minsize="1.2em" maxsize="1.2em">[</mo><msub><mi>z</mi><mrow><mi>q</mi><mo>&#x0002C;</mo><mi>i</mi></mrow></msub><mspace width="0.167em" /><mover><mrow><msub><mi>z</mi><mrow><mi>k</mi><mo>&#x0002C;</mo><mi>i</mi></mrow></msub></mrow><mo accent="true">&#x02015;</mo></mover><mspace width="0.278em" /><msup><mi>e</mi><mrow><mi>&#x00069;</mi><mo stretchy="false">&#x00028;</mo><mi>m</mi><mo>&#x02212;</mo><mi>n</mi><mo stretchy="false">&#x00029;</mo><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mrow></msup><mo minsize="1.2em" maxsize="1.2em">]</mo></mrow></math></div>
+        <p>The bar is the complex conjugate. The positions only appear as m − n. That is the whole proof.</p>
+
+        <h3 id="rope-why">§4.5 · How RoPE differs from sinusoidal PE (A1's C1)</h3>
+        <table class="tbl">
+          <thead><tr><th></th><th>Sinusoidal (added)</th><th>RoPE (rotated)</th></tr></thead>
+          <tbody>
+            <tr><td>Where</td><td>added to the token embedding once, before layer 1</td><td>applied to q and k inside every attention layer</td></tr>
+            <tr><td>Operation</td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>x</mi><mo>&#x0002B;</mo><mi>P</mi><mi>E</mi><mo stretchy="false">&#x00028;</mo><mi>m</mi><mo stretchy="false">&#x00029;</mo></mrow></math></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>R</mi><mi>m</mi></msub><mi>x</mi></mrow></math></td></tr>
+            <tr><td>What the score sees</td><td>mixes content and absolute position, including cross terms like content·position</td><td>content dot product, modulated only by the relative distance</td></tr>
+            <tr><td>Vector length</td><td>changes</td><td>unchanged</td></tr>
+            <tr><td>Values v</td><td>carry position too</td><td>not rotated: what gets passed along is pure content</td></tr>
+            <tr><td>Parameters</td><td>0</td><td>0</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Pythia (Part 3) also uses RoPE, but only on the first 25% of each head's dimensions
+          (<code>rotary_pct = 0.25</code> in its config). The rest of each head is left unrotated.
+        </p>
+
+        <h3 id="rope-code">§4.6 · The code, line by line</h3>
+        <pre class="code"><code>class Rotary(nn.Module):
+    def __init__(self, head_dim: int, max_len: int, base: float = 10000.0):
+        super().__init__()
+        inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2).float() / head_dim))
+        t = torch.arange(max_len).float()
+        freqs = torch.outer(t, inv_freq)  # (max_len, hd/2)
+        self.register_buffer("cos", freqs.cos(), persistent=False)
+        self.register_buffer("sin", freqs.sin(), persistent=False)
+
+    def forward(self, x: torch.Tensor, pos: torch.Tensor) -&gt; torch.Tensor:
+        # x: (B, H, L, hd); pos: (B, L) integer positions
+        cos = self.cos[pos].unsqueeze(1).to(x.dtype)  # (B, 1, L, hd/2)
+        sin = self.sin[pos].unsqueeze(1).to(x.dtype)
+        x1, x2 = x.chunk(2, dim=-1)
+        return torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Maths</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>torch.arange(0, 64, 2)</code></td><td>the values 2i: <code>[0, 2, 4, …, 62]</code></td><td class="shape">(32,)</td></tr>
+            <tr><td><code>/ head_dim</code></td><td>2i / 64</td><td class="shape">(32,)</td></tr>
+            <tr><td><code>1.0 / (base ** ...)</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>&#x003B8;</mi><mi>i</mi></msub><mo>&#x0003D;</mo><msup><mn>10000</mn><mrow><mo>&#x02212;</mo><mn>2</mn><mi>i</mi><mo>&#x0002F;</mo><mn>64</mn></mrow></msup></mrow></math>: <code>[1.0, 0.750, …, 0.000133]</code></td><td class="shape">(32,)</td></tr>
+            <tr><td><code>t = torch.arange(max_len)</code></td><td>every position m = 0 … 256 (max_len = n_ctx + 1, one spare)</td><td class="shape">(257,)</td></tr>
+            <tr><td><code>torch.outer(t, inv_freq)</code></td><td>the table of angles: entry [m, i] = <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mrow></math></td><td class="shape">(257, 32)</td></tr>
+            <tr><td><code>register_buffer("cos", freqs.cos())</code></td><td>precomputed <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>cos</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mrow></math>; moves to the GPU with the model, not learned, not saved (<code>persistent=False</code>) because it can be rebuilt</td><td class="shape">(257, 32)</td></tr>
+            <tr><td><code>x</code> (forward input)</td><td>queries or keys</td><td class="shape">(B, H, L, 64)</td></tr>
+            <tr><td><code>self.cos[pos]</code></td><td>integer indexing: each position replaced by its row of 32 cosines</td><td class="shape">(B, L, 32)</td></tr>
+            <tr><td><code>.unsqueeze(1)</code></td><td>add a head axis of size 1: every head uses the same angles</td><td class="shape">(B, 1, L, 32)</td></tr>
+            <tr><td><code>.to(x.dtype)</code></td><td>match fp16/bf16 so the multiplication does not upcast</td><td class="shape">(B, 1, L, 32)</td></tr>
+            <tr><td><code>x1, x2 = x.chunk(2, dim=-1)</code></td><td>x1 = features 0…31, x2 = features 32…63: the two members of every pair</td><td class="shape">each (B, H, L, 32)</td></tr>
+            <tr><td><code>x1 * cos - x2 * sin</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msubsup><mi>x</mi><mi>i</mi><mi>&#x02032;</mi></msubsup><mo>&#x0003D;</mo><msub><mi>x</mi><mi>i</mi></msub><mi>cos</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub><mo>&#x02212;</mo><msub><mi>x</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub><mi>sin</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mrow></math>, broadcast over heads</td><td class="shape">(B, H, L, 32)</td></tr>
+            <tr><td><code>x1 * sin + x2 * cos</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msubsup><mi>x</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow><mi>&#x02032;</mi></msubsup><mo>&#x0003D;</mo><msub><mi>x</mi><mi>i</mi></msub><mi>sin</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub><mo>&#x0002B;</mo><msub><mi>x</mi><mrow><mi>i</mi><mo>&#x0002B;</mo><mn>32</mn></mrow></msub><mi>cos</mi><mi>m</mi><msub><mi>&#x003B8;</mi><mi>i</mi></msub></mrow></math></td><td class="shape">(B, H, L, 32)</td></tr>
+            <tr><td><code>torch.cat([...], dim=-1)</code></td><td>put the two halves back together</td><td class="shape">(B, H, L, 64)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The last two lines are literally the two rows of the 2×2 rotation matrix of §4.3, done for all 32
+          pairs, all heads, all positions and all sequences in one go. <code>pos</code> is usually just 0…L−1, but in
+          left-padded generation it comes from the <code>cumsum</code> trick (§3.7), so the first real token is
+          always position 0.
+        </p>
+      </section>
+
+      <!-- ================================================================ §5 -->
+      <section id="trace">
+        <h2><span class="num">§5</span>One forward pass, every shape</h2>
+        <p class="section-intro">
+          This is the answer to "explain the forward pass". The shapes were printed by hooks on the real model
+          (Part 1 config, top-2 MoE, B = 2 sequences of L = 6 tokens). Learn this table and you can explain
+          Parts 1 and 2.
+        </p>
+        <table class="tbl lines">
+          <thead><tr><th>Step</th><th>Operation</th><th class="shape">In</th><th class="shape">Out</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td><code>embed(idx)</code>: look up each token id</td><td class="shape">(2, 6)</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td colspan="4"><em>Steps 2–13 repeat for each of the 8 blocks</em></td></tr>
+            <tr><td>2</td><td><code>norm1</code> (RMSNorm)</td><td class="shape">(2, 6, 512)</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td>3</td><td><code>attn.qkv</code> linear</td><td class="shape">(2, 6, 512)</td><td class="shape">(2, 6, 1536)</td></tr>
+            <tr><td>4</td><td><code>view</code> + <code>permute</code>, split into q, k, v</td><td class="shape">(2, 6, 1536)</td><td class="shape">3 × (2, 8, 6, 64)</td></tr>
+            <tr><td>5</td><td><code>rope</code> on q and on k</td><td class="shape">(2, 8, 6, 64)</td><td class="shape">(2, 8, 6, 64)</td></tr>
+            <tr><td>6</td><td>scores <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>Q</mi><msup><mi>K</mi><mo>&#x022A4;</mo></msup><mo>&#x0002F;</mo><mn>8</mn></mrow></math>, causal mask, softmax</td><td class="shape">q, k</td><td class="shape">(2, 8, 6, 6)</td></tr>
+            <tr><td>7</td><td>weights @ v</td><td class="shape">(2, 8, 6, 6)</td><td class="shape">(2, 8, 6, 64)</td></tr>
+            <tr><td>8</td><td><code>transpose(1,2).reshape</code>: concatenate heads</td><td class="shape">(2, 8, 6, 64)</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td>9</td><td><code>o_proj</code>, then <code>x = x + ...</code></td><td class="shape">(2, 6, 512)</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td>10</td><td><code>norm2</code> (RMSNorm)</td><td class="shape">(2, 6, 512)</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td>11</td><td>MoE: flatten tokens, <code>router</code></td><td class="shape">(12, 512)</td><td class="shape">(12, 4)</td></tr>
+            <tr><td>12</td><td>each expert on its tokens (this run: 10, 4, 5, 5 tokens = 12 × 2 slots)</td><td class="shape">(n_e, 512)</td><td class="shape">(n_e, 512)</td></tr>
+            <tr><td>13</td><td>gate-weighted sum back per token, reshape, <code>x = x + ...</code></td><td class="shape">(12, 512)</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td>14</td><td>final <code>norm</code></td><td class="shape">(2, 6, 512)</td><td class="shape">(2, 6, 512)</td></tr>
+            <tr><td>15</td><td><code>lm_head</code> (tied to the embedding)</td><td class="shape">(2, 6, 512)</td><td class="shape">(2, 6, 24000)</td></tr>
+            <tr><td>16</td><td>cross-entropy against the next tokens</td><td class="shape">(12, 24000), (12,)</td><td class="shape">() one number</td></tr>
+          </tbody>
+        </table>
+        <div class="callout mechanism">
+          <div class="callout-label">say it in one breath</div>
+          <p>"Token ids become 512-dim vectors. Each of 8 blocks normalises, projects every token to a query, key
+            and value split over 8 heads of 64, rotates q and k by position with RoPE, lets each token take a
+            softmax-weighted average of earlier tokens' values, merges the heads and adds the result back. Then it
+            normalises again and runs a per-token feed-forward, dense or MoE, and adds that back too. A final
+            norm and the tied embedding matrix turn each vector into 24,000 next-token logits, and the loss is
+            cross-entropy on the target tokens."</p>
+        </div>
+      </section>
+
+      <!-- ================================================================ §6 -->
+      <section id="p1">
+        <h2><span class="num">§6</span>Part 1 · Mixture of Experts</h2>
+        <p class="section-intro">
+          A Mixture of Experts replaces the one big feed-forward network in each block with several smaller ones
+          ("experts") plus a tiny <strong>router</strong> that picks, for each token, which k experts to use. The
+          model can hold many parameters while each token only pays for k experts' worth of compute.
+        </p>
+
+        <h3 id="p1-mlp">§6.1 · <code>MLP</code>: the dense baseline (and every expert)</h3>
+        <pre class="code"><code>class MLP(nn.Module):
+    def __init__(self, d_model: int, d_ff: int):
+        super().__init__()
+        self.fc1 = nn.Linear(d_model, d_ff, bias=False)
+        self.fc2 = nn.Linear(d_ff, d_model, bias=False)
+
+    def forward(self, x, token_mask=None):
+        return self.fc2(F.gelu(self.fc1(x)))</code></pre>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mtext>MLP</mtext><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><msub><mi>W</mi><mn>2</mn></msub><mspace width="0.167em" /><mtext>GELU</mtext><mo stretchy="false">&#x00028;</mo><msub><mi>W</mi><mn>1</mn></msub><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>W</mi><mn>1</mn></msub><mo>&#x02208;</mo><msup><mi>&#x0211D;</mi><mrow><mi>F</mi><mo>&#x000D7;</mo><mi>D</mi></mrow></msup><mo>&#x0002C;</mo><mspace width="0.278em" /><msub><mi>W</mi><mn>2</mn></msub><mo>&#x02208;</mo><msup><mi>&#x0211D;</mi><mrow><mi>D</mi><mo>&#x000D7;</mo><mi>F</mi></mrow></msup></mrow></math></div>
+        <p>
+          Shapes: <code>(B, L, 512)</code> → <code>fc1</code> → <code>(B, L, 2048)</code> → GELU → <code>fc2</code> →
+          <code>(B, L, 512)</code>. Each token is processed independently. Parameters: 2 × 512 × 2048 = 2,097,152 per
+          layer. <code>token_mask</code> is accepted and ignored so that <code>MLP</code> and <code>MoE</code> can be swapped
+          without changing the caller.
+        </p>
+
+        <h3 id="p1-moe">§6.2 · <code>MoE.forward</code>, line by line</h3>
+        <pre class="code"><code>def forward(self, x, token_mask=None):
+    B, L, D = x.shape
+    xf = x.reshape(-1, D)
+    logits = self.router(xf).float()  # (N, E)
+    probs = logits.softmax(-1)
+    topv, topi = probs.topk(self.top_k, dim=-1)  # (N, k)
+    if self.top_k &gt; 1:
+        topv = topv / topv.sum(-1, keepdim=True)
+    gates = topv.to(x.dtype)
+
+    out = torch.zeros_like(xf)
+    for e, expert in enumerate(self.experts):
+        tok, slot = (topi == e).nonzero(as_tuple=True)
+        if tok.numel() == 0:
+            continue
+        y = expert(xf[tok]) * gates[tok, slot, None]
+        out.index_add_(0, tok, y)
+    for s in self.shared:
+        out = out + s(xf)</code></pre>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>p</mi><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><mtext>softmax</mtext><mo stretchy="false">&#x00028;</mo><msub><mi>W</mi><mi>r</mi></msub><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0002C;</mo><mspace width="2em" /><mi>y</mi><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><munderover><mo>&#x02211;</mo><mrow><mi>s</mi><mo>&#x0003D;</mo><mn>1</mn></mrow><mrow><msub><mi>n</mi><mtext>shared</mtext></msub></mrow></munderover><msub><mi>S</mi><mi>s</mi></msub><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0002B;</mo><munder><mo>&#x02211;</mo><mrow><mi>e</mi><mo>&#x02208;</mo><mtext>TopK</mtext><mo stretchy="false">&#x00028;</mo><mi>p</mi><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo stretchy="false">&#x00029;</mo></mrow></munder><msub><mi>g</mi><mi>e</mi></msub><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><msub><mi>E</mi><mi>e</mi></msub><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo></mrow></math></div>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>g</mi><mi>e</mi></msub><mo>&#x0003D;</mo><msub><mi>p</mi><mi>e</mi></msub><mspace width="0.278em" /><mspace width="0.278em" /><mo stretchy="false">&#x00028;</mo><mi>k</mi><mo>&#x0003D;</mo><mn>1</mn><mo stretchy="false">&#x00029;</mo><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>g</mi><mi>e</mi></msub><mo>&#x0003D;</mo><mfrac><mrow><msub><mi>p</mi><mi>e</mi></msub></mrow><mrow><msub><mo>&#x02211;</mo><mrow><mi>j</mi><mo>&#x02208;</mo><mtext>TopK</mtext></mrow></msub><msub><mi>p</mi><mi>j</mi></msub></mrow></mfrac><mspace width="0.278em" /><mspace width="0.278em" /><mo stretchy="false">&#x00028;</mo><mi>k</mi><mo>&#x0003E;</mo><mn>1</mn><mo stretchy="false">&#x00029;</mo></mrow></math></div>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>xf = x.reshape(-1, D)</code></td><td>routing is per token, so forget which sequence or position a token came from: one long list of N = B·L tokens</td><td class="shape">(N, 512)</td></tr>
+            <tr><td><code>self.router(xf)</code></td><td><code>nn.Linear(512, E)</code>: one score per expert per token</td><td class="shape">(N, E)</td></tr>
+            <tr><td><code>.float()</code></td><td>fp32 for the softmax; router logits in fp16 are a known source of instability</td><td class="shape">(N, E)</td></tr>
+            <tr><td><code>probs = logits.softmax(-1)</code></td><td>each token's probability over experts, rows sum to 1</td><td class="shape">(N, E)</td></tr>
+            <tr><td><code>probs.topk(k)</code></td><td><code>topv</code>: the k largest probabilities; <code>topi</code>: which experts they belong to</td><td class="shape">(N, k), (N, k)</td></tr>
+            <tr><td><code>topv / topv.sum(-1, keepdim=True)</code></td><td>k &gt; 1 only: rescale the chosen gates to sum to 1 (Mixtral). <code>keepdim</code> makes it <code>(N, 1)</code> so it broadcasts</td><td class="shape">(N, k)</td></tr>
+            <tr><td><code>gates = topv.to(x.dtype)</code></td><td>back to fp16/bf16 for multiplying expert outputs</td><td class="shape">(N, k)</td></tr>
+            <tr><td><code>out = torch.zeros_like(xf)</code></td><td>accumulator for the combined result</td><td class="shape">(N, 512)</td></tr>
+            <tr><td><code>(topi == e)</code></td><td>True where expert e was chosen, in any of the k slots</td><td class="shape">(N, k) bool</td></tr>
+            <tr><td><code>.nonzero(as_tuple=True)</code></td><td><code>tok</code>: row numbers of those tokens; <code>slot</code>: which of their k slots picked e</td><td class="shape">(n_e,), (n_e,)</td></tr>
+            <tr><td><code>xf[tok]</code></td><td>gather the n_e tokens routed to e</td><td class="shape">(n_e, 512)</td></tr>
+            <tr><td><code>expert(...)</code></td><td>that expert's MLP, only on those tokens</td><td class="shape">(n_e, 512)</td></tr>
+            <tr><td><code>gates[tok, slot, None]</code></td><td>each of those tokens' gate for e; <code>None</code> adds an axis to broadcast over 512</td><td class="shape">(n_e, 1)</td></tr>
+            <tr><td><code>out.index_add_(0, tok, y)</code></td><td><code>out[tok[j]] += y[j]</code>: scatter back. A top-2 token gets two additions</td><td class="shape">(N, 512)</td></tr>
+            <tr><td><code>out + s(xf)</code></td><td>shared experts see every token with gate 1</td><td class="shape">(N, 512)</td></tr>
+          </tbody>
+        </table>
+        <p>A worked routing example, with 3 tokens, top-2 and 4 experts:</p>
+        <pre class="code"><code>topi = [[2, 0],        # token 0 chose experts 2 and 0
+        [1, 2],        # token 1 chose 1 and 2
+        [0, 3]]        # token 2 chose 0 and 3
+(topi == 2)                     -&gt; [[T, F], [F, T], [F, F]]
+.nonzero(as_tuple=True)         -&gt; tok = [0, 1], slot = [0, 1]
+# expert 2 runs on xf[[0, 1]]; token 0 is scaled by gates[0, 0], token 1 by gates[1, 1]</code></pre>
+        <div class="callout gotcha">
+          <div class="callout-label">why top-1 is not renormalised</div>
+          <p>With k = 1, renormalising would make the only gate exactly <code>p/p = 1</code> for every token. Then the
+            output would not depend on the router's probabilities at all, and the main loss could not teach the
+            router anything. Keeping the raw probability (say 0.6) as the gate means a better expert choice
+            lowers the loss through that 0.6, so the router gets a gradient. This is the Switch Transformer
+            choice.</p>
+        </div>
+        <p>
+          There is no capacity limit here: every token always reaches its k experts, none are dropped. The loop
+          over experts runs each expert once on a variable-size group, which is simple and correct but not as
+          fast as a fused kernel.
+        </p>
+
+        <h3 id="p1-aux">§6.3 · The auxiliary losses</h3>
+        <pre class="code"><code>m = token_mask.reshape(-1) if token_mask is not None else torch.ones(B * L, dtype=torch.bool, device=x.device)
+mf = m.float()
+n = mf.sum().clamp(min=1.0)
+assign = F.one_hot(topi, self.n_experts).sum(1).float()  # (N, E) 0/1 per selected expert
+f = (assign * mf[:, None]).sum(0) / (n * self.top_k)  # fraction of routed slots per expert
+P = (probs * mf[:, None]).sum(0) / n  # mean router prob per expert
+lb = self.n_experts * (f * P).sum()
+z = ((torch.logsumexp(logits, -1) ** 2) * mf).sum() / n
+self.last_aux_loss = self.aux_coef * lb + self.z_coef * z
+self.last_stats = {"load": f.detach(), "lb_loss": lb.detach(), "z_loss": z.detach()}
+self.last_topi = topi.view(B, L, self.top_k).detach() if self.record_routing else None
+return out.view(B, L, D)</code></pre>
+        <p>
+          Left alone, a router tends to <strong>collapse</strong>: one expert gets slightly better, so it gets
+          more tokens, so it gets better still, and the other experts starve. The load-balancing loss pushes
+          against that:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>&#x02112;</mi><mtext>lb</mtext></msub><mo>&#x0003D;</mo><mi>E</mi><munderover><mo>&#x02211;</mo><mrow><mi>e</mi><mo>&#x0003D;</mo><mn>1</mn></mrow><mrow><mi>E</mi></mrow></munderover><msub><mi>f</mi><mi>e</mi></msub><msub><mi>P</mi><mi>e</mi></msub><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>f</mi><mi>e</mi></msub><mo>&#x0003D;</mo><mfrac><mrow><mn>1</mn></mrow><mrow><mi>n</mi><mi>k</mi></mrow></mfrac><munder><mo>&#x02211;</mo><mrow><mi>t</mi></mrow></munder><mrow><mn mathvariant="double-struck">1</mn></mrow><mrow><mo stretchy="true" fence="true" form="prefix">[</mo><mi>e</mi><mo>&#x02208;</mo><msub><mtext>TopK</mtext><mi>t</mi></msub><mo stretchy="true" fence="true" form="postfix">]</mo></mrow><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>P</mi><mi>e</mi></msub><mo>&#x0003D;</mo><mfrac><mrow><mn>1</mn></mrow><mrow><mi>n</mi></mrow></mfrac><munder><mo>&#x02211;</mo><mi>t</mi></munder><msub><mi>p</mi><mrow><mi>t</mi><mo>&#x0002C;</mo><mi>e</mi></mrow></msub></mrow></math></div>
+        <p>
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>f</mi><mi>e</mi></msub></mrow></math> is the share of routing slots expert e actually received, <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>P</mi><mi>e</mi></msub></mrow></math> the average probability
+          the router gave it. When both are uniform (1/E each) the loss is E · E · (1/E²) = 1, its minimum. f is
+          a count, so it has no gradient. P does, and the product means "lower the probability of experts that
+          are already overloaded".
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>&#x02112;</mi><mi>z</mi></msub><mo>&#x0003D;</mo><mfrac><mrow><mn>1</mn></mrow><mrow><mi>n</mi></mrow></mfrac><munder><mo>&#x02211;</mo><mi>t</mi></munder><mo minsize="1.623em" maxsize="1.623em">(</mo><mi>log</mi><munder><mo>&#x02211;</mo><mrow><mi>e</mi></mrow></munder><msup><mi>e</mi><mrow><msub><mi>z</mi><mrow><mi>t</mi><mo>&#x0002C;</mo><mi>e</mi></mrow></msub></mrow></msup><msup><mo minsize="1.623em" maxsize="1.623em">)</mo><mn>2</mn></msup></mrow></math></div>
+        <p>
+          The <strong>z-loss</strong> (from ST-MoE) penalises large router logits. Softmax does not care about the
+          size of its inputs, only their differences, so without this the logits can drift to large values where
+          fp16/bf16 round-off becomes significant.
+        </p>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>m = token_mask.reshape(-1)</code></td><td>True for real tokens, False for padding</td><td class="shape">(N,)</td></tr>
+            <tr><td><code>n = mf.sum().clamp(min=1)</code></td><td>number of real tokens (at least 1 to avoid ÷0)</td><td class="shape">()</td></tr>
+            <tr><td><code>F.one_hot(topi, E)</code></td><td>each chosen expert id becomes a one-hot row</td><td class="shape">(N, k, E)</td></tr>
+            <tr><td><code>.sum(1)</code></td><td>merge the k slots: a 1 for each expert the token uses. <code>[[2,0]]</code> → <code>[1,0,1,0]</code></td><td class="shape">(N, E)</td></tr>
+            <tr><td><code>(assign * mf[:, None]).sum(0) / (n·k)</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>f</mi><mi>e</mi></msub></mrow></math>: zero out pads, count per expert, divide by the total slots</td><td class="shape">(E,)</td></tr>
+            <tr><td><code>(probs * mf[:, None]).sum(0) / n</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>P</mi><mi>e</mi></msub></mrow></math></td><td class="shape">(E,)</td></tr>
+            <tr><td><code>E * (f * P).sum()</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>&#x02112;</mi><mtext>lb</mtext></msub></mrow></math></td><td class="shape">()</td></tr>
+            <tr><td><code>torch.logsumexp(logits, -1) ** 2</code></td><td>per-token z-loss term</td><td class="shape">(N,)</td></tr>
+            <tr><td><code>0.01 · lb + 0.001 · z</code></td><td>stored for <code>Transformer.aux_loss()</code> to collect</td><td class="shape">()</td></tr>
+            <tr><td><code>topi.view(B, L, k)</code></td><td>only in evaluation: remember routing per token for the heatmaps</td><td class="shape">(B, L, k)</td></tr>
+            <tr><td><code>out.view(B, L, D)</code></td><td>undo the flatten</td><td class="shape">(B, L, 512)</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="p1-params">§6.4 · Parameter matching: where the numbers come from</h3>
+        <p>
+          One expert with <code>d_expert</code> = 512 has 2 × 512 × 512 = 524,288 weights, exactly a quarter of the
+          dense MLP. So 4 such experts have the same total as the dense MLP, plus a tiny router (512 × E). The
+          counts below were printed by <code>param_counts()</code>.
+        </p>
+        <table class="tbl">
+          <thead><tr><th>Variant</th><th>Experts × d_expert</th><th>k</th><th>Total</th><th>Active per token</th></tr></thead>
+          <tbody>
+            <tr><td>1 · Dense MLP</td><td>– (d_ff 2048)</td><td>–</td><td>37,462,528</td><td>37,462,528</td></tr>
+            <tr><td>2 · MoE top-1</td><td>4 × 512</td><td>1</td><td>37,478,912</td><td>24,896,000</td></tr>
+            <tr><td>3 · MoE top-2</td><td>4 × 512</td><td>2</td><td>37,478,912</td><td>29,090,304</td></tr>
+            <tr><td>4 · 1 shared + 3 routed, top-1</td><td>(1 + 3) × 512</td><td>1</td><td>37,474,816</td><td>29,086,208</td></tr>
+            <tr><td>5 · Active-matched top-2</td><td>4 × 1024</td><td>2</td><td>54,256,128</td><td>37,478,912</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Variants 1–4 match on total parameters (the differences are the routers: 8 layers × 512 × 4 = 16,384).
+          Variant 5 doubles each expert, so two active experts equal one dense MLP: active parameters match
+          instead. Active = total − 8 × (E − k) × one expert's size.
+        </p>
+
+        <h3 id="p1-data">§6.5 · <code>data.py</code>: turning translation into next-token prediction</h3>
+        <p>
+          A decoder-only model can only continue text. So each training example is one sequence:
+          <code>&lt;vi&gt; source tokens &lt;sep&gt; English tokens &lt;eos&gt;</code> (or <code>&lt;ja&gt;</code>). At test time
+          the model is given everything up to <code>&lt;sep&gt;</code> and continues. The tokenizer is one byte-level BPE
+          with 24,000 tokens trained on all three languages. Byte-level means any Unicode text, including
+          Japanese, can be encoded without an "unknown" token. The special tokens get ids 0–4:
+          <code>PAD, EOS, SEP, VI, JA</code>.
+        </p>
+        <pre class="code"><code>def collate(self, idx):
+    L = int(self.seq_len[idx].max()) - 1
+    B = len(idx)
+    x = torch.full((B, L), PAD, dtype=torch.long)
+    y = torch.full((B, L), -100, dtype=torch.long)
+    role = torch.full((B, L), -1, dtype=torch.int8)
+    lang = torch.empty(B, dtype=torch.long)
+    for r, i in enumerate(idx):
+        lid, s, t = self.sample(i)
+        seq = [lid, *s, SEP, *t, EOS]
+        n = len(seq) - 1
+        x[r, :n] = torch.tensor(seq[:-1])
+        ns = len(s) + 2  # tokens up to and including &lt;sep&gt;
+        y[r, ns - 1 : n] = torch.tensor(seq[ns:])  # predict tgt + eos
+        role[r, : ns] = 0
+        role[r, ns:n] = 1
+        lang[r] = lid
+    return x, y, role &gt;= 0, lang, role</code></pre>
+        <p>Worked example: Vietnamese (id 3), source tokens <code>[10, 11]</code>, English tokens <code>[20, 21]</code>:</p>
+        <pre class="code"><code>seq   = [3, 10, 11, 2, 20, 21, 1]     # &lt;vi&gt; src src &lt;sep&gt; tgt tgt &lt;eos&gt;      n = 6
+x     = [3, 10, 11, 2, 20, 21]        # input: everything but the last token
+ns    = 4                              # &lt;vi&gt;, 10, 11, &lt;sep&gt;
+y     = [-100, -100, -100, 20, 21, 1] # y[3:6] = seq[4:]; position t is trained to predict x's token t+1
+role  = [0, 0, 0, 0, 1, 1]            # 0 = source side, 1 = target side, -1 = padding</code></pre>
+        <p>
+          Input position 3 is <code>&lt;sep&gt;</code>, and its label is 20, the first English token. The source side has
+          label −100, so the loss ignores it: the model is not graded on predicting Vietnamese. Padding columns
+          keep <code>x = PAD</code>, <code>y = −100</code> and <code>role = −1</code>. <code>role &gt;= 0</code> is the token mask passed
+          to the MoE.
+        </p>
+        <p>
+          <code>batches</code> builds batches by a token budget instead of a fixed count: it shuffles, sorts by length
+          inside large chunks, and packs sequences until <code>longest × count</code> would exceed 32,768. Sequences of
+          similar length end up together, so little space is wasted on padding.
+        </p>
+
+        <h3 id="p1-train">§6.6 · <code>train.py</code>: one training step</h3>
+        <pre class="code"><code>decay = [p for n, p in model.named_parameters() if p.dim() &gt;= 2]
+no_decay = [p for n, p in model.named_parameters() if p.dim() &lt; 2]
+opt = torch.optim.AdamW(
+    [{"params": decay, "weight_decay": t["weight_decay"]}, {"params": no_decay, "weight_decay": 0.0}],
+    lr=t["lr"], betas=tuple(t.get("betas", (0.9, 0.95))), fused=dev.type == "cuda")</code></pre>
+        <p>
+          Weight decay (shrinking weights a little every step) is applied to matrices only, not to the 1-D RMSNorm
+          gains. Part 1 may use PyTorch's AdamW; Part 2 writes its own. The step itself:
+        </p>
+        <pre class="code"><code>prog = int(1e6 * seen / total_tokens)
+lr_mult = cosine_lr(prog, 1_000_000, int(1e6 * t.get("warmup_frac", 0.02)), t.get("min_lr_ratio", 0.1))
+for g in opt.param_groups:
+    g["lr"] = t["lr"] * lr_mult
+opt.zero_grad(set_to_none=True)
+chunks = [c for c in np.array_split(np.asarray(bidx), min(micro, len(bidx))) if len(c)]
+n_tgt = int(sum(train_set.tgt_len[c].sum() + len(c) for c in chunks))
+for c in chunks:
+    x, y, tm, lang, role = train_set.collate(c)
+    with torch.autocast(dev.type, dtype=amp, enabled=dev.type == "cuda"):
+        logits = fwd(x, token_mask=tm)
+        ce = torch.nn.functional.cross_entropy(logits.flatten(0, 1).float(), y.flatten(), ignore_index=-100, reduction="sum") / n_tgt
+        aux = model.aux_loss() / len(chunks)
+    scaler.backward(ce + aux)
+gn, finite = scaler.unscale_clip(model.parameters(), t.get("grad_clip", 1.0))
+if finite:
+    opt.step()
+scaler.update(finite)</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th></tr></thead>
+          <tbody>
+            <tr><td><code>prog</code>, <code>cosine_lr(...)</code></td><td>the learning-rate schedule (§9) runs on tokens seen, measured in millionths of the budget, so every variant follows the same curve regardless of batch sizes</td></tr>
+            <tr><td><code>opt.zero_grad(set_to_none=True)</code></td><td>clear the previous step's gradients</td></tr>
+            <tr><td><code>np.array_split(bidx, 4)</code></td><td>split the batch into 4 <strong>micro-batches</strong> that fit in 8 GB of GPU memory</td></tr>
+            <tr><td><code>n_tgt</code></td><td>number of target tokens (English + EOS) in the <em>whole</em> batch</td></tr>
+            <tr><td><code>torch.autocast(...)</code></td><td>inside this block, matrix multiplications run in fp16 (bf16 on newer GPUs) automatically</td></tr>
+            <tr><td><code>logits.flatten(0, 1)</code></td><td><code>(b, L, V)</code> → <code>(b·L, V)</code>, and <code>y.flatten()</code> → <code>(b·L,)</code>: every position is one classification</td></tr>
+            <tr><td><code>reduction="sum") / n_tgt</code></td><td>sum each chunk's losses and divide by the whole batch's count. Summed over the 4 chunks, the gradients equal the gradient of the full-batch mean.</td></tr>
+            <tr><td><code>aux / len(chunks)</code></td><td>the MoE losses, averaged over chunks</td></tr>
+            <tr><td><code>scaler.backward(ce + aux)</code></td><td>backpropagate (scaled for fp16, §9); gradients add up across chunks</td></tr>
+            <tr><td><code>unscale_clip(..., 1.0)</code></td><td>undo the scaling, then <strong>gradient clipping</strong>: if the length of the whole gradient (all weights as one vector) exceeds 1, shrink it to 1. Protects against one bad batch.</td></tr>
+            <tr><td><code>opt.step()</code></td><td>update the weights, skipped if a gradient overflowed</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Training stops after 150M non-pad tokens for every variant, so the comparison is fair on data seen.
+          <code>moe_log</code> records each expert's load and a normalised entropy
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mo>&#x02212;</mo><msub><mo>&#x02211;</mo><mi>e</mi></msub><msub><mi>f</mi><mi>e</mi></msub><mi>log</mi><msub><mi>f</mi><mi>e</mi></msub><mo>&#x0002F;</mo><mi>log</mi><mi>E</mi></mrow></math> (1 = perfectly even, 0 = one expert takes everything).
+        </p>
+
+        <h3 id="p1-eval">§6.7 · <code>evaluate.py</code>: perplexity, BLEU and routing counts</h3>
+        <pre class="code"><code>tl = torch.nn.functional.cross_entropy(
+    logits.float().transpose(1, 2), y, ignore_index=-100, reduction="none"
+).sum(1)  # (B,)
+nt = (y != -100).sum(1)</code></pre>
+        <p>
+          <code>F.cross_entropy</code> expects the class axis in position 1, so <code>(B, L, V)</code> is transposed to
+          <code>(B, V, L)</code>; with <code>reduction="none"</code> it returns one loss per position, <code>(B, L)</code>, and
+          <code>.sum(1)</code> gives one total per sentence <code>(B,)</code>. Sentences are then summed separately by
+          language, and perplexity is <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>exp</mi><mo stretchy="false">&#x00028;</mo><mo>&#x02211;</mo><mtext>nll</mtext><mo>&#x0002F;</mo><mo>&#x02211;</mo><mtext>tokens</mtext><mo stretchy="false">&#x00029;</mo></mrow></math> per language.
+        </p>
+        <pre class="code"><code>for li, m in enumerate(moe):
+    topi = m.last_topi  # (B, L, k)
+    for li_lang, lid in enumerate(LANGS):
+        for r in (0, 1):
+            sel = (role_d == r) &amp; (lang_d[:, None] == lid)
+            ids = topi[sel].flatten()
+            counts[li, li_lang, r] += torch.bincount(ids, minlength=m.n_experts).cpu().numpy()</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Piece</th><th>What it is</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>counts</code></td><td>how often each expert was picked, by layer, language, and side (source or target)</td><td class="shape">(8, 2, 2, E)</td></tr>
+            <tr><td><code>lang_d[:, None]</code></td><td>each sentence's language, broadcast along its tokens</td><td class="shape">(B, 1)</td></tr>
+            <tr><td><code>(role_d == r) &amp; (...)</code></td><td>tokens on side r of sentences in this language</td><td class="shape">(B, L) bool</td></tr>
+            <tr><td><code>topi[sel].flatten()</code></td><td>all expert ids chosen by those tokens</td><td class="shape">(count·k,)</td></tr>
+            <tr><td><code>torch.bincount(..., minlength=E)</code></td><td>how many times each expert appears</td><td class="shape">(E,)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          <code>translate</code> sorts test sentences by source length (less padding), builds prompts
+          <code>[lang, *src, SEP]</code>, runs <code>greedy_generate</code>, and decodes the ids back to text. BLEU (from
+          <code>sacrebleu</code>) compares the translations with the references by counting matching 1- to 4-word
+          sequences, <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mtext>BLEU</mtext><mo>&#x0003D;</mo><mtext>BP</mtext><mo>&#x000B7;</mo><mi>exp</mi><mo minsize="1.2em" maxsize="1.2em">(</mo><mstyle displaystyle="false" scriptlevel="0"><mfrac><mn>1</mn><mn>4</mn></mfrac></mstyle><msubsup><mo>&#x02211;</mo><mrow><mi>n</mi><mo>&#x0003D;</mo><mn>1</mn></mrow><mrow><mn>4</mn></mrow></msubsup><mi>log</mi><msub><mi>p</mi><mi>n</mi></msub><mo minsize="1.2em" maxsize="1.2em">)</mo></mrow></math>, where
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>p</mi><mi>n</mi></msub></mrow></math> is n-gram precision and BP penalises translations that are too short.
+        </p>
+        <p>
+          In <code>analyze.py</code>, <code>_fractions</code> does <code>counts.transpose(0, 2, 1, 3).reshape(L, 4, E)</code>:
+          swap the language and side axes, then merge them, giving four rows per layer in the order vi-src,
+          ja-src, vi-tgt, ja-tgt, each normalised to sum to 1. Those rows are the heatmaps. The "routing
+          separation" plot uses the total variation distance <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mstyle displaystyle="false" scriptlevel="0"><mfrac><mn>1</mn><mn>2</mn></mfrac></mstyle><msub><mo>&#x02211;</mo><mi>e</mi></msub><mo stretchy="false">&#x0007C;</mo><msub><mi>p</mi><mi>e</mi></msub><mo>&#x02212;</mo><msub><mi>q</mi><mi>e</mi></msub><mo stretchy="false">&#x0007C;</mo></mrow></math> between two rows
+          (0 = identical routing, 1 = no expert in common). The rest of the file is matplotlib.
+        </p>
+      </section>
+
+      <!-- ================================================================ §7 -->
+      <section id="p2">
+        <h2><span class="num">§7</span>Part 2 · Five optimisers from scratch</h2>
+        <p class="section-intro">
+          An optimiser is the rule that turns gradients into weight changes. Plain gradient descent
+          (<math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>w</mi><mo>&#x02190;</mo><mi>w</mi><mo>&#x02212;</mo><mi>&#x003B7;</mi><mi>g</mi></mrow></math>) is noisy and treats every weight the same. Each optimiser below
+          fixes that differently. All of them subclass <code>torch.optim.Optimizer</code> only for its bookkeeping:
+          <code>self.param_groups</code> (lists of weights with their own lr and weight decay) and
+          <code>self.state[p]</code> (a dict per weight for its running averages). Every <code>step</code> is under
+          <code>@torch.no_grad()</code> so the updates themselves are not recorded for backpropagation.
+        </p>
+
+        <h3 id="p2-data">§7.1 · The data: fixed windows of a token stream</h3>
+        <pre class="code"><code>def window_batch(self, split: str, idx: np.ndarray):
+    a = self.streams[split]
+    L = self.n_ctx
+    x = np.stack([a[i * L : i * L + L + 1] for i in idx]).astype(np.int64)
+    x = torch.from_numpy(x)
+    return x[:, :-1], x[:, 1:]</code></pre>
+        <p>
+          All training documents are tokenised and joined into one long array, separated by <code>&lt;eos&gt;</code>.
+          Window i is tokens <code>512·i … 512·i + 512</code>, 513 tokens. <code>np.stack</code> makes <code>(B, 513)</code>. The
+          input is the first 512, <code>x[:, :-1]</code>, and the target is the same window shifted by one,
+          <code>x[:, 1:]</code>, both <code>(B, 512)</code>: for window <code>[a, b, c, d]</code> the model sees <code>a, b, c</code> and
+          must predict <code>b, c, d</code>. Documents are split 90/5/5 by their source id so that the human text and
+          every LLM rewrite of it land in the same split (no leakage). For BLEU, the prompt is the last 128 tokens
+          of a test document's first human chunk and the reference is the first 64 tokens of its second chunk.
+        </p>
+        <p>
+          <code>train.py</code> is the same shape as Part 1 with a fixed batch: 32 windows × 512 = 16,384 tokens per
+          step, run as 2 micro-batches of 16, each loss divided by 2. <code>set_lr</code> multiplies each group's
+          <code>base_lr</code> by the cosine schedule. It evaluates every 0.1× of the dataset. The LR sweep trains on
+          0.2× of the data at several learning rates, and the final run takes the one with the lowest validation
+          loss (<code>lr: best</code>).
+        </p>
+
+        <h3 id="p2-adamw">§7.2 · AdamW</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>m</mi><mi>t</mi></msub><mo>&#x0003D;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><msub><mi>m</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><msub><mi>g</mi><mi>t</mi></msub><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>v</mi><mi>t</mi></msub><mo>&#x0003D;</mo><msub><mi>&#x003B2;</mi><mn>2</mn></msub><msub><mi>v</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>2</mn></msub><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><msubsup><mi>g</mi><mi>t</mi><mn>2</mn></msubsup></mrow></math></div>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>w</mi><mo>&#x02190;</mo><mi>w</mi><mspace width="0.167em" /><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><mi>&#x003B7;</mi><mi>&#x003BB;</mi><mo stretchy="false">&#x00029;</mo><mo>&#x02212;</mo><mi>&#x003B7;</mi><mspace width="0.167em" /><mfrac><mrow><msub><mi>m</mi><mi>t</mi></msub><mo>&#x0002F;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msubsup><mi>&#x003B2;</mi><mn>1</mn><mi>t</mi></msubsup><mo stretchy="false">&#x00029;</mo></mrow><mrow><msqrt><mrow><msub><mi>v</mi><mi>t</mi></msub><mo>&#x0002F;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msubsup><mi>&#x003B2;</mi><mn>2</mn><mi>t</mi></msubsup><mo stretchy="false">&#x00029;</mo></mrow></msqrt><mo>&#x0002B;</mo><mi>&#x003F5;</mi></mrow></mfrac></mrow></math></div>
+        <pre class="code"><code>g = p.grad
+st = self.state[p]
+if not st:
+    st["step"] = 0
+    st["m"] = torch.zeros_like(p)
+    st["v"] = torch.zeros_like(p)
+st["step"] += 1
+t = st["step"]
+m, v = st["m"], st["v"]
+m.lerp_(g, 1 - b1)
+v.mul_(b2).addcmul_(g, g, value=1 - b2)
+denom = (v / (1 - b2**t)).sqrt_().add_(eps)
+p.mul_(1 - lr * wd)
+p.addcdiv_(m, denom, value=-lr / (1 - b1**t))</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Maths and meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>st["m"] = zeros_like(p)</code></td><td>first use of this weight: two buffers with the same shape as the weight (so AdamW needs 2× the model's memory)</td></tr>
+            <tr><td><code>m.lerp_(g, 1 - b1)</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>m</mi><mo>&#x0003D;</mo><mi>m</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><mo stretchy="false">&#x00029;</mo><mo stretchy="false">&#x00028;</mo><mi>g</mi><mo>&#x02212;</mo><mi>m</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><mi>m</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><mo stretchy="false">&#x00029;</mo><mi>g</mi></mrow></math>: <strong>momentum</strong>, a running average of the gradient that smooths out noise</td></tr>
+            <tr><td><code>v.mul_(b2).addcmul_(g, g, value=1-b2)</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>v</mi><mo>&#x0003D;</mo><msub><mi>&#x003B2;</mi><mn>2</mn></msub><mi>v</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>2</mn></msub><mo stretchy="false">&#x00029;</mo><msup><mi>g</mi><mn>2</mn></msup></mrow></math>: running average of the squared gradient, a per-weight measure of how large gradients usually are</td></tr>
+            <tr><td><code>(v / (1 - b2**t)).sqrt_().add_(eps)</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msqrt><mrow><mover accent="true"><mi>v</mi><mo>&#x0005E;</mo></mover></mrow></msqrt><mo>&#x0002B;</mo><mi>&#x003F5;</mi></mrow></math>. <strong>Bias correction</strong>: v starts at 0, so early averages are too small; dividing by <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mn>1</mn><mo>&#x02212;</mo><msubsup><mi>&#x003B2;</mi><mn>2</mn><mi>t</mi></msubsup></mrow></math> fixes that (at t = 1 it divides by 0.05 for β₂ = 0.95)</td></tr>
+            <tr><td><code>p.mul_(1 - lr * wd)</code></td><td><strong>decoupled weight decay</strong>: shrink the weight directly, separately from the gradient step. This is the "W" in AdamW.</td></tr>
+            <tr><td><code>p.addcdiv_(m, denom, value=-lr/(1-b1**t))</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>w</mi><mo>&#x0003D;</mo><mi>w</mi><mo>&#x02212;</mo><mi>&#x003B7;</mi><mspace width="0.167em" /><mover accent="true"><mi>m</mi><mo>&#x0005E;</mo></mover><mo>&#x0002F;</mo><mo stretchy="false">&#x00028;</mo><msqrt><mrow><mover accent="true"><mi>v</mi><mo>&#x0005E;</mo></mover></mrow></msqrt><mo>&#x0002B;</mo><mi>&#x003F5;</mi><mo stretchy="false">&#x00029;</mo></mrow></math>, with m's bias correction folded into the step size</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Dividing by <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msqrt><mrow><mover accent="true"><mi>v</mi><mo>&#x0005E;</mo></mover></mrow></msqrt></mrow></math> gives each weight its own step size: weights with consistently large
+          gradients take smaller steps, and weights with tiny gradients take larger ones. Every update is roughly
+          of size η whatever the gradient's scale.
+        </p>
+
+        <h3 id="p2-mars">§7.3 · MARS (variance-reduced AdamW)</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>c</mi><mi>t</mi></msub><mo>&#x0003D;</mo><msub><mi>g</mi><mi>t</mi></msub><mo>&#x0002B;</mo><mi>&#x003B3;</mi><mspace width="0.167em" /><mfrac><mrow><msub><mi>&#x003B2;</mi><mn>1</mn></msub></mrow><mrow><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub></mrow></mfrac><mspace width="0.167em" /><mo stretchy="false">&#x00028;</mo><msub><mi>g</mi><mi>t</mi></msub><mo>&#x02212;</mo><msub><mi>g</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub><mo stretchy="false">&#x00029;</mo><mo>&#x0002C;</mo><mspace width="2em" /><msub><mi>c</mi><mi>t</mi></msub><mo>&#x02190;</mo><mfrac><mrow><msub><mi>c</mi><mi>t</mi></msub></mrow><mrow><mo>max</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x0002C;</mo><mo fence="false" stretchy="false">&#x02016;</mo><msub><mi>c</mi><mi>t</mi></msub><msub><mo fence="false" stretchy="false">&#x02016;</mo><mn>2</mn></msub><mo stretchy="false">&#x00029;</mo></mrow></mfrac></mrow></math></div>
+        <p>then AdamW on <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>c</mi><mi>t</mi></msub></mrow></math> in place of <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>g</mi><mi>t</mi></msub></mrow></math>.</p>
+        <pre class="code"><code>if p.dim() &gt;= 2 or group["optimize_1d"]:
+    c = g + gamma * (b1 / (1 - b1)) * (g - st["prev_g"]) if t &gt; 1 else g.clone()
+    norm = c.norm()
+    if norm &gt; 1:
+        c.div_(norm)
+    st["prev_g"].copy_(g)
+else:
+    c = g
+m.lerp_(c, 1 - b1)
+v.mul_(b2).addcmul_(c, c, value=1 - b2)
+...   # identical to AdamW from here</code></pre>
+        <p>
+          Momentum averages gradients from old weights, so it lags behind. <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>g</mi><mi>t</mi></msub><mo>&#x02212;</mo><msub><mi>g</mi><mrow><mi>t</mi><mo>&#x02212;</mo><mn>1</mn></mrow></msub></mrow></math> estimates how the
+          gradient has changed since last step, and adding a scaled copy of it corrects that lag, which reduces the
+          variance of the update. With γ = 0.025 and β₁ = 0.95 the factor is 0.025 × 19 = 0.475. The corrected
+          gradient is then clipped to length 1 per tensor (<code>c.norm()</code> is its L2 length). This "approximate"
+          MARS reuses last step's gradient instead of computing a second one. The correction only applies to
+          matrices; the 1-D norm gains use <code>c = g</code>. The extra <code>prev_g</code> buffer means 3× model memory.
+        </p>
+
+        <h3 id="p2-lion">§7.4 · Lion (memory-efficient)</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>u</mi><mo>&#x0003D;</mo><mo>sign</mo><mo minsize="1.2em" maxsize="1.2em">(</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><mi>m</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><mo stretchy="false">&#x00029;</mo><mi>g</mi><mo minsize="1.2em" maxsize="1.2em">)</mo><mo>&#x0002C;</mo><mspace width="2em" /><mi>w</mi><mo>&#x02190;</mo><mi>w</mi><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><mi>&#x003B7;</mi><mi>&#x003BB;</mi><mo stretchy="false">&#x00029;</mo><mo>&#x02212;</mo><mi>&#x003B7;</mi><mi>u</mi><mo>&#x0002C;</mo><mspace width="2em" /><mi>m</mi><mo>&#x02190;</mo><msub><mi>&#x003B2;</mi><mn>2</mn></msub><mi>m</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>2</mn></msub><mo stretchy="false">&#x00029;</mo><mi>g</mi></mrow></math></div>
+        <pre class="code"><code>u = torch.lerp(m, g, 1 - b1).sign_()
+p.mul_(1 - lr * wd)
+p.add_(u, alpha=-lr)
+m.lerp_(g, 1 - b2)</code></pre>
+        <p>
+          Only one buffer (m), so 1× model memory instead of 2×. <code>torch.lerp</code> (without underscore) makes a
+          new tensor mixing momentum and the current gradient, and <code>sign_</code> replaces each entry with +1, −1
+          or 0. So every weight moves by exactly ±η. The direction comes from a mix with β₁ = 0.9, but the
+          stored momentum is updated with the slower β₂ = 0.99. Because every step has full size, Lion needs a
+          smaller learning rate than AdamW (3·10⁻⁴ here) and a larger weight decay (0.3).
+        </p>
+
+        <h3 id="p2-muon">§7.5 · Muon (matrix-based)</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>b</mi><mo>&#x02190;</mo><mi>&#x003BC;</mi><mi>b</mi><mo>&#x0002B;</mo><mi>g</mi><mo>&#x0002C;</mo><mspace width="2em" /><mi>u</mi><mo>&#x0003D;</mo><mi>g</mi><mo>&#x0002B;</mo><mi>&#x003BC;</mi><mi>b</mi><mo>&#x0002C;</mo><mspace width="2em" /><mi>O</mi><mo>&#x0003D;</mo><msub><mtext>NS</mtext><mn>5</mn></msub><mo stretchy="false">&#x00028;</mo><mi>u</mi><mo stretchy="false">&#x00029;</mo><mo>&#x02248;</mo><mi>U</mi><msup><mi>V</mi><mo>&#x022A4;</mo></msup><mtext>&#x000A0;where&#x000A0;</mtext><mi>u</mi><mo>&#x0003D;</mo><mi>U</mi><mi>S</mi><msup><mi>V</mi><mo>&#x022A4;</mo></msup></mrow></math></div>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>W</mi><mo>&#x02190;</mo><mi>W</mi><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><mi>&#x003B7;</mi><mi>&#x003BB;</mi><mo stretchy="false">&#x00029;</mo><mo>&#x02212;</mo><mi>&#x003B7;</mi><mspace width="0.167em" /><msqrt><mrow><mo>max</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x0002C;</mo><mtext>rows</mtext><mo>&#x0002F;</mo><mtext>cols</mtext><mo stretchy="false">&#x00029;</mo></mrow></msqrt><mspace width="0.278em" /><mi>O</mi></mrow></math></div>
+        <p>
+          The other optimisers treat a weight matrix as a bag of separate numbers. Muon treats it as a matrix.
+          Any matrix can be written as <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>U</mi><mi>S</mi><msup><mi>V</mi><mo>&#x022A4;</mo></msup></mrow></math> (the singular value decomposition): U and V are
+          rotations and S is a diagonal of "stretch amounts". Gradient matrices tend to have a few huge singular
+          values and many tiny ones, so a normal step mostly moves the weights along a few directions. Muon
+          replaces S with the identity: the update <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>U</mi><msup><mi>V</mi><mo>&#x022A4;</mo></msup></mrow></math> has the same directions but moves equally along
+          all of them.
+        </p>
+        <pre class="code"><code>def newton_schulz5(G: torch.Tensor, steps: int = 5, eps: float = 1e-7) -&gt; torch.Tensor:
+    a, b, c = 3.4445, -4.7750, 2.0315
+    half = torch.bfloat16 if (not G.is_cuda or torch.cuda.get_device_capability()[0] &gt;= 8) else torch.float16
+    X = (G / (G.norm() + eps)).to(half)
+    transposed = X.size(0) &gt; X.size(1)
+    if transposed:
+        X = X.T
+    for _ in range(steps):
+        A = X @ X.T
+        B = b * A + c * A @ A
+        X = a * X + B @ X
+    if transposed:
+        X = X.T
+    return X.to(G.dtype)</code></pre>
+        <p>
+          Computing an SVD every step is slow, so Newton–Schulz does it with matrix multiplications. Why it works:
+          if <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>X</mi><mo>&#x0003D;</mo><mi>U</mi><mi>S</mi><msup><mi>V</mi><mo>&#x022A4;</mo></msup></mrow></math> then <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>X</mi><msup><mi>X</mi><mo>&#x022A4;</mo></msup><mo>&#x0003D;</mo><mi>U</mi><msup><mi>S</mi><mn>2</mn></msup><msup><mi>U</mi><mo>&#x022A4;</mo></msup></mrow></math>, so
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>a</mi><mi>X</mi><mo>&#x0002B;</mo><mi>b</mi><mo stretchy="false">&#x00028;</mo><mi>X</mi><msup><mi>X</mi><mo>&#x022A4;</mo></msup><mo stretchy="false">&#x00029;</mo><mi>X</mi><mo>&#x0002B;</mo><mi>c</mi><mo stretchy="false">&#x00028;</mo><mi>X</mi><msup><mi>X</mi><mo>&#x022A4;</mo></msup><msup><mo stretchy="false">&#x00029;</mo><mn>2</mn></msup><mi>X</mi><mo>&#x0003D;</mo><mi>U</mi><mspace width="0.167em" /><mo stretchy="false">&#x00028;</mo><mi>a</mi><mi>S</mi><mo>&#x0002B;</mo><mi>b</mi><msup><mi>S</mi><mn>3</mn></msup><mo>&#x0002B;</mo><mi>c</mi><msup><mi>S</mi><mn>5</mn></msup><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><msup><mi>V</mi><mo>&#x022A4;</mo></msup></mrow></math></div>
+        <p>
+          U and V are untouched. Each singular value σ just goes through the polynomial
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x003C6;</mi><mo stretchy="false">&#x00028;</mo><mi>&#x003C3;</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><mi>a</mi><mi>&#x003C3;</mi><mo>&#x0002B;</mo><mi>b</mi><msup><mi>&#x003C3;</mi><mn>3</mn></msup><mo>&#x0002B;</mo><mi>c</mi><msup><mi>&#x003C3;</mi><mn>5</mn></msup></mrow></math>. The constants are chosen so that five
+          applications push every σ in (0, 1] to roughly 0.7–1.1, close enough to 1 in practice.
+        </p>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape (qkv weight)</th></tr></thead>
+          <tbody>
+            <tr><td><code>G</code></td><td>the Nesterov momentum update for one weight matrix</td><td class="shape">(1536, 512)</td></tr>
+            <tr><td><code>G / (G.norm() + eps)</code></td><td>divide by the Frobenius norm (length of all entries as one vector); this guarantees every σ ≤ 1. Done in fp32 before converting to half precision so the norm cannot overflow</td><td class="shape">(1536, 512)</td></tr>
+            <tr><td><code>if X.size(0) &gt; X.size(1): X = X.T</code></td><td>work on the wide orientation, so <code>X @ X.T</code> is the smaller square matrix</td><td class="shape">(512, 1536)</td></tr>
+            <tr><td><code>A = X @ X.T</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>X</mi><msup><mi>X</mi><mo>&#x022A4;</mo></msup></mrow></math></td><td class="shape">(512, 512)</td></tr>
+            <tr><td><code>B = b*A + c*A@A</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>b</mi><mi>A</mi><mo>&#x0002B;</mo><mi>c</mi><msup><mi>A</mi><mn>2</mn></msup></mrow></math></td><td class="shape">(512, 512)</td></tr>
+            <tr><td><code>X = a*X + B@X</code></td><td>one polynomial step</td><td class="shape">(512, 1536)</td></tr>
+            <tr><td><code>X.T</code>, <code>.to(G.dtype)</code></td><td>undo the transpose and the precision change</td><td class="shape">(1536, 512)</td></tr>
+          </tbody>
+        </table>
+        <pre class="code"><code>        buf.mul_(mu).add_(g)
+        u = g.add(buf, alpha=mu) if group["nesterov"] else buf
+        o = newton_schulz5(u, group["ns_steps"])
+        scale = max(1.0, p.size(0) / p.size(1)) ** 0.5
+        p.mul_(1 - lr * wd)
+        p.add_(o, alpha=-lr * scale)
+self.adamw.step()</code></pre>
+        <p>
+          <code>buf</code> is momentum (<math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>b</mi><mo>&#x0003D;</mo><mi>&#x003BC;</mi><mi>b</mi><mo>&#x0002B;</mo><mi>g</mi></mrow></math>, μ = 0.95). <strong>Nesterov</strong> momentum uses
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>g</mi><mo>&#x0002B;</mo><mi>&#x003BC;</mi><mi>b</mi></mrow></math>, a look-ahead version. The scale √(rows/cols) (√3 for the 1536 × 512 qkv matrix) keeps
+          tall matrices' updates the right size. Only 2-D hidden matrices use Muon. <code>build_optimizer</code> sends
+          the embedding (which is also the tied LM head) and all 1-D gains to an internal copy of the from-scratch
+          AdamW with its own learning rate (3·10⁻³), because an embedding row is updated only when its token
+          appears and orthogonalising the whole table makes no sense. <code>zero_grad</code> is overridden to clear both.
+        </p>
+
+        <h3 id="p2-sophia">§7.6 · Sophia-G (Hessian approximation, bonus)</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>m</mi><mo>&#x02190;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><mi>m</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>1</mn></msub><mo stretchy="false">&#x00029;</mo><mi>g</mi><mspace width="1em" /><mtext>every&#x000A0;step</mtext><mo>&#x0002C;</mo><mspace width="2em" /><mi>h</mi><mo>&#x02190;</mo><msub><mi>&#x003B2;</mi><mn>2</mn></msub><mi>h</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><msub><mi>&#x003B2;</mi><mn>2</mn></msub><mo stretchy="false">&#x00029;</mo><mspace width="0.167em" /><mover accent="true"><mi>g</mi><mo>&#x0005E;</mo></mover><mo>&#x02299;</mo><mover accent="true"><mi>g</mi><mo>&#x0005E;</mo></mover><mspace width="1em" /><mtext>every&#x000A0;10&#x000A0;steps</mtext></mrow></math></div>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>w</mi><mo>&#x02190;</mo><mi>w</mi><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><mi>&#x003B7;</mi><mi>&#x003BB;</mi><mo stretchy="false">&#x00029;</mo><mo>&#x02212;</mo><mi>&#x003B7;</mi><mspace width="0.167em" /><mo>sign</mo><mo stretchy="false">&#x00028;</mo><mi>m</mi><mo stretchy="false">&#x00029;</mo><mo>&#x000B7;</mo><mo>min</mo><mspace width="negativethinmathspace" /><mrow><mo stretchy="true" fence="true" form="prefix">&#x00028;</mo><mfrac><mrow><mo stretchy="false">&#x0007C;</mo><mi>m</mi><mo stretchy="false">&#x0007C;</mo></mrow><mrow><mi>&#x003C1;</mi><mspace width="0.167em" /><mi>b</mi><mspace width="0.167em" /><mi>h</mi><mo>&#x0002B;</mo><mi>&#x003F5;</mi></mrow></mfrac><mo>&#x0002C;</mo><mspace width="0.278em" /><mn>1</mn><mo stretchy="true" fence="true" form="postfix">&#x00029;</mo></mrow></mrow></math></div>
+        <pre class="code"><code>def update_hessian(self):
+    ...
+            st["h"].mul_(b2).addcmul_(p.grad, p.grad, value=1 - b2)
+
+def step(self, closure=None, bs: int = 1):
+    ...
+            m.lerp_(p.grad, 1 - b1)
+            p.mul_(1 - lr * wd)
+            ratio = (m.abs() / (rho * bs * h + eps)).clamp_(max=1.0)
+            p.addcmul_(m.sign(), ratio, value=-lr)</code></pre>
+        <p>
+          Newton's method divides the gradient by the <strong>curvature</strong> (the second derivative, h): take
+          big steps where the loss surface is flat and small steps where it is sharply curved. Sophia keeps a
+          running estimate of the diagonal of the curvature matrix, one number per weight, and steps by
+          <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>m</mi><mo>&#x0002F;</mo><mi>h</mi></mrow></math>. Where h is tiny that ratio could be huge, so it is clipped: <code>clamp_(max=1)</code> means no
+          weight ever moves more than η. <code>m.sign() * ratio</code> is the same as <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>m</mi><mo>&#x0002F;</mo><mo stretchy="false">&#x00028;</mo><mi>&#x003C1;</mi><mi>b</mi><mi>h</mi><mo stretchy="false">&#x00029;</mo></mrow></math> clipped to
+          [−1, 1].
+        </p>
+        <p>The curvature estimate comes from the training loop, every 10 steps:</p>
+        <pre class="code"><code>    with torch.no_grad():
+        y_hat = torch.distributions.Categorical(logits=logits.float()).sample()
+    loss_s = F.cross_entropy(logits.float().flatten(0, 1), y_hat.flatten()) / micro
+    scaler.backward(loss_s)
+if scaler.unscale(model.parameters()):
+    opt.update_hessian()</code></pre>
+        <p>
+          This is the <strong>Gauss–Newton–Bartlett</strong> estimator. Instead of the real next tokens, sample
+          fake labels <code>y_hat</code> from the model's own predicted distribution (<code>Categorical(...).sample()</code>
+          draws one token per position, shape <code>(B, L)</code>), compute the loss on those, and backpropagate. The
+          resulting gradient <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mover accent="true"><mi>g</mi><mo>&#x0005E;</mo></mover></mrow></math> satisfies <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>&#x1D53C;</mi><mo stretchy="false">[</mo><mover accent="true"><mi>g</mi><mo>&#x0005E;</mo></mover><msup><mover accent="true"><mi>g</mi><mo>&#x0005E;</mo></mover><mo>&#x022A4;</mo></msup><mo stretchy="false">]</mo></mrow></math> = the Gauss–Newton
+          matrix (a positive approximation of the curvature), so <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mover accent="true"><mi>g</mi><mo>&#x0005E;</mo></mover><mo>&#x02299;</mo><mover accent="true"><mi>g</mi><mo>&#x0005E;</mo></mover></mrow></math> estimates its
+          diagonal. The loss is a mean over <code>bs</code> tokens, which shrinks <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msup><mover accent="true"><mi>g</mi><mo>&#x0005E;</mo></mover><mn>2</mn></msup></mrow></math> by a factor of about
+          bs, so <code>step</code> multiplies h by <code>bs = y.numel()</code> to undo that.
+        </p>
+
+        <table class="tbl">
+          <thead><tr><th>Optimiser</th><th>State per weight</th><th>Core idea</th><th>Chosen lr</th></tr></thead>
+          <tbody>
+            <tr><td>AdamW</td><td>m, v (2×)</td><td>momentum ÷ RMS of gradient</td><td>1·10⁻³</td></tr>
+            <tr><td>MARS</td><td>m, v, previous g (3×)</td><td>AdamW on a lag-corrected gradient</td><td>1.5·10⁻³</td></tr>
+            <tr><td>Lion</td><td>m (1×)</td><td>sign of momentum: every weight moves ±η</td><td>3·10⁻⁴</td></tr>
+            <tr><td>Muon</td><td>momentum (1×) + AdamW for embeddings and gains</td><td>orthogonalised matrix update</td><td>0.02</td></tr>
+            <tr><td>Sophia-G</td><td>m, h (2×)</td><td>momentum ÷ curvature, clipped</td><td>1.5·10⁻⁴</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ================================================================ §8 -->
+      <section id="p3">
+        <h2><span class="num">§8</span>Part 3 · Decoding strategies</h2>
+        <p class="section-intro">
+          A language model only gives a probability distribution over the next token. <strong>Decoding</strong>
+          is the rule for picking a token from it, appending it, and repeating. Here the model is the pretrained
+          Pythia-160M (12 layers, D = 768, 12 heads, V = 50,304), called through Hugging Face's
+          <code>model(...)</code>. <code>generate()</code> is not allowed, so everything around the forward call is written
+          by hand.
+        </p>
+
+        <h3 id="p3-hf">§8.1 · Talking to the Hugging Face model</h3>
+        <pre class="code"><code>def _left_pad(prompts: list[list[int]], pad_id: int, device):
+    B, P = len(prompts), max(len(p) for p in prompts)
+    ids = torch.full((B, P), pad_id, dtype=torch.long, device=device)
+    mask = torch.zeros((B, P), dtype=torch.long, device=device)
+    for i, p in enumerate(prompts):
+        ids[i, P - len(p) :] = torch.tensor(p, device=device)
+        mask[i, P - len(p) :] = 1
+    return ids, mask
+
+def _forward(model, ids, mask, pos, past):
+    out = model(input_ids=ids, attention_mask=mask, position_ids=pos, past_key_values=past, use_cache=True)
+    return out.logits[:, -1].float(), out.past_key_values
+
+def _prefill(model, prompts, pad_id):
+    device = next(model.parameters()).device
+    ids, mask = _left_pad(prompts, pad_id, device)
+    pos = (mask.cumsum(-1) - 1).clamp(min=0)
+    logits, past = _forward(model, ids, mask, pos, None)
+    return logits, past, mask, pos[:, -1] + 1</code></pre>
+        <p>
+          The same ideas as <code>greedy_generate</code> (§3.7), in Hugging Face's vocabulary. <code>attention_mask</code> is
+          a <code>(B, T)</code> tensor of 1s for real tokens and 0s for padding; the model combines it with its own
+          causal mask. <code>position_ids</code> are the RoPE positions, computed with the same <code>cumsum</code> trick.
+          <code>past_key_values</code> is Hugging Face's KV cache object. <code>out.logits</code> is <code>(B, L, V)</code> and
+          <code>[:, -1]</code> keeps the last position, <code>(B, V)</code>. <code>_prefill</code> runs the whole prompt once and
+          returns the logits, the cache, the mask, and the next position <code>(B,)</code>. Pythia has no pad token, so
+          EOS is used as padding; the mask makes that harmless.
+        </p>
+
+        <h3 id="p3-filters">§8.2 · Top-k and top-p filters</h3>
+        <pre class="code"><code>def filter_top_k(logits: torch.Tensor, k: int) -&gt; torch.Tensor:
+    kth = logits.topk(k, dim=-1).values[:, -1:]
+    return logits.masked_fill(logits &lt; kth, float("-inf"))
+
+def filter_top_p(logits: torch.Tensor, p: float) -&gt; torch.Tensor:
+    sorted_logits, sorted_idx = logits.sort(dim=-1, descending=True)
+    probs = sorted_logits.softmax(-1)
+    cum = probs.cumsum(-1)
+    remove = (cum - probs) &gt;= p  # mass before this token already &gt;= p
+    remove[:, 0] = False
+    sorted_logits = sorted_logits.masked_fill(remove, float("-inf"))
+    return torch.full_like(logits, float("-inf")).scatter(-1, sorted_idx, sorted_logits)</code></pre>
+        <p>
+          <strong>Top-k</strong> keeps only the k most likely tokens. <code>topk(k).values</code> is <code>(B, k)</code> sorted
+          high to low, and <code>[:, -1:]</code> keeps the k-th largest as <code>(B, 1)</code> so it broadcasts against
+          <code>(B, V)</code>. Every logit below it becomes −∞, so the later softmax gives it probability 0 and the rest
+          are renormalised automatically.
+        </p>
+        <p>
+          <strong>Top-p</strong> (nucleus) keeps the smallest set of top tokens whose probabilities add up to at
+          least p:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>V</mi><mi>p</mi></msub><mo>&#x0003D;</mo><mtext>the&#x000A0;smallest&#x000A0;set&#x000A0;of&#x000A0;most-likely&#x000A0;tokens&#x000A0;with&#x000A0;</mtext><munder><mo>&#x02211;</mo><mrow><mi>x</mi><mo>&#x02208;</mo><msub><mi>V</mi><mi>p</mi></msub></mrow></munder><mi>P</mi><mo stretchy="false">&#x00028;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x02265;</mo><mi>p</mi></mrow></math></div>
+        <p>Worked example with 4 tokens and p = 0.7:</p>
+        <pre class="code"><code>probs (vocab order)     [0.50, 0.05, 0.30, 0.15]
+sort descending         [0.50, 0.30, 0.15, 0.05]     sorted_idx = [0, 2, 3, 1]
+cum                     [0.50, 0.80, 0.95, 1.00]
+cum - probs             [0.00, 0.50, 0.80, 0.95]     probability mass BEFORE each token
+remove = (...) &gt;= 0.7   [F,    F,    T,    T   ]     keep 0.50 and 0.30
+scatter back            token 0 and token 2 kept, tokens 1 and 3 set to -inf
+after softmax           [0.625, 0, 0.375, 0]</code></pre>
+        <p>
+          <code>cum - probs &gt;= p</code> means "the tokens ranked above me already reach p, so I am not needed". It
+          always keeps the token that crosses p. <code>remove[:, 0] = False</code> guarantees at least one token.
+          <code>scatter(-1, sorted_idx, sorted_logits)</code> writes each sorted value back to its original vocabulary
+          position: <code>out[b, sorted_idx[b, j]] = sorted_logits[b, j]</code>. Unlike top-k, the number of kept
+          tokens adapts: few when the model is confident, many when it is unsure.
+        </p>
+
+        <h3 id="p3-sample">§8.3 · <code>sample_decode</code>: greedy, top-k, top-p</h3>
+        <pre class="code"><code>logits, past, mask, pos = _prefill(model, prompts, pad_id)
+for t in range(max_new):
+    if strategy == "greedy":
+        tok = logits.argmax(-1)
+    else:
+        lg = logits / temperature
+        lg = filter_top_k(lg, k) if strategy == "top_k" else filter_top_p(lg, p)
+        tok = torch.multinomial(lg.softmax(-1), 1, generator=generator).squeeze(-1)
+    tok = torch.where(done, torch.full_like(tok, pad_id), tok)
+    out[:, t] = tok
+    done |= tok == eos_id
+    if done.all():
+        break
+    mask = torch.cat([mask, torch.ones((B, 1), dtype=mask.dtype, device=mask.device)], 1)
+    logits, past = _forward(model, tok[:, None], mask, pos[:, None], past)
+    pos = pos + 1</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>logits.argmax(-1)</code></td><td>greedy: always the most likely token</td><td class="shape">(B,)</td></tr>
+            <tr><td><code>logits / temperature</code></td><td>sharpen (T &lt; 1) or flatten (T &gt; 1) before filtering</td><td class="shape">(B, V)</td></tr>
+            <tr><td><code>lg.softmax(-1)</code></td><td>filtered logits to probabilities; −∞ entries become 0</td><td class="shape">(B, V)</td></tr>
+            <tr><td><code>torch.multinomial(..., 1, generator=...)</code></td><td>draw one token per row. A seeded generator makes runs repeatable</td><td class="shape">(B, 1)</td></tr>
+            <tr><td><code>.squeeze(-1)</code></td><td>drop the size-1 axis</td><td class="shape">(B,)</td></tr>
+            <tr><td><code>torch.cat([mask, ones((B, 1))], 1)</code></td><td>the new token is real: add a column of 1s to the attention mask</td><td class="shape">(B, P+t+1)</td></tr>
+            <tr><td><code>_forward(model, tok[:, None], ...)</code></td><td>feed only the new token, with the cache</td><td class="shape">in (B, 1), out (B, V)</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="p3-beam">§8.4 · <code>beam_search</code>, line by line</h3>
+        <p>
+          Greedy picks the best token at each step, but the best <em>sentence</em> may start with a
+          second-best token. Beam search keeps the W best partial sequences ("beams") and scores each by its total
+          log-probability:
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mtext>score</mtext><mo stretchy="false">&#x00028;</mo><msub><mi>y</mi><mrow><mn>1</mn><mi>:</mi><mi>t</mi></mrow></msub><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><munderover><mo>&#x02211;</mo><mrow><mi>j</mi><mo>&#x0003D;</mo><mn>1</mn></mrow><mrow><mi>t</mi></mrow></munderover><mi>log</mi><mi>P</mi><mo stretchy="false">&#x00028;</mo><msub><mi>y</mi><mi>j</mi></msub><mo>&#x02223;</mo><msub><mi>y</mi><mrow><mo>&#x0003C;</mo><mi>j</mi></mrow></msub><mo>&#x0002C;</mo><mi>x</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0002C;</mo><mspace width="2em" /><mtext>final&#x000A0;choice</mtext><mo>&#x0003D;</mo><mi>\arg</mi><mo>max</mo><mfrac><mrow><mtext>score</mtext></mrow><mrow><msup><mtext>length</mtext><mrow><mi>&#x003B1;</mi></mrow></msup></mrow></mfrac></mrow></math></div>
+        <pre class="code"><code>logits, past, mask, pos = _prefill(model, prompts, pad_id)
+B, W, dev = len(prompts), width, logits.device
+logp = logits.log_softmax(-1)  # (B, V)
+V = logp.size(-1)
+scores, tok = logp.topk(W, dim=-1)  # (B, W)
+rep = torch.arange(B, device=dev).repeat_interleave(W)
+past = _reorder_cache(past, rep)
+mask, pos = mask[rep], pos[rep]
+seqs = tok.reshape(B * W, 1)
+scores = scores.reshape(B * W)
+finished = seqs[:, 0] == eos_id
+lengths = torch.ones(B * W, device=dev)</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>logits.log_softmax(-1)</code></td><td>log-probabilities of the first new token, per prompt</td><td class="shape">(B, V)</td></tr>
+            <tr><td><code>logp.topk(W)</code></td><td>the W best first tokens become the W starting beams</td><td class="shape">(B, W), (B, W)</td></tr>
+            <tr><td><code>arange(B).repeat_interleave(W)</code></td><td>for B = 2, W = 3: <code>[0, 0, 0, 1, 1, 1]</code>. Row r of the beam batch belongs to prompt r // W</td><td class="shape">(B·W,)</td></tr>
+            <tr><td><code>_reorder_cache(past, rep)</code></td><td><code>index_select(0, rep)</code> on every layer's keys and values: each prompt's cache copied W times</td><td class="shape">(B·W, heads, P, hd) per layer</td></tr>
+            <tr><td><code>mask[rep]</code>, <code>pos[rep]</code></td><td>same duplication</td><td class="shape">(B·W, P), (B·W,)</td></tr>
+            <tr><td><code>seqs</code>, <code>scores</code></td><td>tokens so far and total log-prob for each beam</td><td class="shape">(B·W, 1), (B·W,)</td></tr>
+          </tbody>
+        </table>
+        <pre class="code"><code>for t in range(1, max_new):
+    if finished.all():
+        break
+    mask = torch.cat([mask, torch.ones((B * W, 1), dtype=mask.dtype, device=dev)], 1)
+    logits, past = _forward(model, seqs[:, -1:], mask, pos[:, None], past)
+    pos = pos + 1
+    logp = logits.log_softmax(-1)
+    frozen = torch.full_like(logp, float("-inf"))
+    frozen[:, eos_id] = 0.0
+    logp = torch.where(finished[:, None], frozen, logp)
+    cand = (scores[:, None] + logp).view(B, W * V)
+    scores, flat = cand.topk(W, dim=-1)  # (B, W)
+    origin = (flat // V + torch.arange(B, device=dev)[:, None] * W).reshape(-1)
+    tok = (flat % V).reshape(-1)
+    scores = scores.reshape(-1)
+    past = _reorder_cache(past, origin)
+    mask, pos = mask[origin], pos[origin]
+    was_finished = finished[origin]
+    seqs = torch.cat([seqs[origin], tok[:, None]], 1)
+    lengths = lengths[origin] + (~was_finished).float()
+    finished = was_finished | (tok == eos_id)
+norm = (scores / lengths**length_penalty).view(B, W)
+best = norm.argmax(-1) + torch.arange(B, device=dev) * W
+return _strip(seqs[best], eos_id, pad_id)</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What happens</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>_forward(model, seqs[:, -1:], ...)</code></td><td>feed every beam's last token</td><td class="shape">in (B·W, 1), out (B·W, V)</td></tr>
+            <tr><td><code>frozen</code>, <code>torch.where(finished[:, None], ...)</code></td><td>a finished beam may only "emit" EOS again, at log-prob 0, so its score stays fixed while it keeps competing</td><td class="shape">(B·W, V)</td></tr>
+            <tr><td><code>scores[:, None] + logp</code></td><td>score of every beam extended by every token</td><td class="shape">(B·W, V)</td></tr>
+            <tr><td><code>.view(B, W * V)</code></td><td>put all W·V candidates of one prompt in one row</td><td class="shape">(B, W·V)</td></tr>
+            <tr><td><code>cand.topk(W)</code></td><td>the W best candidates per prompt; <code>flat</code> is a number in [0, W·V)</td><td class="shape">(B, W)</td></tr>
+            <tr><td><code>flat // V</code></td><td>which beam (0…W−1) the candidate extends</td><td class="shape">(B, W)</td></tr>
+            <tr><td><code>+ arange(B)[:, None] * W</code></td><td>turn that into a row of the B·W batch (prompt b's beams are rows bW … bW+W−1)</td><td class="shape">(B, W) → (B·W,)</td></tr>
+            <tr><td><code>flat % V</code></td><td>which token it appends</td><td class="shape">(B·W,)</td></tr>
+            <tr><td><code>_reorder_cache(past, origin)</code></td><td>each new beam takes its parent's cache; a strong parent may be copied twice and a weak one dropped</td><td class="shape">(B·W, ...)</td></tr>
+            <tr><td><code>torch.cat([seqs[origin], tok[:, None]], 1)</code></td><td>parent's tokens + the new token</td><td class="shape">(B·W, t+1)</td></tr>
+            <tr><td><code>lengths[origin] + (~was_finished)</code></td><td>length grows only for beams that were still running</td><td class="shape">(B·W,)</td></tr>
+            <tr><td><code>scores / lengths**length_penalty</code></td><td>length normalisation (α = 1: average log-prob per token), otherwise short outputs always win because each token adds a negative number</td><td class="shape">(B, W)</td></tr>
+            <tr><td><code>norm.argmax(-1) + arange(B) * W</code></td><td>best beam per prompt, as a row number</td><td class="shape">(B,)</td></tr>
+          </tbody>
+        </table>
+        <div class="callout aha">
+          <div class="callout-label">width 1 is exactly greedy</div>
+          <p>With W = 1 there is one beam, so <code>scores[:, None] + logp</code> adds the same constant to every token,
+            and <code>topk(1)</code> picks the argmax of <code>logp</code>, which is the argmax of the logits. The test
+            <code>test_beam1_equals_greedy</code> checks this on Pythia.</p>
+        </div>
+        <p>
+          <strong>Complexity.</strong> Each of the T steps runs the model on B·W sequences of one new token, with
+          attention over up to P + T cached keys, and a <code>topk</code> over W·V candidates. So time is
+          O(T · B · W · (cost of one token + V)), linear in W, and the KV cache memory is proportional to
+          B · W · (P + T). Measured on 1,000 prompts: widths 1, 2 and 4 took 23.4 s, 29.5 s and 50.0 s. That is
+          less than linear because a GPU running a small batch is under-used, so more beams partly come for free
+          until it fills up.
+        </p>
+
+        <h3 id="p3-nll">§8.5 · <code>continuation_nll</code> and the metrics</h3>
+        <pre class="code"><code>logits = model(input_ids=ids, attention_mask=mask).logits[:, :-1].float()
+tgt = labels[:, 1:]
+nll = F.cross_entropy(logits.transpose(1, 2), tgt, ignore_index=-100, reduction="none").sum(-1)
+valid = tgt != -100
+correct = ((logits.argmax(-1) == tgt) &amp; valid).sum(-1)</code></pre>
+        <p>
+          This scores a given continuation (the model's own generation, or the reference) under Pythia by
+          <strong>teacher forcing</strong>: feed prompt + continuation in one pass. Here padding is on the right,
+          since nothing is generated. <code>labels</code> are −100 except over the continuation. Logits at position j
+          predict token j+1, so the last logit (<code>[:, :-1]</code>) and the first label (<code>[:, 1:]</code>) are dropped
+          to line them up, both becoming length L−1. The transpose puts V on axis 1 for <code>cross_entropy</code>;
+          result <code>(B, L−1)</code>, summed to <code>(B,)</code>.
+        </p>
+        <table class="tbl">
+          <thead><tr><th>Metric in <code>run.py</code></th><th>Definition</th></tr></thead>
+          <tbody>
+            <tr><td><code>gen_ppl</code></td><td><math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>exp</mi><mo stretchy="false">&#x00028;</mo><mo>&#x02211;</mo><mtext>nll</mtext><mo>&#x0002F;</mo><mo>&#x02211;</mo><mtext>tokens</mtext><mo stretchy="false">&#x00029;</mo></mrow></math> of the generations under Pythia: how "expected" the text is</td></tr>
+            <tr><td><code>ref_ppl</code></td><td>the same for the human-written continuation</td></tr>
+            <tr><td><code>token_acc</code></td><td>fraction of reference positions where the generated token equals the reference token</td></tr>
+            <tr><td><code>bleu</code>, <code>rouge_l</code></td><td>n-gram overlap and longest-common-subsequence overlap with the reference</td></tr>
+            <tr><td><code>distinct_n</code></td><td>unique n-grams ÷ all n-grams across all generations (diversity)</td></tr>
+            <tr><td><code>repeat_4gram</code></td><td>share of 4-grams in a generation that repeat an earlier one (degeneration)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The results show the classic trade-off. Beam-4 has the lowest perplexity (1.80) but the most repetition
+          (65% repeated 4-grams): the highest-probability text is dull and loops. Top-p 0.95 is the most diverse
+          (distinct-2 of 0.62) with perplexity 34, far above the reference's. Sampling methods land between.
+        </p>
+      </section>
+
+      <!-- ================================================================ §9 -->
+      <section id="rest">
+        <h2><span class="num">§9</span><code>utils.py</code>, <code>main.py</code>, tests</h2>
+        <p class="section-intro">
+          Most of this is ordinary Python (YAML config merging, argparse, WandB logging with retries, JSON and
+          checkpoint writing). Only three pieces involve ML.
+        </p>
+
+        <h3 id="r-lr">§9.1 · <code>cosine_lr</code>: warmup then cosine decay</h3>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mtext>mult</mtext><mo stretchy="false">&#x00028;</mo><mi>t</mi><mo stretchy="false">&#x00029;</mo><mo>&#x0003D;</mo><mrow><mo stretchy="true" fence="true" form="prefix">&#x0007B;</mo><mtable><mtr><mtd columnalign="left"><mstyle displaystyle="true" scriptlevel="0"><mfrac><mrow><mi>t</mi><mo>&#x0002B;</mo><mn>1</mn></mrow><mrow><msub><mi>T</mi><mi>w</mi></msub></mrow></mfrac></mstyle></mtd><mtd columnalign="left"><mi>t</mi><mo>&#x0003C;</mo><msub><mi>T</mi><mi>w</mi></msub></mtd></mtr><mtr><mtd columnalign="left"><mi>r</mi><mo>&#x0002B;</mo><mo stretchy="false">&#x00028;</mo><mn>1</mn><mo>&#x02212;</mo><mi>r</mi><mo stretchy="false">&#x00029;</mo><mo>&#x000B7;</mo><mstyle displaystyle="true" scriptlevel="0"><mfrac><mrow><mn>1</mn></mrow><mrow><mn>2</mn></mrow></mfrac></mstyle><mo minsize="1.623em" maxsize="1.623em">(</mo><mn>1</mn><mo>&#x0002B;</mo><mi>cos</mi><mo minsize="1.2em" maxsize="1.2em">(</mo><mi>&#x003C0;</mi><mspace width="0.167em" /><mstyle displaystyle="false" scriptlevel="0"><mfrac><mrow><mi>t</mi><mo>&#x02212;</mo><msub><mi>T</mi><mi>w</mi></msub></mrow><mrow><mi>T</mi><mo>&#x02212;</mo><msub><mi>T</mi><mi>w</mi></msub></mrow></mfrac></mstyle><mo minsize="1.2em" maxsize="1.2em">)</mo><mo minsize="1.623em" maxsize="1.623em">)</mo></mtd><mtd columnalign="left"><mi>t</mi><mo>&#x02265;</mo><msub><mi>T</mi><mi>w</mi></msub></mtd></mtr></mtable></mrow></mrow></math></div>
+        <p>
+          The learning rate climbs linearly from almost 0 for <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>T</mi><mi>w</mi></msub></mrow></math> steps (large early steps on random
+          weights, with Adam's statistics still empty, are destabilising), then follows half a cosine from 1 down
+          to <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><mi>r</mi></mrow></math> = 0.1 of the peak. Small steps at the end let the weights settle.
+        </p>
+
+        <h3 id="r-scaler">§9.2 · <code>LossScaler</code>: making fp16 gradients survive</h3>
+        <pre class="code"><code>def backward(self, loss):
+    (loss * self.scale).backward()          # scale starts at 2**15 = 32768
+
+def unscale_clip(self, params, max_norm):
+    for p in params: p.grad.div_(self.scale)
+    gn = torch.nn.utils.clip_grad_norm_(params, max_norm)
+    return gn, bool(torch.isfinite(gn))
+
+def update(self, finite):
+    if finite:
+        self.good += 1
+        if self.good % self.growth_interval == 0: self.scale *= 2
+    else:
+        self.scale /= 2; self.good = 0</code></pre>
+        <p>
+          (Lightly condensed.) Many gradients are smaller than fp16 can represent and would round to 0.
+          Multiplying the loss by 32,768 multiplies every gradient by the same amount (the chain rule is linear),
+          lifting them into range. They are divided back before the optimiser sees them. If any gradient
+          overflowed to infinity, the step is skipped and the scale halved. After 1,000 good steps it doubles
+          again. With bf16 (same range as fp32) it is switched off.
+        </p>
+
+        <h3 id="r-misc">§9.3 · The rest</h3>
+        <ul>
+          <li><code>amp_dtype()</code>: bf16 on GPUs with compute capability ≥ 8 (Ampere and newer), else fp16. The RTX
+            2070 used for the runs is Turing, so fp16.</li>
+          <li><code>torch.compile</code> is used only if <code>triton</code> is installed, which it is not on Windows.</li>
+          <li><code>main.py</code> caps PyTorch at 85% of an 8 GB GPU, because Windows otherwise spills into much
+            slower shared system memory.</li>
+          <li><code>tests/test_sanity.py</code> checks that the parameter counts match, that a 1-expert MoE equals an
+            MLP (the gate is exactly 1), that cached greedy decoding equals recomputing the whole sequence each
+            step, that every optimiser lowers the loss on a toy problem, and that beam width 1 equals greedy.</li>
+        </ul>
+      </section>
+
+      <!-- ================================================================ §10 -->
+      <section id="viva">
+        <h2><span class="num">§10</span>Viva scripts</h2>
+        <p class="section-intro">
+          Each answer below is written to be said out loud or drawn on a whiteboard. The first five are the
+          "walk me through" questions; practise them with the shape table of §5 open.
+        </p>
+        <ol class="qa">
+          <li>
+            <details>
+              <summary>Walk me through the forward pass of your Part 1 model.</summary>
+              <div class="a">
+                <p>"The input is a (B, L) batch of token ids: language tag, source, separator, English. The
+                  embedding gives (B, L, 512). Then 8 pre-norm blocks. In each block, RMSNorm, then one linear layer
+                  makes q, k, v as (B, L, 1536), which I view as (B, L, 3, 8, 64) and permute to three (B, 8, L, 64)
+                  tensors. RoPE rotates q and k by position. Causal SDPA computes softmax(QKᵀ/8)V per head, giving
+                  (B, 8, L, 64), which I transpose and reshape back to (B, L, 512), project with o_proj and add to
+                  the residual. Then RMSNorm and the FFN, dense or MoE, also added back. After the last block, a
+                  final norm and the LM head, tied to the embedding, give (B, L, 24000) logits. The loss is
+                  cross-entropy on the English tokens only; source positions have label −100."</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Walk me through the forward pass of your MoE layer.</summary>
+              <div class="a">
+                <p>"I flatten (B, L, 512) to N = B·L tokens. A linear router gives (N, E) logits; I take the softmax in
+                  fp32 and pick the top-k experts per token, giving gates and indices of shape (N, k). For k = 2 I
+                  renormalise the two gates to sum to 1; for k = 1 I keep the raw probability so the router still
+                  gets gradient. For each expert I find the tokens that chose it with nonzero, run the expert MLP on
+                  just those rows, multiply by their gates and index_add the result back into an (N, 512) output.
+                  Shared experts run on every token and are added. I reshape back to (B, L, 512). On the side I
+                  compute the Switch load-balancing loss E·Σ f_e·P_e and the router z-loss over non-pad tokens, and
+                  add 0.01 and 0.001 times them to the training loss."</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Explain RoPE mathematically. Why does it encode relative position?</summary>
+              <div class="a">
+                <p>Draw a 2-D vector and rotate it. Then write:</p>
+                <p>"Split each 64-dim head vector into 32 pairs (feature i with feature i+32). At position m, rotate
+                  pair i by the angle m·θᵢ, where θᵢ = 10000^(−2i/64). As a matrix, q′ = R(mθ)q and k′ = R(nθ)k.
+                  The attention score is q′ᵀk′ = qᵀR(mθ)ᵀR(nθ)k. A rotation's transpose is the rotation by the
+                  negative angle, and rotations compose by adding angles, so this is qᵀR((n−m)θ)k. Only n − m is
+                  left: the score depends on the distance, not on where the pair sits. Rotations preserve length,
+                  so RoPE changes direction only. In code, x1 and x2 are the two halves, and the output is
+                  [x1·cos − x2·sin, x1·sin + x2·cos], which is the two rows of the rotation matrix."</p>
+                <p>If they push: the 32 frequencies span from 1 radian per token to about 10⁻⁴, like clock hands at
+                  different speeds, so both short and long distances are resolved. Only q and k are rotated, not v.
+                  It is applied in every layer, not once at the input.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Walk me through one step of beam search.</summary>
+              <div class="a">
+                <p>"I keep B·W beams, each with a token sequence, a cumulative log-probability and its own KV cache
+                  row. I feed each beam's last token and get (B·W, V) log-probs. I add each beam's score to get the
+                  score of every possible extension, then view that as (B, W·V) so all candidates of one prompt are
+                  in one row, and take the top W. For each winner, flat // V tells me which beam it extends and
+                  flat % V which token it adds. I reorder the cache, masks and sequences to follow the parents and
+                  append the tokens. A finished beam can only add EOS at zero cost, so its score stays fixed. At the
+                  end I divide scores by length and take the best beam per prompt. Each step processes B·W
+                  sequences, so time and cache memory are linear in W."</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Walk me through one AdamW step, then say how Muon differs.</summary>
+              <div class="a">
+                <p>"For each weight: m = β₁m + (1−β₁)g is the momentum, v = β₂v + (1−β₂)g² the running mean square.
+                  Both start at zero, so I divide by 1−βᵗ to correct the bias. Then decay the weight by (1 − η·λ),
+                  and subtract η·m̂/(√v̂ + ε). So each weight gets its own step size."</p>
+                <p>"Muon is for 2-D matrices. It keeps Nesterov momentum and then orthogonalises the update: it
+                  replaces the update's singular values with 1 using five Newton–Schulz iterations,
+                  X ← aX + b(XXᵀ)X + c(XXᵀ)²X, which apply a polynomial to each singular value and leave the
+                  singular vectors alone. So the update moves equally in all directions of the matrix instead of
+                  being dominated by a few. Embeddings and norm gains go to an internal AdamW."</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>What are <code>arange</code>, <code>unsqueeze</code>, <code>expand</code> and <code>reshape</code>?</summary>
+              <div class="a">
+                <p><code>arange(n)</code> is <code>range(n)</code> as a tensor. <code>unsqueeze(i)</code> inserts a length-1 axis at
+                  position i so a tensor can broadcast (RoPE's <code>(B, L, 32)</code> → <code>(B, 1, L, 32)</code> to share
+                  angles across heads). <code>expand</code> makes a size-1 axis look larger without copying
+                  (<code>arange(L).expand(B, L)</code> gives every sequence the same positions). <code>reshape</code> reads the
+                  same numbers in a new shape in row-major order, copying only if the memory is not contiguous;
+                  <code>view</code> is the same but never copies.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Why left padding for generation, and why the <code>cumsum</code> for positions?</summary>
+              <div class="a">
+                <p>With left padding the last column is every prompt's last real token, so the next-token logits are
+                  always <code>[:, -1]</code> and new tokens are appended in one column for the whole batch. The
+                  <code>cumsum − 1</code> of the padding mask numbers the real tokens 0, 1, 2… so each prompt's first
+                  real token has RoPE position 0, as in training. The attention mask hides the pad keys.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Why the load-balancing loss? What happens without it?</summary>
+              <div class="a">
+                <p>Routing is self-reinforcing: an expert that gets more tokens trains more, gets better and attracts
+                  even more. Without a penalty one or two experts can take almost all tokens and the rest are wasted
+                  parameters. E·Σ f_e·P_e is minimised (value 1) when load is uniform; f has no gradient, so the
+                  push goes through the router probabilities P.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Why is attention scaled by √d<sub>h</sub>?</summary>
+              <div class="a">
+                <p>If q and k have independent entries of variance 1, their dot product over 64 dimensions has
+                  variance 64 (std 8). Softmax of values that far apart is nearly one-hot, and its gradient is nearly
+                  0. Dividing by √64 = 8 brings the standard deviation back to 1.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>What does the KV cache save, and what does it cost?</summary>
+              <div class="a">
+                <p>Without it, each new token re-runs the whole sequence, so generating T tokens is about T²/2
+                  token-passes. With it each step processes one token, because earlier keys and values never change
+                  under a causal mask. The cost is memory: 2 × layers × B × heads × length × head_dim numbers.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Why tie the embedding and the LM head?</summary>
+              <div class="a">
+                <p>Both are (24000, 512). Tying saves 12.3M parameters, a third of the model, and makes the logit of
+                  token v the dot product of the final hidden vector with v's embedding, so "predicting v" and
+                  "reading v" use the same representation.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Why does Lion need a smaller learning rate than AdamW?</summary>
+              <div class="a">
+                <p>Lion's update is a sign, so every weight moves by exactly η each step. AdamW's normalised update is
+                  usually smaller than 1 per weight. To get a similar overall step size, Lion's η must be smaller
+                  (3·10⁻⁴ vs 10⁻³), and its weight decay larger to keep the same effective decay η·λ.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Why does beam search give low perplexity but repetitive text?</summary>
+              <div class="a">
+                <p>It searches for high-probability sequences, and a model assigns high probability to safe, generic
+                  and repeated phrases: once a phrase appears, repeating it becomes even more likely. So beam-4 has
+                  perplexity 1.80, below the human reference, but 65% repeated 4-grams. Sampling with top-k or top-p
+                  gives up some likelihood for diversity closer to human text.</p>
+              </div>
+            </details>
+          </li>
+          <li>
+            <details>
+              <summary>Why <code>transpose(1, 2).reshape</code> and not <code>view</code> at the end of attention?</summary>
+              <div class="a">
+                <p>After the transpose the tensor's memory is no longer in row-major order for the new shape, so
+                  <code>view</code> raises an error. <code>reshape</code> copies into the right order. The transpose itself is
+                  needed to bring the head axis next to the feature axis so the 8 × 64 can merge into 512.</p>
+              </div>
+            </details>
+          </li>
+        </ol>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="1-transformers-from-scratch.html">
+          <span class="dir">← back</span>
+          <span class="lbl">A1 · Transformers from Scratch</span>
+        </a>
+        <a class="next" href="../pyqs/mid-2023.html">
+          <span class="dir">next →</span>
+          <span class="lbl">PYQ · Mid 2023</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Assignment 02 · MoE, Optimizers, Decoding · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#read">§0 how to read</a>
+        <a href="#toolkit">§1 tensor toolkit</a>
+        <a href="#math">§2 maths</a>
+        <a href="#model">§3 model.py</a>
+        <a href="#rope">§4 RoPE</a>
+        <a href="#trace">§5 shape trace</a>
+        <a href="#p1">§6 MoE</a>
+        <a href="#p2">§7 optimisers</a>
+        <a href="#p3">§8 decoding</a>
+        <a href="#rest">§9 utils</a>
+        <a href="#viva">§10 viva</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>

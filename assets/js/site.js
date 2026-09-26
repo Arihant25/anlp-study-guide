@@ -20,6 +20,7 @@ const SITE_NAV = [
   { href: "tutorials/1-math-for-dl.html", short: "T1", label: "Math for DL", group: "tutorials" },
   { href: "tutorials/2-matrices-to-transformers.html", short: "T2", label: "Matrices", group: "tutorials" },
   { href: "assignments/1-transformers-from-scratch.html", short: "A1", label: "Transformers", group: "assignments" },
+  { href: "assignments/2-moe-optimizers-decoding.html", short: "A2", label: "MoE · Decoding", group: "assignments" },
   { href: "pyqs/mid-2023.html", short: "Q23", label: "PYQ 2023", group: "pyqs" },
   { href: "pyqs/mid-2024.html", short: "Q24", label: "PYQ 2024", group: "pyqs" },
 ];
