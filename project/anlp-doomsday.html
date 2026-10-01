@@ -6,14 +6,14 @@
   <title>Project · When Collection Statistics Help Top-k — ANLP Study Guide</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
-    content="The ANLP Doomsday course project, explained in plain words: why learned sparse retrieval, KV-page selection and MoE routing are the same computation, what BM25's frequency correction adds, what we built, and what the mid-submission results show.">
+    content="The ANLP Doomsday course project, explained in plain words: why learned sparse retrieval, KV-page selection and MoE routing share one computation, which parts of BM25 help it, why a frequency-based predictor failed, and what replaced it.">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/project/anlp-doomsday.html">
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="ANLP Study Guide">
   <meta property="og:title" content="Predicting When Collection Statistics Help Top-k Selection | ANLP Project">
   <meta property="og:description"
-    content="The mid report of the ANLP Doomsday project in simple words: the problem, the method, the retrieval results and the predictor that failed.">
+    content="The mid report of the ANLP Doomsday project in plain words: the problem, the method, a Shapley split of where BM25 gains come from, and why saturation is predictable while IDF is not.">
   <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/project/anlp-doomsday.html">
   <meta name="twitter:card" content="summary">
   <script
@@ -67,16 +67,15 @@
         <a href="#gap">§3 · The puzzle</a>
         <a href="#problem">§4 · The problem, precisely</a>
         <a href="#built">§5 · What we built: retrieval</a>
-        <a href="#predictor">§6 · Diagnostics and predictor</a>
+        <a href="#predictor">§6 · What the predictors see</a>
         <a href="#bc">§7 · Attention and routing</a>
-        <a href="#exact">§8 · Answers known in advance</a>
-        <a href="#results">§9 · Results</a>
-        <a href="#plan">§10 · What happens next</a>
-        <a href="#limits">§11 · Limitations</a>
-        <a href="#eng">§12 · Engineering</a>
-        <a href="#changes">§13 · Changes since the proposal</a>
-        <a href="#glossary">§14 · Glossary</a>
-        <a href="#viva">§15 · Viva questions</a>
+        <a href="#results">§8 · Results</a>
+        <a href="#plan">§9 · What happens next</a>
+        <a href="#limits">§10 · Limitations</a>
+        <a href="#eng">§11 · Engineering</a>
+        <a href="#changes">§12 · Changes since the proposal</a>
+        <a href="#glossary">§13 · Glossary</a>
+        <a href="#viva">§14 · Viva questions</a>
 
         <div class="grp">Elsewhere</div>
         <a href="../index.html">← Home</a>
@@ -100,16 +99,18 @@
           Our project, <em>Predicting When Collection Statistics Help Top-k Selection: From Retrieval to Attention and
           Expert Routing</em>, asks whether an old idea from search engines can improve three quite different parts of
           modern NLP systems, and whether we can tell in advance when it will. This page walks through the mid report
-          from the ground up: the idea, what we built, what the experiments showed, and the part that did not work.
+          from the ground up: the idea, what we built, what the experiments showed, why our first predictor failed, and
+          what we learnt from working out the reason.
         </p>
         <div class="meta">
-          <span class="pill heat">mid · 30 Sep 2026</span>
-          <span class="pill">182 retrieval rows</span>
-          <span class="pill">7 bases · 13 collections</span>
+          <span class="pill heat">mid · 2 Oct 2026</span>
+          <span class="pill">182 primary + 1,226 sensitivity rows</span>
+          <span class="pill">14 representations · 13 collections</span>
           <span class="pill">BM25 · Quest · OLMoE</span>
         </div>
         <p class="small" style="margin-top:1rem">
-          Aviral Gupta · Mohit Kumar Singh · Anirudh Sankar · Arihant Tripathy — IIIT Hyderabad
+          Aviral Gupta · Mohit Kumar Singh · Anirudh Sankar · Arihant Tripathy — IIIT Hyderabad ·
+          <a class="xref" href="https://github.com/avi1o1/ANLP-Doomsday" target="_blank" rel="noopener">code ↗</a>
         </p>
       </section>
 
@@ -120,10 +121,9 @@
           A search engine, the attention layer of a language model and the router in a mixture-of-experts model look
           like unrelated pieces of machinery, but each of them does the same two things. It scores an input against a
           set of features using a dot product, and then it keeps only the <em>k</em> highest-scoring items. Search
-          engines learnt long ago that the raw dot product can be improved with a correction called BM25, which takes
-          into account how common each feature is across the whole collection. The other two mechanisms have never
-          used it. We wanted to know when that correction actually helps, and whether it is possible to predict the
-          answer before running the experiment.
+          engines learnt long ago that the raw dot product can be improved with a correction called BM25. The other two
+          mechanisms have never used it. We wanted to know when that correction actually helps, and whether it is
+          possible to predict the answer without any relevance labels.
         </p>
         <p>
           BM25 is really three corrections bundled together. IDF gives rare features more weight than common ones,
@@ -136,32 +136,33 @@
           on OLMoE. Those two adapters are built and tested, but they have not yet been run at scale.
         </p>
         <p>
-          The retrieval grid is complete, and four findings came out of it. The full correction improves retrieval in
-          161 of 179 cases and never costs more than 0.01 nDCG@10, with the largest gains close to 0.5. Most of that
-          gain comes from saturation and length normalisation, while IDF, the collection statistic the project set out
-          to study, contributes the least and is the only component that ever hurts. A handful of results can be worked
-          out on paper in advance, and every one of them comes out exactly as predicted, which gives us confidence in
-          the pipeline. Finally, the predictor we committed to before seeing the data does no better than guessing
-          "the correction helps" every time. We traced that failure to the way we normalised the quantity it predicts,
-          and §9.5 explains the cause and how the plan changes because of it.
+          The retrieval half is complete. The full correction improves nDCG@10 in 90% of the primary rows, but mostly
+          because the plain dot product over these codes is close to useless. The predictor we committed to in advance,
+          built on the shape of each vocabulary's frequency curve, did no better than always guessing "the correction
+          helps". Working out why turned into the main finding. An exact Shapley decomposition shows that 62% of the
+          gain comes from saturation, which reads no collection statistics at all, while IDF supplies only about a
+          tenth. How much saturation helps is set by how unequal the stored feature values are, and that account passed
+          six tests we fixed before running them. Whether IDF and length normalisation help depends on relevance, which
+          no statistic of the index can see. Agreement with a reference retriever stands in for relevance well enough to
+          predict it in exploratory analysis, although a decision rule built on it gains only 0.005 nDCG@10.
         </p>
 
         <div class="tldr">
           <div class="card">
-            <div class="big">161 / 179</div>
-            <div class="lab">cases where full BM25 beats the plain dot product</div>
+            <div class="big">90%</div>
+            <div class="lab">primary rows where full BM25 beats the plain dot product</div>
           </div>
           <div class="card">
-            <div class="big">7.8 · 3.7 · 1.5</div>
-            <div class="lab">nDCG@10 points gained from saturation, length and IDF</div>
+            <div class="big">62 · 28 · 10</div>
+            <div class="lab">percent of the gain from saturation, length and IDF (Shapley)</div>
           </div>
           <div class="card">
-            <div class="big">±2 exactly</div>
-            <div class="lab">the margins derived on paper, confirmed on all 12 collections where they are defined</div>
+            <div class="big">ρ = 0.87, 0.90</div>
+            <div class="lab">pre-registered test: value dispersion predicts saturation at unseen <em>k</em><sub>1</sub></div>
           </div>
           <div class="card">
-            <div class="big">R² ≈ 0</div>
-            <div class="lab">held-out fit of the pre-registered predictor</div>
+            <div class="big">R² 0.52–0.66</div>
+            <div class="lab">held-out fit of the exploratory pseudo-label predictor of the collection gain</div>
           </div>
         </div>
       </section>
@@ -175,8 +176,8 @@
           A <em class="term">retriever</em> is given a query and a large pile of documents, called the
           <em class="term">collection</em> or <em class="term">corpus</em>, and has to return the documents most likely
           to answer the query, in order. Most modern retrievers do this by turning the query into a vector
-          <em>u<sub>q</sub></em> and every document into a vector <em>u<sub>d</sub></em>. Each document is scored with
-          the dot product ⟨<em>u<sub>q</sub></em>, <em>u<sub>d</sub></em>⟩, and the top <em>k</em> are returned.
+          <em>x<sub>q</sub></em> and every document into a vector <em>x<sub>d</sub></em>. Each document is scored with
+          the dot product ⟨<em>x<sub>q</sub></em>, <em>x<sub>d</sub></em>⟩, and the top <em>k</em> are returned.
         </p>
         <p>
           These vectors come in two broad kinds. A dense retriever such as DPR or E5 produces vectors of a few hundred
@@ -190,26 +191,33 @@
         <h3>§1.2 · What BM25 adds to the dot product</h3>
         <p>
           BM25 is the classical scoring function for keyword search, and after several decades it remains a strong
-          baseline. It improves on the plain dot product with three corrections, each aimed at a particular way in
-          which raw counts give a misleading picture of relevance.
+          baseline. Its three parts arrived one at a time: IDF as a statistical account of how specific a term is,
+          saturation as an approximation to a model of how often a term repeats within a document, and pivoted length
+          normalisation so that long documents are neither favoured nor penalised. Each part was designed for words,
+          which is exactly why it is an open question whether any of them helps features that are not words.
         </p>
 
         <table class="tbl">
-          <thead><tr><th>Component</th><th>The problem it fixes</th><th>What it does</th></tr></thead>
+          <thead><tr><th>Component</th><th>The problem it fixes</th><th>What it does</th><th>Reads</th></tr></thead>
           <tbody>
             <tr><td><strong>IDF</strong><br><span class="small">inverse document frequency</span></td>
               <td>A word like "the" appears in every document, so matching it tells you nothing.</td>
               <td>Multiplies each feature by a weight that is large when few documents contain it and near zero when
-                all of them do.</td></tr>
+                all of them do.</td><td>the collection</td></tr>
             <tr><td><strong>Saturation</strong></td>
               <td>A document that says "cat" 50 times is not 50 times more about cats than one that says it once.</td>
               <td>Passes each feature's value through a curve that rises quickly and then flattens out, capped at
-                <em>k</em><sub>1</sub>+1.</td></tr>
+                <em>k</em><sub>1</sub>+1.</td><td>only the document</td></tr>
             <tr><td><strong>Length normalisation</strong></td>
               <td>Long documents match more query terms simply because they contain more text.</td>
-              <td>Divides by the document's length relative to the average.</td></tr>
+              <td>Divides by the document's length relative to the average.</td><td>the collection</td></tr>
           </tbody>
         </table>
+        <p>
+          The last column turns out to matter a great deal. IDF and length normalisation need statistics gathered over
+          the whole collection, while saturation looks only at the document in front of it. The project set out to study
+          collection statistics, and the largest part of the gain came from the one component that does not use them.
+        </p>
 
         <div class="callout mechanism">
           <div class="callout-label">a worked example</div>
@@ -252,8 +260,8 @@
         <table class="tbl">
           <thead><tr><th>Setting</th><th>The "query"</th><th>The "documents"</th><th>What is kept</th></tr></thead>
           <tbody>
-            <tr><td><strong>A · Learned sparse retrieval</strong></td><td>query vector <em>u<sub>q</sub></em></td>
-              <td>document vectors <em>u<sub>d</sub></em></td><td>top-<em>k</em> documents</td></tr>
+            <tr><td><strong>A · Learned sparse retrieval</strong></td><td>query vector <em>x<sub>q</sub></em></td>
+              <td>document vectors <em>x<sub>d</sub></em></td><td>top-<em>k</em> documents</td></tr>
             <tr><td><strong>B · KV-page selection</strong> (Quest)</td><td>current attention query <em>q<sub>t</sub></em></td>
               <td>summaries of pages of 16 cached keys</td><td>top pages to attend to</td></tr>
             <tr><td><strong>C · MoE routing</strong></td><td>token hidden state <em>h<sub>t</sub></em></td>
@@ -262,7 +270,7 @@
         </table>
 
         <figure class="diagram">
-          <svg viewBox="0 0 720 420" role="img" aria-label="The shared computation: three settings feed a per-feature score, then a switchable BM25 correction, then top-k. Selection counts feed both the correction and the label-free diagnostics that predict the margin.">
+          <svg viewBox="0 0 720 420" role="img" aria-label="The shared computation: three settings feed a per-feature score, then a switchable BM25 correction, then top-k. Selection counts feed both the correction and the label-free features that predict its gain.">
             <defs>
               <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                 <path d="M0,0 L10,5 L0,10 z" />
@@ -304,9 +312,9 @@
             <path class="arr" d="M617,212 L617,274" />
 
             <rect class="box side" x="530" y="276" width="175" height="80" rx="6" />
-            <text x="617" y="300" text-anchor="middle" font-size="12">label-free diagnostics z</text>
+            <text x="617" y="300" text-anchor="middle" font-size="12">label-free features</text>
             <text x="617" y="320" text-anchor="middle" class="sub">↓</text>
-            <text x="617" y="340" text-anchor="middle" font-size="12">predicted margin f(z)</text>
+            <text x="617" y="340" text-anchor="middle" font-size="12">predicted gain</text>
           </svg>
           <figcaption>The computation the three settings share, with the BM25 correction inserted between scoring and top-k. The
             same per-feature counts that IDF needs also supply the diagnostics used to predict whether the correction
@@ -314,13 +322,13 @@
         </figure>
 
         <p>
-          None of the three takes into account how often a feature is selected across the whole collection, even
-          though that is exactly the statistic IDF is built on. Fragments of the idea have nonetheless surfaced inside
-          transformers under other names. Loss-free balancing, a technique for training mixture-of-experts models, adds
-          a bias to each expert that shrinks when the expert is used too often, which amounts to a frequency discount
-          applied during training. StreamingLLM always keeps the first few tokens in the KV cache because they absorb
-          a large share of attention, a phenomenon known as the attention sink. Each is a local fix for one mechanism,
-          and neither is framed as a general correction.
+          None of the three asks how often a feature is selected across the collection, how evidence builds up within
+          an item, or how large the item is. Lexical retrieval asks all three questions. Inside transformers only
+          fragments of the answers have reappeared. Loss-free balancing, a technique for training mixture-of-experts
+          models, adds a bias to each expert that shrinks when the expert is used too often, which amounts to a
+          frequency discount with no saturation or length term. StreamingLLM always keeps the first few tokens in the
+          KV cache because they absorb a large share of attention, a phenomenon known as the attention sink. Each is a
+          local fix for one mechanism, and neither is framed as a general correction.
         </p>
         <div class="callout link">
           <div class="callout-label">where this connects to the course</div>
@@ -347,27 +355,29 @@
         <p>
           Both rows use the same benchmark suite and the same two scorers. The only thing that changed is the
           vocabulary, and that alone was enough to reverse which scorer comes out ahead. Other work points the same way.
-          Park et al. (CL-SR) lose 11 to 18 percent of their nDCG@10 when they remove IDF. Han et al., working with
-          image patches, find the two scorers roughly level, and when they raise the number of active features from 16
-          to 128, R@1 falls from 0.508 to 0.038. Whatever decides the outcome, it clearly has to do with how feature
-          frequencies are distributed.
+          Park et al. (CL-SR) lose 11 to 18 percent of their nDCG@10 on TREC-DL when they remove IDF, which is the only
+          published ablation of the correction. Han et al., working with image patches, find the two scorers within
+          about two points, and when they raise the number of active features from 16 to 128, R@1 falls from 0.508 to
+          0.038.
         </p>
         <p>
-          The only explanation offered so far is qualitative: BM25 helps as long as the vocabulary stays
-          <em>Zipfian</em>, meaning a few features are very common and there is a long tail of rare ones, as with words
-          in ordinary text. That account leaves three things open. It is based on a handful of vocabularies that were
-          never varied in a controlled way, so nobody knows which property of a vocabulary is doing the work. Because
-          it is qualitative, it gives a practitioner with a new representation no way to choose a scorer other than
-          building both and comparing them. And it has never been tested inside a model, where frequency and usefulness
-          may well diverge: a KV page that is selected constantly could be an attention sink the model depends on, and
-          a rarely used expert could be one of the "super experts" whose removal breaks the model.
+          The explanation offered is that BM25 helps as long as the vocabulary stays <em>Zipfian</em>, meaning a few
+          features are very common and there is a long tail of rare ones, as with words in ordinary text. If that
+          account is right, statistics of the frequency curve should predict the sign of the gain before anyone runs the
+          experiment, and our proposal made that prediction the central test. The account also leaves three things
+          open. None of the papers varies the vocabulary systematically or asks which of the three components produces
+          the gain. The explanation has never been turned into a quantity that can be computed in advance. And it has
+          never been tested inside a model, where frequency and usefulness may well diverge: a KV page that is selected
+          constantly could be an attention sink the model depends on, and a rarely used expert could be one of the
+          "super experts" whose removal breaks the model.
         </p>
         <div class="callout aha">
-          <div class="callout-label">what this project adds</div>
-          <p>The Zipfian explanation belongs to earlier work, and we do not claim it. What we contribute is a
-            controlled family of vocabularies, a scorer whose components can be switched independently, a quantity that
-            can be computed before running an experiment and is meant to predict its outcome, and a test of that
-            prediction outside retrieval.</p>
+          <div class="callout-label">what this project contributes</div>
+          <p>A controlled grid of fourteen representations scored under all eight configurations, in 182 primary and
+            1,226 sensitivity rows. A negative result for the pre-registered predictor, together with the reason it could
+            not have worked. An exact attribution of the gain to its three components, with a mechanism for saturation
+            that passed tests fixed in advance. An exploratory label-free predictor of when collection statistics help.
+            And adapters for KV-page selection and expert routing, ready for the frozen predictors.</p>
         </div>
       </section>
 
@@ -375,96 +385,103 @@
       <section id="problem">
         <h2><span class="num">§4</span>The problem, stated precisely</h2>
 
-        <h3>§4.1 · Representation and budget</h3>
+        <h3>§4.1 · The switchable scorer</h3>
         <p>
-          A <em class="term">representation</em> R maps an item, whether a query or a document, to a sparse
-          non-negative vector φ<sub>R</sub>(x) over <em>m</em> features. To keep comparisons fair we impose a
-          <em class="term">budget</em> (<em>k<sub>q</sub></em>, <em>k<sub>d</sub></em>): only the largest
-          <em>k<sub>q</sub></em> coordinates of a query and the largest <em>k<sub>d</sub></em> of a document are kept.
-          The main budget is 32 for queries and 128 for documents. Because the budget is the same for every scorer, no
-          scorer can win simply by seeing more features than another.
-        </p>
-
-        <h3>§4.2 · Collection statistics</h3>
-        <p>
-          For a corpus of N documents, <em>df<sub>j</sub></em> is the number of documents in which feature <em>j</em> is
-          active. A document's length is the sum of its feature values, |d| = Σ<sub>j</sub> φ<sub>j</sub>(d), and avgdl
-          is the average length across the corpus. We use a smoothed form of IDF:
+          For query and document vectors with non-negative coordinates, the score is
+          S(q, d) = Σ<sub>j</sub> x<sub>qj</sub> · w<sub>j</sub> · T(x<sub>dj</sub>, ℓ<sub>d</sub>). Each of its three
+          pieces is a switch. The weight w<sub>j</sub> is either 1 or the smoothed IDF,
         </p>
         <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mtext>idf</mtext><mi>j</mi></msub><mo>=</mo><mi>ln</mi><mrow><mo fence="true">(</mo><mn>1</mn><mo>+</mo><mfrac><mrow><mi>N</mi><mo>&#x2212;</mo><mi>d</mi><msub><mi>f</mi><mi>j</mi></msub><mo>+</mo><mn>0.5</mn></mrow><mrow><mi>d</mi><msub><mi>f</mi><mi>j</mi></msub><mo>+</mo><mn>0.5</mn></mrow></mfrac><mo fence="true">)</mo></mrow></mrow></math></div>
         <p>
-          The "1 +" inside the logarithm keeps the weight strictly positive. The textbook form of IDF turns negative for
-          features that occur in more than half the documents, and multiplying by it would flip the sign of a score.
-          This form never does.
-        </p>
-
-        <h3>§4.3 · The switchable scorer</h3>
-        <p>
-          A configuration σ = (σ<sub>I</sub>, σ<sub>S</sub>, σ<sub>L</sub>) is a set of three bits that switch IDF,
-          saturation and length normalisation on or off. When length normalisation is on, the length factor is
-          ℓ(d) = 1 − b + b·|d|/avgdl, and otherwise it is simply 1. The weight given to feature <em>j</em> in document
-          <em>d</em> is then
+          where <em>df<sub>j</sub></em> of the N documents contain feature <em>j</em>. The "1 +" inside the logarithm
+          keeps the weight strictly positive; the textbook form of IDF turns negative for features in more than half
+          the documents and would flip the sign of a score. The length factor ℓ<sub>d</sub> is either 1 or
+          1 − b + b·L<sub>d</sub>/avgL, where L<sub>d</sub> = Σ<sub>j</sub> x<sub>dj</sub> is the document's length. The
+          transform T(f, ℓ) is either f/ℓ or the saturated form, so that written out in full the document-side weight is
         </p>
         <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msubsup><mi>g</mi><mi>j</mi><mi>&#x3C3;</mi></msubsup><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo><mo>=</mo><msubsup><mtext>idf</mtext><mi>j</mi><msub><mi>&#x3C3;</mi><mi>I</mi></msub></msubsup><mo>&#x22C5;</mo><mrow><mo fence="true">{</mo><mtable columnalign="left"><mtr><mtd><mfrac><mrow><mo stretchy="false">(</mo><msub><mi>k</mi><mn>1</mn></msub><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo><msub><mi>&#x3C6;</mi><mi>j</mi></msub><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo></mrow><mrow><msub><mi>&#x3C6;</mi><mi>j</mi></msub><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo><mo>+</mo><msub><mi>k</mi><mn>1</mn></msub><mi>&#x2113;</mi><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo></mrow></mfrac></mtd><mtd><msub><mi>&#x3C3;</mi><mi>S</mi></msub><mo>=</mo><mn>1</mn></mtd></mtr><mtr><mtd><msub><mi>&#x3C6;</mi><mi>j</mi></msub><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo><mo>/</mo><mi>&#x2113;</mi><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo></mtd><mtd><msub><mi>&#x3C3;</mi><mi>S</mi></msub><mo>=</mo><mn>0</mn></mtd></mtr></mtable></mrow></mrow></math></div>
         <p>
-          and the score is <math xmlns="http://www.w3.org/1998/Math/MathML" display="inline"><mrow><msub><mi>s</mi><mi>&#x3C3;</mi></msub><mo stretchy="false">(</mo><mi>q</mi><mo>,</mo><mi>d</mi><mo stretchy="false">)</mo><mo>=</mo><msub><mo>&#x2211;</mo><mi>j</mi></msub><msub><mi>&#x3C6;</mi><mi>j</mi></msub><mo stretchy="false">(</mo><mi>q</mi><mo stretchy="false">)</mo><mspace width="0.167em" /><msubsup><mi>g</mi><mi>j</mi><mi>&#x3C3;</mi></msubsup><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo></mrow></math>, with <em>k</em><sub>1</sub> = 1.2 and <em>b</em> = 0.75, the standard BM25
-          defaults. Put simply, the query side is left as it is, while each document feature is optionally reweighted by
-          IDF, optionally passed through the saturation curve, and optionally divided by the document's relative
-          length.
+          with <em>k</em><sub>1</sub> = 1.2 and <em>b</em> = 0.75 in the primary grid, the standard BM25 defaults. A
+          configuration is a bit string in the order IDF, saturation, length.
         </p>
 
         <table class="tbl">
-          <thead><tr><th>σ (I S L)</th><th>What is on</th><th>Name</th></tr></thead>
+          <thead><tr><th>Config (I S L)</th><th>What is on</th><th>Name</th></tr></thead>
           <tbody>
             <tr><td><code>000</code></td><td>nothing</td><td><strong>plain inner product</strong></td></tr>
             <tr><td><code>100</code></td><td>IDF</td><td>IDF-weighted dot product</td></tr>
-            <tr><td><code>010</code></td><td>saturation</td><td></td></tr>
+            <tr><td><code>010</code></td><td>saturation</td><td>saturation only, no collection statistics</td></tr>
             <tr><td><code>001</code></td><td>length</td><td></td></tr>
-            <tr><td><code>110</code>, <code>101</code>, <code>011</code></td><td>two of three</td><td></td></tr>
+            <tr><td><code>110</code>, <code>101</code>, <code>011</code></td><td>two of three</td><td><code>011</code> is the most frequent winner</td></tr>
             <tr><td><code>111</code></td><td>all three</td><td><strong>BM25 over learned features</strong></td></tr>
           </tbody>
         </table>
         <div class="callout aha">
           <div class="callout-label">why eight configurations rather than two</div>
           <p>Comparing only the inner product with BM25 would tell us whether the bundle helps, but not which part of
-            it is responsible. Running all eight corners of the 2 × 2 × 2 cube lets us measure the effect of each
-            component on its own, and that is how we found that IDF contributes the least (§9.4).</p>
+            it is responsible. Running all eight corners of the 2 × 2 × 2 cube lets us split the gain exactly among the
+            three components (§4.3), and that is how we found that saturation does most of the work.</p>
         </div>
 
-        <h3>§4.4 · The margin: the number we try to predict</h3>
+        <h3>§4.2 · What counts as one row</h3>
         <p>
-          Let Q<sub>σ</sub>(R, c) be the quality of configuration σ for representation R on collection c. In retrieval
-          this is mean nDCG@10. The quantity we want to predict is
+          Collection frequency belongs to a corpus, so the same representation has a different frequency curve on MS
+          MARCO than on Telugu MIRACL. One row of the analysis therefore pairs a representation with a collection, at a
+          given support budget (the caps on query and document features), BM25 parameters (<em>k</em><sub>1</sub>,
+          <em>b</em>) and basis seed. Each row carries eight nDCG@10 values Q<sub>c</sub>, one per configuration. This
+          framing came from the TA's feedback on the interim proposal, which noted that counting only representations
+          would have left 16 data points to fit 6 regressors.
+        </p>
+
+        <h3>§4.3 · Three things to predict</h3>
+        <p>
+          The pre-registered target is the <strong>margin</strong>, the gain of full BM25 over the plain inner product
+          divided by the standard deviation of quality across the eight configurations:
         </p>
         <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>m</mi><mo stretchy="false">(</mo><mi>R</mi><mo>,</mo><mi>c</mi><mo stretchy="false">)</mo><mo>=</mo><mfrac><mrow><msub><mi>Q</mi><mn>111</mn></msub><mo>&#x2212;</mo><msub><mi>Q</mi><mn>000</mn></msub></mrow><mrow><msub><mtext>sd</mtext><mi>&#x3C3;</mi></msub><mspace width="0.167em" /><msub><mi>Q</mi><mi>&#x3C3;</mi></msub></mrow></mfrac></mrow></math></div>
         <p>
-          that is, the gain of full BM25 over the plain inner product, divided by the standard deviation of quality
-          across all eight configurations. The division makes the margin unitless, so a margin of 2 carries the same
-          meaning whether the underlying metric is nDCG@10, RULER accuracy or MMLU accuracy, and a predictor fitted on
-          retrieval can therefore be scored on attention or routing. We adopted this definition after the TA's feedback
-          on the interim proposal, which pointed out that we had never said what number the predictor would produce
-          outside retrieval.
+          Dividing makes it unitless, so a margin of 2 means the same thing whether the metric is nDCG@10, RULER
+          accuracy or MMLU accuracy, and a predictor fitted on retrieval can be scored elsewhere. §8.2 shows that this
+          target turned out to be badly shaped for prediction, which led us to two targets defined on the same eight
+          values.
+        </p>
+        <p>
+          The first is the <strong>Shapley value</strong> φ<sub>s</sub> of each switch, its marginal effect averaged over
+          every order in which the switches could be turned on. Writing Q<sub>A</sub> for the configuration with the
+          switches in A on,
+        </p>
+        <div class="eq boxed"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msub><mi>&#x3C6;</mi><mi>s</mi></msub><mo>=</mo><munder><mo>&#x2211;</mo><mrow><mi>A</mi><mo>&#x220C;</mo><mi>s</mi></mrow></munder><mfrac><mrow><mo stretchy="false">|</mo><mi>A</mi><mo stretchy="false">|</mo><mo>!</mo><mspace width="0.167em" /><mo stretchy="false">(</mo><mn>2</mn><mo>&#x2212;</mo><mo stretchy="false">|</mo><mi>A</mi><mo stretchy="false">|</mo><mo stretchy="false">)</mo><mo>!</mo></mrow><mn>6</mn></mfrac><mspace width="0.167em" /><mo stretchy="false">(</mo><msub><mi>Q</mi><mrow><mi>A</mi><mo>&#x222A;</mo><mo stretchy="false">{</mo><mi>s</mi><mo stretchy="false">}</mo></mrow></msub><mo>&#x2212;</mo><msub><mi>Q</mi><mi>A</mi></msub><mo stretchy="false">)</mo></mrow></math></div>
+        <p>
+          With three switches the weights are simple: a third for turning <em>s</em> on first, a sixth for each of the
+          two ways of turning it on second, and a third for turning it on last. Because our grid contains all eight
+          configurations, the values are exact, with no sampling, and the three of them add up to exactly
+          Q<sub>111</sub> − Q<sub>000</sub>.
+        </p>
+        <p>
+          The second is the <strong>collection gain</strong> G = Q<sub>111</sub> − Q<sub>010</sub>, the value of IDF and
+          length normalisation once saturation is already on. Its sign answers the practical question a practitioner
+          faces: should I use collection statistics for this representation on this collection? We score predictors by
+          sign accuracy against the majority sign and by held-out R² and Spearman correlation. For G we also measure the
+          nDCG@10 reached when collection statistics are used only where the prediction is positive.
         </p>
 
-        <h3>§4.5 · Diagnostics and the task</h3>
+        <h3>§4.4 · Transfer to attention and routing</h3>
         <p>
-          From the uncorrected activations of R on corpus c we compute a small vector <em>z</em> of cheap statistics,
-          described in §6. No relevance judgements are used anywhere in <em>z</em>. The task is to learn a function
-          <em>f</em> with <em>f</em>(<em>z</em>) ≈ <em>m</em>, and we set ourselves three criteria for success. The
-          predictor should get the sign and size of <em>m</em> right on basis families and corpora it has never seen.
-          It should beat a baseline that knows only which corpus a row comes from. And when it is carried, without
-          refitting, to page selection and routing, it should keep a sign accuracy of at least 70% and a mean absolute
-          error no more than 1.5 times its error on retrieval. These thresholds were fixed before any transformer
-          experiment was run.
+          The scorer applies to any selection that has a non-negative score and a selection count. For KV page
+          <em>i</em> at decoding step <em>t</em>, the feature value is the softplus of the Quest criticality score. Its
+          frequency is the fraction of calibration queries for which the page enters the top-k among the pages that
+          exist at that point, and its length is the norm of the page's concatenated key minima and maxima. For expert
+          <em>e</em> at a token, the value is the router probability, the frequency is the share of calibration tokens
+          routed to <em>e</em>, and the length is the norm of the router logits. In attention a row is a model, RULER
+          task, context length and token budget, scored by RULER accuracy. In routing a row is a model and task, scored
+          by negative log-likelihood on WikiText and zero-shot MMLU accuracy.
         </p>
-        <div class="callout gotcha">
-          <div class="callout-label">what counts as one data point</div>
-          <p>Each row of the regression is a <em>(representation, collection)</em> pair rather than a representation,
-            because the same SAE has a different frequency curve on MS MARCO than on Telugu MIRACL and therefore
-            different diagnostics. Fourteen representations across thirteen collections gives 182 rows. This framing
-            also came from the interim feedback, which noted that counting only representations would have left 16
-            data points to fit 6 regressors.</p>
-        </div>
+        <p>
+          A predictor fitted in retrieval is applied there without refitting. The registered criterion asks for a sign
+          accuracy of at least 70% and a mean absolute error no more than 1.5 times the corpus-held-out error in
+          retrieval. Since always predicting a gain already reaches 90% sign accuracy in retrieval, we added a third
+          condition before any transfer run: the predictor must also beat the majority sign.
+        </p>
       </section>
 
       <!-- ================================================================ §5 -->
@@ -473,17 +490,16 @@
 
         <h3>§5.1 · One frozen encoder</h3>
         <p>
-          Every representation starts from multilingual E5-base, run frozen in fp16 with a maximum input length of 512.
-          A <em>pooled</em> embedding is the mean over the content tokens, leaving out the prefix, special tokens and
-          padding, and the individual token states are kept as well for the token-level variant. Holding the encoder
-          fixed is what makes the comparison controlled: any difference between two representations comes from how the
-          vocabulary was built, not from a different model underneath.
+          Every representation starts from multilingual E5-base at a pinned revision, run frozen in fp16. A
+          <em>pooled</em> embedding is the mean over the content tokens, and the individual token states are kept for
+          the token-level variant. Holding the encoder fixed is what makes the comparison controlled: any difference
+          between two representations comes from how the vocabulary was built, not from a different model underneath.
         </p>
 
         <h3>§5.2 · Seven bases in four families</h3>
         <p>
           A <em class="term">basis</em> is a recipe for turning a dense vector into sparse, non-negative features. All
-          seven were fitted on 200,000 MS MARCO training passages, which amounts to up to two million token states.
+          seven were fitted on the same 200,000 MS MARCO training passages and nowhere else.
         </p>
         <table class="tbl">
           <thead><tr><th>Family</th><th>Basis</th><th>How it works</th></tr></thead>
@@ -491,14 +507,14 @@
             <tr><td rowspan="3"><strong>Linear</strong></td><td>Identity</td><td>The raw 768 E5 dimensions.</td></tr>
             <tr><td>Gaussian random projection</td><td>Multiplies by a random matrix into 768 dimensions.</td></tr>
             <tr><td>PCA</td><td>Keeps the 384 directions of largest variance.</td></tr>
-            <tr><td><strong>Clustered</strong></td><td>k-means</td><td>4,096 cluster centres, with each vector given soft
-                weights over its four nearest centres.</td></tr>
+            <tr><td><strong>Clustered</strong></td><td>soft k-means</td><td>4,096 cluster centres, with each vector given soft
+                weights over its nearest centres.</td></tr>
             <tr><td rowspan="2"><strong>Quantised</strong></td><td>Product quantisation (PQ)</td><td>Splits the vector into
                 8 pieces and replaces each piece with the nearest of 256 codes, giving one active code per piece.</td></tr>
             <tr><td>Residual quantisation (RQ)</td><td>Uses 8 stages of 256 codes, where each stage encodes what the
                 earlier stages missed.</td></tr>
-            <tr><td><strong>Learned</strong></td><td>Top-K SAE</td><td>A sparse autoencoder with 8,192 features, exactly 32
-                of which are active for any input, trained with AdamW for three epochs on reconstruction loss.</td></tr>
+            <tr><td><strong>Learned</strong></td><td>Top-K SAE</td><td>A sparse autoencoder with 8,192 features, at most 32
+                of which are active for any input.</td></tr>
           </tbody>
         </table>
         <div class="callout mechanism">
@@ -508,456 +524,487 @@
             and negative parts separately. The 768 signed numbers become 1,536 non-negative ones.</p>
         </div>
         <p>
-          Each basis is used at two <strong>granularities</strong>. At the pooled level, a document is represented by
-          the code of its mean embedding. At the token level, it is represented by the sum of the codes of all its
-          tokens, in the spirit of late-interaction models such as ColBERT. Seven bases at two granularities give
-          fourteen representations. SPLADE-v3 is kept only as an outside reference: it is not built from E5, so it falls
-          outside the controlled grid.
+          Each basis is used at two <strong>granularities</strong>. At the pooled level, the basis is applied to the mean
+          of the token states. At the token level, it is applied to each token state and the codes are summed. Seven
+          bases at two granularities give fourteen representations. A secondary SAE shares one dictionary across both
+          granularities, which lets us separate the effect of how codes are aggregated from the effect of what the
+          dictionary was fitted on. SPLADE has its own backbone rather than E5, so it stays outside the grid as an
+          external comparison.
         </p>
 
-        <h3>§5.3 · Thirteen collections</h3>
+        <h3>§5.3 · Budgets and statistics</h3>
+        <p>
+          Before any statistic is computed, supports are capped at 32 query features and 128 document features in the
+          primary budget, so no scorer can win simply by seeing more features. Document frequencies, lengths and IDF
+          are then computed from the capped vectors of each target corpus, and retrieval is exact over the whole corpus.
+        </p>
+        <div class="callout mechanism">
+          <div class="callout-label">a note on linear bases</div>
+          <p>For a linear map C with diagonal weights D, weighted scoring q<sup>⊤</sup>C<sup>⊤</sup>DC d gives the same
+            ranking as the plain inner product whenever C<sup>⊤</sup>DC is a multiple of the identity. Rectification,
+            truncation, saturation and length normalisation are all non-linear, so none of our representations meets
+            that condition, and IDF can genuinely change their rankings.</p>
+        </div>
+
+        <h3>§5.4 · Thirteen collections</h3>
         <table class="tbl">
           <thead><tr><th>Group</th><th>Collections</th><th>What it tests</th></tr></thead>
           <tbody>
-            <tr><td>MS MARCO</td><td>MS MARCO dev, TREC-DL 2019, TREC-DL 2020 (one shared corpus of 8.8M passages)</td>
-              <td>in-domain performance, since the bases were fitted on MS MARCO training passages</td></tr>
-            <tr><td>BEIR</td><td>SciFact, NFCorpus, FiQA-2018, TREC-COVID, ArguAna, SCIDOCS</td><td>other domains:
+            <tr><td>MS MARCO</td><td>MS MARCO dev, TREC-DL 2019, TREC-DL 2020 (one shared set of 8.8M passages)</td>
+              <td>in-domain performance, since the bases were fitted on MS MARCO passages</td></tr>
+            <tr><td>BEIR</td><td>ArguAna, FiQA, NFCorpus, SCIDOCS, SciFact, TREC-COVID</td><td>other domains:
                 science, medicine, finance and argument retrieval</td></tr>
-            <tr><td>LIMIT</td><td>LIMIT</td><td>a stress test designed to expose the limits of single-vector embeddings</td></tr>
-            <tr><td>MIRACL</td><td>Hindi, Bengali and Telugu dev sets, each searched within its own language</td>
+            <tr><td>LIMIT</td><td>LIMIT</td><td>built so that the sets of documents its queries need exceed what a
+                low-dimensional embedding can represent</td></tr>
+            <tr><td>MIRACL</td><td>Hindi, Bengali and Telugu, each searched within its own language</td>
               <td>Indic languages, where the frequency curve can look very different</td></tr>
           </tbody>
         </table>
-        <p>
-          Together these make thirteen collections drawn from eleven distinct corpora. Since the bases were fitted on
-          MS MARCO training data, every collection other than MS MARCO dev is a test of how well a basis generalises
-          beyond the data it was built from.
-        </p>
 
-        <h3>§5.4 · Scoring, indexing and the two reference points</h3>
+        <h3>§5.5 · Experiment families</h3>
         <p>
-          Documents are transformed once for each configuration and stored as compressed sparse columns, which is an
-          inverted index: a query only has to visit the lists of documents for its own active features. Retrieval is
-          exact, with no approximation. Two reference systems sit outside the grid. Lexical BM25, run in BM25S over
-          ordinary Unicode-aware word tokens, is the classic keyword baseline. Dense E5, searched exactly with FAISS on
-          GPU, shows what the encoder achieves on its own without any sparse step in between.
+          The primary family covers all thirteen collections. Each sensitivity family varies one setting at a time on
+          the ten collections outside MS MARCO, which is what lets us check whether a finding at the default settings
+          survives when the settings change.
+        </p>
+        <table class="tbl">
+          <thead><tr><th>Family</th><th class="n">Rows</th></tr></thead>
+          <tbody>
+            <tr><td>primary (14 representations × 13 collections)</td><td class="n">182</td></tr>
+            <tr><td>support budget 16/64, 32/128, 64/256, native</td><td class="n">462</td></tr>
+            <tr><td><em>k</em><sub>1</sub> ∈ {0.6, 1.2, 2.4}, <em>b</em> ∈ {0, 0.5, 0.75}</td><td class="n">630</td></tr>
+            <tr><td>basis seeds 1 and 2</td><td class="n">100</td></tr>
+            <tr><td>shuffled and uniform <em>df</em> controls</td><td class="n">84</td></tr>
+            <tr><td>shared SAE dictionary</td><td class="n">20</td></tr>
+            <tr><td><strong>union on the ten non-MS MARCO collections</strong></td><td class="n">1,226</td></tr>
+          </tbody>
+        </table>
+        <p class="small">Every row has eight scoring configurations. Families share their default cells, so the union is
+          smaller than the sum. The MS MARCO budget rows are still pending.</p>
+
+        <h3>§5.6 · Reference systems and significance</h3>
+        <p>
+          Two reference systems sit outside the grid. Lexical BM25 over ordinary word tokens is the classic keyword
+          baseline, and dense E5 with exact search shows what the encoder achieves on its own. For significance, a
+          paired bootstrap over queries with 10,000 draws recomputes both the gain and its standard deviation, and Holm
+          correction is applied within each pre-declared family of tests: full BM25 against the inner product, and the
+          three component main effects. Significance is reported on the ten collections outside MS MARCO.
         </p>
       </section>
 
       <!-- ================================================================ §6 -->
       <section id="predictor">
-        <h2><span class="num">§6</span>Diagnostics and the predictor</h2>
-
-        <h3>§6.1 · Six cheap measurements</h3>
+        <h2><span class="num">§6</span>What the predictors can see</h2>
         <p class="section-intro">
-          A single pass over the uncorrected, budget-truncated codes of a corpus produces six numbers. None of them
-          requires a query or a relevance label, so they can be computed for any new representation before any
-          evaluation is done.
+          No feature describing a row ever reads a relevance label. Within that rule, there are three tiers of
+          information a predictor can use, each adding to the one before it.
+        </p>
+
+        <h3>§6.1 · Tier 1: the pre-registered frequency diagnostics</h3>
+        <p>
+          These are the six numbers we committed to in the proposal, all describing the shape of the feature-frequency
+          curve. The primary ridge model uses the three marked ★, chosen before any result was seen; a secondary model
+          uses all six.
         </p>
         <table class="tbl">
-          <thead><tr><th>#</th><th>Diagnostic</th><th>What it measures</th></tr></thead>
+          <thead><tr><th>Diagnostic</th><th>What it measures</th></tr></thead>
           <tbody>
-            <tr><td>i</td><td>Active fraction</td><td>The share of all features that are ever switched on.</td></tr>
-            <tr><td>ii</td><td><strong>Zipf exponent</strong> ★</td><td>The slope of log selection rate against log rank,
-                which describes how steep the frequency curve is.</td></tr>
-            <tr><td>iii</td><td>Gini coefficient</td><td>How unequally activation mass is spread across features.</td></tr>
-            <tr><td>iv</td><td>Head frequency mass</td><td>The share of selections taken by the 1% most frequent features.</td></tr>
-            <tr><td>v</td><td><strong>IDF variance</strong> ★</td><td>How much room IDF has to reweight anything. If every
-                IDF were equal, it would change nothing.</td></tr>
-            <tr><td>vi</td><td><strong>Frequent-activation share</strong> ★</td><td>The share of activation mass, rather
-                than selections, held by that same top 1%.</td></tr>
+            <tr><td>Active fraction</td><td>The share of all features that are ever switched on.</td></tr>
+            <tr><td><strong>Zipf slope</strong> ★</td><td>The slope of the log-log frequency curve, describing how steep it is.</td></tr>
+            <tr><td>Gini coefficient</td><td>How unequally activation mass is spread across features.</td></tr>
+            <tr><td>Head frequency mass</td><td>The share of selections taken by the 1% most frequent features.</td></tr>
+            <tr><td><strong>Frequent activation share</strong> ★</td><td>The share of activation mass held by that same top 1%.</td></tr>
+            <tr><td><strong>IDF variance</strong> ★</td><td>How much room IDF has to reweight anything at all.</td></tr>
           </tbody>
         </table>
-        <p class="small">★ marks the three primary regressors, which were chosen before any margin had been seen.</p>
 
+        <h3>§6.2 · Tier 2: index statistics</h3>
         <p>
-          The reason for restricting the main model to three regressors is that the 182 rows are far from independent.
-          They cluster into just four basis families and eleven corpora, and fitting six correlated regressors to so few
-          genuine groups would overfit easily. We therefore committed in advance to three diagnostics that each capture
-          something different: the shape of the frequency curve (the Zipf exponent), how much IDF can do at all (IDF
-          variance), and where the activation mass is concentrated (the frequent-activation share). All six enter a
-          secondary model.
+          These describe the values actually stored in the index rather than how often features occur. The most
+          important is cv<sub>x</sub>, the <em class="term">coefficient of variation</em> of the stored document
+          values: their standard deviation divided by their mean. It measures how unequal the stored values are, and
+          §8.4 explains why that is exactly what governs saturation.
         </p>
 
-        <h3>§6.2 · Fitting and validation</h3>
+        <h3>§6.3 · Tier 3: ranking features and pseudo-labels</h3>
         <p>
-          The predictor is ridge regression, which is linear regression with a penalty on large weights, fitted on
-          standardised diagnostics. The penalty is chosen from {0.1, 1, 10, 100} by an inner split that never sees the
-          held-out group. We validate it along three axes, each of which answers a different question about
-          generalisation:
+          The richest tier looks at the rankings themselves. For every configuration and query we keep the top-100
+          list, and measure how much each switch changes the top 10 and how the top-100 scores are shaped, in the spirit
+          of query performance prediction. We then build a <em class="term">pseudo-quality</em> Q̃<sub>c</sub>: the mean
+          nDCG@10 of each configuration's ranking when the top 10 of a <em>reference retriever</em> on the same query is
+          treated as if it were relevant. The references are text BM25, dense E5, and the two fused by reciprocal rank.
+          Putting Q̃<sub>c</sub> in place of the true Q<sub>c</sub> in the Shapley formula and in G gives label-free
+          estimates of every target with no fitted parameter at all. This borrows an old idea from IR evaluation, ranking
+          systems without judgements by comparing them to pooled output.
+        </p>
+
+        <h3>§6.4 · Validation</h3>
+        <p>
+          All predictors are ridge regressions, linear regression with a penalty on large weights, with the scaling and
+          penalty chosen inside the training folds so that the held-out data never influences them. We validate along
+          three axes, each answering a different question about generalisation.
         </p>
         <table class="tbl">
-          <thead><tr><th>Axis</th><th>Held out</th><th>Compared with</th><th>Question</th></tr></thead>
+          <thead><tr><th>Axis</th><th>Held out</th><th>Question</th></tr></thead>
           <tbody>
-            <tr><td>Family</td><td>each basis family in turn</td><td>the mean margin of the row's corpus</td><td>Does it work on a new kind of basis?</td></tr>
-            <tr><td>Corpus</td><td>each corpus (the 3 MS MARCO sets as one)</td><td>the training mean</td><td>Does it work on a new corpus?</td></tr>
-            <tr><td>Language</td><td>train on English, predict Indic</td><td>the training mean</td><td>Does it carry across languages?</td></tr>
+            <tr><td>Family</td><td>a whole basis family (linear, clustered, quantised, learned)</td><td>Does it work on a new kind of basis?</td></tr>
+            <tr><td>Corpus</td><td>a whole corpus</td><td>Does it work on a new collection?</td></tr>
+            <tr><td>Params</td><td>fit on primary rows, score on rows at other <em>k</em><sub>1</sub> and <em>b</em></td><td>Does it survive a change of BM25 settings?</td></tr>
           </tbody>
         </table>
-        <p>
-          For each axis we report sign accuracy, AUC, held-out R² together with its improvement over the baseline, mean
-          absolute error, and Kendall's τ between predicted and true margins within each collection. Uncertainty
-          intervals come from a two-way bootstrap that resamples corpora and representations together. Once validation
-          is done, the final model is refitted on all rows and frozen, and Settings B and C load it read-only so that
-          nothing learned from them can leak back into it.
-        </p>
-
-        <h3>§6.3 · Significance, ablations and sanity controls</h3>
-        <p>
-          Every individual margin gets its own interval and p-value from a paired bootstrap over queries with 2,000
-          draws. The contribution of each component is measured as a factorial main effect: for IDF, that is the average
-          quality of the four configurations with IDF switched on minus the average of the four with it off, and
-          saturation and length are treated the same way. Because we run 182 tests, some small p-values would appear by
-          chance alone, so we apply Holm correction within each family of tests.
-        </p>
-        <p>
-          Three controls check that the mechanism behaves as it should. The first, shuffled IDF, keeps the IDF values but
-          assigns them to the wrong features, which tests whether the benefit depends on the right features being
-          reweighted. The other two are synthetic corpora, one where every document has the same length and one where
-          every feature has the same frequency. On these, length normalisation and IDF respectively must leave the
-          ranking unchanged, and the code asserts that they do.
-        </p>
       </section>
 
       <!-- ================================================================ §7 -->
       <section id="bc">
         <h2><span class="num">§7</span>Settings B and C: inside a transformer</h2>
         <p class="section-intro">
-          Both adapters are built and pass their tests, but neither has been run at scale yet. That work is scheduled
-          for October.
+          Both adapters are built, and six tests confirm that they match the native code exactly when every switch is
+          off, that calibration is causal, that the token budget is charged correctly (including for sink pages) and
+          that the expert mixture is right. Neither has been run at scale yet; that is the work for October.
         </p>
 
         <h3>§7.1 · Setting B, KV-page selection (Llama-3.2-1B-Instruct)</h3>
         <p>
           When a model decodes over a long context, attending to every cached key at every step is expensive. Quest
           reduces the cost by grouping the keys into pages of 16 tokens and storing the elementwise minimum and maximum
-          key of each page. For the current query <em>q</em> it computes an upper bound on the attention a page could
-          receive, Σ<sub>i</sub> max(<em>q<sub>i</sub></em>·min<sub>i</sub>, <em>q<sub>i</sub></em>·max<sub>i</sub>),
-          and then takes whole pages in order of that bound until a budget of 512 or 1,024 tokens is filled. The page
-          currently being written is always kept.
+          key of each page. For the current query it computes an upper bound on the attention a page could receive, and
+          then attends only to the pages with the highest bounds until a token budget is filled. Prefill stays dense;
+          only decoding is sparse.
         </p>
         <p>
-          Our corrected version treats pages as documents. The Quest score is first passed through a softplus so that it
-          is positive, and then through the BM25 scorer. A page's length is the norm of its summary, and its
-          <em>df</em> is the number of times it entered the top-k across 64 positions sampled from the prefill. Pages
-          created during decoding have no history, so they receive a neutral IDF of 1. Because Llama-3.2 uses
-          grouped-query attention, these statistics are kept separately for each query head over the shared keys.
-        </p>
-        <p>
-          We compare against full attention, plain Quest, and H2O, which keeps recent tokens together with the "heavy
-          hitters" that have accumulated the most attention. The benchmark is thirteen RULER tasks at 4K and 8K context.
-          Since the full cache stays in memory throughout, we report how much of it was selected and make no claims
-          about speed.
+          Our corrected version treats pages as documents. The Quest score is passed through a softplus so that it is
+          positive, and then through the BM25 scorer. A page's frequency is how often it entered the top-k over causal
+          prefill positions, and its length is the norm of its key summary. The runs will cover all thirteen RULER tasks
+          with 500 examples each, at 4K and 8K context, with budgets of 512 and 1,024 tokens, against full attention,
+          plain Quest and H2O, which keeps recent tokens together with the "heavy hitters" that have accumulated the
+          most attention.
         </p>
         <div class="callout gotcha">
           <div class="callout-label">which direction the correction should push</div>
-          <p>H2O is the existing method closest to a frequency statistic, but it uses accumulated attention to decide
-            which items to keep. Our correction uses selection frequency in the opposite direction, to discount items
-            that are selected often. A planned sink ablation will test which of the two directions is right.</p>
+          <p>H2O uses accumulated attention to decide which items to <em>keep</em>. IDF does the opposite, discounting
+            items that are selected often. Attention sinks are the most frequently selected keys of all, yet the model
+            cannot do without them, so this is the setting where a frequency correction is most likely to do harm.</p>
         </div>
 
         <h3>§7.2 · Setting C, expert routing (OLMoE-1B-7B)</h3>
         <p>
           OLMoE has 64 experts per layer, of which 8 are active for each token, and that is enough experts for their
-          selection frequencies to form a meaningful curve. The model runs in fp16, split across two GPUs. We replace
-          the router's top-k with a top-k over corrected scores, using the router probabilities as the features. An
-          expert's <em>df</em> is the number of tokens that selected it across 256 calibration documents of 2,048 tokens
-          each, and its length is the norm of the router logits. Only the choice of experts changes: the selected
-          experts are still mixed using their original probabilities. The all-off configuration calls the model's
-          native forward pass, so it reproduces the unmodified model exactly.
+          selection frequencies to form a meaningful curve. We apply the correction to the router probabilities to
+          decide which experts run, and then combine the chosen experts using their original gate weights, so only the
+          selection changes. The all-off configuration calls the native forward pass and reproduces the unmodified model
+          exactly. Quality is measured by negative log-likelihood on WikiText-2 and zero-shot MMLU accuracy, and an
+          inference-time analogue of loss-free balancing is included as a comparison.
         </p>
+
+        <h3>§7.3 · What gets carried over</h3>
         <p>
-          Two further modes test specific ideas from the literature. The frequency-bias mode adds λ(k/E − p̂<sub>e</sub>)
-          to each expert's probability, where p̂<sub>e</sub> is its selection rate on the calibration set, so that
-          overused experts are pushed down and underused ones pushed up. This is an inference-time counterpart of
-          loss-free balancing. The protection mode never demotes the experts with the largest output norms, which tests
-          the finding that a few rarely used experts are critical to the model. Quality is measured mainly by MMLU
-          accuracy, with GSM8K accuracy and WikiText log-likelihood as secondary measures.
+          Two predictors will be carried into these settings. The pre-registered predictor goes as registered. The
+          pseudo-label predictor needs a label-free reference native to each setting: for KV pages that reference is
+          the exact attention mass, and for routing it is the dense softmax mixture over all experts. Both come from the
+          uncorrected model. Both predictors and their thresholds will be frozen before any corrected outcome is seen,
+          and every result will be reported against the majority sign as well as the registered thresholds.
         </p>
       </section>
 
       <!-- ================================================================ §8 -->
-      <section id="exact">
-        <h2><span class="num">§8</span>Cases where we know the answer in advance</h2>
+      <section id="results">
+        <h2><span class="num">§8</span>Results for Setting A</h2>
         <p class="section-intro">
-          For some rows of the grid, the margin is fixed by the mathematics alone. These rows give us a free end-to-end
-          check of the pipeline, and the regression has to treat them with care, because they carry information about
-          the sign of the effect but not its size.
+          The results are told in the order they came: the correction helped, the predictor failed, and the attempt to
+          explain that failure produced the main finding.
         </p>
 
-        <h3>§8.1 · Constant statistics</h3>
+        <h3>§8.1 · The correction helps because the inner product fails</h3>
+        <table class="tbl">
+          <thead>
+            <tr><th>Collection</th><th class="n">Text BM25</th><th class="n">Dense E5</th><th class="n">mean · 000</th><th class="n">mean · 111</th><th class="n">best · 111</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>MS MARCO dev</td><td class="n">.222</td><td class="n">.425</td><td class="n">.013</td><td class="n">.130</td><td class="n hi">.318</td></tr>
+            <tr><td>TREC-DL 2019</td><td class="n">.456</td><td class="n">.704</td><td class="n">.036</td><td class="n">.255</td><td class="n hi">.604</td></tr>
+            <tr><td>TREC-DL 2020</td><td class="n">.484</td><td class="n">.697</td><td class="n">.035</td><td class="n">.251</td><td class="n hi">.556</td></tr>
+            <tr><td>ArguAna</td><td class="n">.411</td><td class="n">.444</td><td class="n">.021</td><td class="n">.130</td><td class="n">.371</td></tr>
+            <tr><td>FiQA</td><td class="n">.236</td><td class="n">.381</td><td class="n">.013</td><td class="n">.085</td><td class="n hi">.266</td></tr>
+            <tr><td>NFCorpus</td><td class="n">.307</td><td class="n">.326</td><td class="n">.064</td><td class="n">.115</td><td class="n">.285</td></tr>
+            <tr><td>SCIDOCS</td><td class="n">.152</td><td class="n">.172</td><td class="n">.009</td><td class="n">.044</td><td class="n">.120</td></tr>
+            <tr><td>SciFact</td><td class="n">.662</td><td class="n">.694</td><td class="n">.089</td><td class="n">.197</td><td class="n">.419</td></tr>
+            <tr><td>TREC-COVID</td><td class="n">.582</td><td class="n">.695</td><td class="n">.134</td><td class="n">.246</td><td class="n">.508</td></tr>
+            <tr><td>LIMIT</td><td class="n">.939</td><td class="n">.015</td><td class="n">.001</td><td class="n">.004</td><td class="n">.032</td></tr>
+            <tr><td>MIRACL hi</td><td class="n">.357</td><td class="n">.582</td><td class="n">.011</td><td class="n">.124</td><td class="n">.328</td></tr>
+            <tr><td>MIRACL bn</td><td class="n">.407</td><td class="n">.700</td><td class="n">.025</td><td class="n">.216</td><td class="n hi">.490</td></tr>
+            <tr><td>MIRACL te</td><td class="n">.331</td><td class="n">.751</td><td class="n">.019</td><td class="n">.259</td><td class="n hi">.579</td></tr>
+          </tbody>
+        </table>
+        <p class="small">nDCG@10 of the two reference systems, the mean over the fourteen sparse representations under the
+          inner product (000) and full correction (111), and the best representation under 111. The best is the
+          token-level SAE everywhere except LIMIT, where it is token k-means. Highlighted cells beat text BM25.</p>
         <p>
-          If every feature has the same <em>df</em>, IDF multiplies every score by the same number and cannot change a
-          ranking. Likewise, if every document has the same length, ℓ(d) = 1 and length normalisation has no effect.
-          The synthetic controls described in §6.3 check both of these.
+          Under the plain inner product, the capped sparse codes are close to useless on every collection. Full
+          correction lifts their mean by a factor of between 1.8 and 14, and the margin is positive in 90% of the
+          primary rows where it is defined. After correction the best representation becomes competitive with the text
+          baseline: the token-level SAE is the strongest on twelve of the thirteen collections, beats text BM25 on six of
+          them, and comes within 0.10 nDCG@10 of dense E5 on TREC-DL 2019. Token granularity is stronger than pooled
+          throughout, and the shared-dictionary rows trace most of the pooled deficit to fitting the dictionary on pooled
+          vectors. LIMIT is the one collection where text BM25 wins outright, as its construction predicts.
         </p>
-
-        <h3>§8.2 · Pooled PQ and RQ: the margin must be ±2</h3>
-        <p>
-          At the pooled level, PQ and RQ produce exactly one active code per piece, and all of these codes have the same
-          value <em>v</em>. Every document therefore has the same length, and saturation maps every active <em>v</em> to
-          the same constant. As a result, saturation and length can only rescale all scores by a common factor, which
-          leaves the ranking untouched, and IDF is the only switch that can make any difference. The eight
-          configurations collapse into two groups of four.
-        </p>
-        <div class="callout mechanism">
-          <div class="callout-label">the arithmetic</div>
-          <p>Four configurations score Q<sub>000</sub> and the other four score Q<sub>111</sub>. If we call the gap
-            between them Δ, the mean lies at the midpoint, every value is Δ/2 away from it, and so the standard deviation
-            is |Δ|/2. The margin is then <em>m</em> = Δ / (|Δ|/2) = ±2, whatever the corpus.</p>
-          <p>Pooled k-means has soft weights that always sum to one, so its document lengths are constant as well, and
-            its eight configurations reduce to four.</p>
+        <div class="callout gotcha">
+          <div class="callout-label">the catch in the good news</div>
+          <p>Full correction is the best of the eight configurations in fewer than a quarter of the primary rows. The most
+            frequent winner is saturation with length normalisation (<code>011</code>), which leaves IDF out. The inner
+            product scores below 0.01 nDCG@10 in almost half of the primary rows, and almost any correction beats a
+            scorer that broken. That was the first hint of trouble for the predictor.</p>
         </div>
 
-        <h3>§8.3 · The margin can never exceed 4</h3>
+        <h3>§8.2 · The pre-registered predictor fails</h3>
         <p>
-          For any <em>n</em> numbers with population standard deviation <em>s</em>, no two of them can differ by more
-          than <em>s</em>√(2<em>n</em>), because those two values alone contribute at least
-          (x<sub>i</sub> − x<sub>j</sub>)²/2n to the variance. With n = 8 the bound is 4<em>s</em>, so |<em>m</em>| ≤ 4
-          for every row. The pooled quantisation rows sit at exactly half this bound, which is why they tell us only the
-          sign of the effect.
+          The margin was meant to be predicted from the shape of the frequency curve, and it could not be. The primary
+          ridge model explains almost none of the held-out variance, with R² of 0.04 across basis families and 0.02
+          across corpora, and its sign accuracy is exactly that of always predicting a gain. The variant with all six
+          diagnostics does no better. By the criterion we registered, the frequency diagnostics carry no usable
+          information about the margin.
+        </p>
+        <div class="callout mechanism">
+          <div class="callout-label">part of the reason: the target saturates</div>
+          <p>Most margins fall between 1.5 and 3.5, because the margin mostly records that the uncorrected scorer is
+            broken. To see why, suppose the inner product scores Δ below the other seven configurations and those seven
+            are roughly equal. The mean then sits Δ/8 below the seven, the population variance is 7Δ²/64, and the
+            standard deviation is Δ√7/8, so the margin is</p>
+          <p style="text-align:center"><em>m</em> = Δ / (Δ√7/8) = 8/√7 ≈ 3.02</p>
+          <p>whatever the size of Δ. A gain of 0.01 and a gain of 0.5 receive the same margin, which leaves little
+            variation for any diagnostic to explain. The rest of the failure lies in what the correction is made of.</p>
+        </div>
+
+        <h3>§8.3 · Where the gain comes from</h3>
+        <p>
+          To see what a predictor would need to capture, we split each row's gain among the three switches with the
+          Shapley formula of §4.3.
+        </p>
+        <div class="bars" role="img" aria-label="Share of the gain in the primary rows: saturation 62 percent, length 28 percent, IDF 10 percent">
+          <div class="row"><span>Saturation</span><div class="track"><div class="fill" style="width:62%"></div></div><span class="v">62%</span></div>
+          <div class="row"><span>Length norm.</span><div class="track"><div class="fill" style="width:28%"></div></div><span class="v">28%</span></div>
+          <div class="row"><span>IDF</span><div class="track"><div class="fill" style="width:10%"></div></div><span class="v">10%</span></div>
+        </div>
+        <p class="small">Share of the all-on minus all-off gain in the primary rows.</p>
+
+        <table class="tbl">
+          <thead><tr><th>Rows</th><th class="n">IDF</th><th class="n">Sat.</th><th class="n">Len.</th><th class="n">IDF + len.</th></tr></thead>
+          <tbody>
+            <tr><td>primary, 13 collections</td><td class="n">.10</td><td class="n">.62</td><td class="n">.28</td><td class="n">.38 (.36–.41)</td></tr>
+            <tr><td>budget 16/64</td><td class="n">.16</td><td class="n">.60</td><td class="n">.24</td><td class="n">.40</td></tr>
+            <tr><td>budget 32/128</td><td class="n">.10</td><td class="n">.61</td><td class="n">.29</td><td class="n">.39 (.36–.42)</td></tr>
+            <tr><td>budget 64/256</td><td class="n">.08</td><td class="n">.57</td><td class="n">.35</td><td class="n">.43</td></tr>
+            <tr><td>native, 3 collections</td><td class="n">−.01</td><td class="n">.54</td><td class="n">.47</td><td class="n">.46</td></tr>
+          </tbody>
+        </table>
+        <p class="small">Share of the gain assigned to each switch. Intervals resample whole collections. The budget rows
+          cover the ten collections outside MS MARCO; native support covers ArguAna, NFCorpus and SciFact.</p>
+        <p>
+          Saturation carries most of the gain in every set of rows. IDF, the component the Zipfian account is about,
+          carries the least at the primary budget. Reading down the budget rows, IDF's share shrinks as supports grow
+          while length's share grows, and at native support IDF's share is slightly negative. Han et al. report the same
+          trend for image features, and the Holm-corrected main effects agree, with saturation significant most often
+          and IDF least often.
+        </p>
+        <p>
+          IDF is not empty, though. When the document frequencies are shuffled across features, IDF's mean Shapley value
+          turns negative, and the real value is larger than the shuffled one in 83% of rows (one-sided Wilcoxon
+          <em>p</em> &lt; 10<sup>−6</sup>). Making all frequencies uniform, which removes IDF altogether, leaves all-on
+          quality no lower. So the frequencies carry real information, but little of it reaches nDCG@10.
         </p>
 
-        <h3>§8.4 · Linear bases</h3>
+        <h3>§8.4 · Why saturation can be predicted and the rest cannot</h3>
+        <table class="tbl">
+          <thead><tr><th>Basis</th><th>Gran.</th><th class="n">111</th><th class="n">cv<sub>x</sub></th><th class="n">φ<sub>sat</sub></th><th class="n">IDF + len.</th><th class="n">G &gt; 0</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="2">identity</td><td>pooled</td><td class="n">.147</td><td class="n">0.37</td><td class="n">.043</td><td class="n">.68</td><td class="n">1.00</td></tr>
+            <tr><td>token</td><td class="n">.142</td><td class="n">0.60</td><td class="n">.060</td><td class="n">.55</td><td class="n">.77</td></tr>
+            <tr><td rowspan="2">Gaussian</td><td>pooled</td><td class="n">.098</td><td class="n">0.29</td><td class="n">.020</td><td class="n">.77</td><td class="n">.85</td></tr>
+            <tr><td>token</td><td class="n">.088</td><td class="n">0.55</td><td class="n">.029</td><td class="n">.64</td><td class="n">.92</td></tr>
+            <tr><td rowspan="2">PCA</td><td>pooled</td><td class="n">.222</td><td class="n">0.75</td><td class="n">.138</td><td class="n">.24</td><td class="n">.69</td></tr>
+            <tr><td>token</td><td class="n">.311</td><td class="n">1.35</td><td class="n">.155</td><td class="n">.45</td><td class="n">.46</td></tr>
+            <tr><td rowspan="2">k-means</td><td>pooled</td><td class="n">.018</td><td class="n">0.04</td><td class="n">.000</td><td class="n">.94</td><td class="n">.31</td></tr>
+            <tr><td>token</td><td class="n">.185</td><td class="n">1.71</td><td class="n">.125</td><td class="n">.11</td><td class="n">.85</td></tr>
+            <tr><td rowspan="2">PQ</td><td>pooled</td><td class="n">.012</td><td class="n">0.00</td><td class="n">.000</td><td class="n">1.00</td><td class="n">.62</td></tr>
+            <tr><td>token</td><td class="n">.144</td><td class="n">1.44</td><td class="n">.099</td><td class="n">.09</td><td class="n">.69</td></tr>
+            <tr><td rowspan="2">RQ</td><td>pooled</td><td class="n">.056</td><td class="n">0.00</td><td class="n">.000</td><td class="n">1.00</td><td class="n">.92</td></tr>
+            <tr><td>token</td><td class="n">.292</td><td class="n">2.10</td><td class="n">.176</td><td class="n">.18</td><td class="n">.69</td></tr>
+            <tr><td rowspan="2">SAE</td><td>pooled</td><td class="n">.127</td><td class="n">0.18</td><td class="n">.014</td><td class="n">.66</td><td class="n">.77</td></tr>
+            <tr><td>token</td><td class="n hi">.373</td><td class="n">3.31</td><td class="n hi">.193</td><td class="n">.32</td><td class="n">.46</td></tr>
+          </tbody>
+        </table>
+        <p class="small">Per representation: mean all-on nDCG@10, the coefficient of variation of stored values, the mean
+          saturation Shapley value, the share of the gain from IDF and length, and the fraction of collections where
+          collection statistics help after saturation (G &gt; 0). cv<sub>x</sub> is averaged over the ten collections whose
+          indexes were measured.</p>
         <p>
-          For a linear basis <em>u</em> = C<em>x</em> without rectification, IDF weighting turns the score into
-          x<sub>q</sub><sup>⊤</sup>C<sup>⊤</sup>DC x<sub>d</sub>, where D = diag(idf). This produces the same rankings as
-          the dense dot product for every query only if C<sup>⊤</sup>DC is a multiple of the identity. Split
-          rectification breaks this identity, which is why the linear bases still show IDF effects.
+          Read the cv<sub>x</sub> and φ<sub>sat</sub> columns together and a pattern appears: the more unequal the stored
+          values, the more saturation contributes. This follows directly from the form of the transform. With length
+          normalisation off, saturation maps a stored value f to g(f) = (k<sub>1</sub>+1)f / (f + k<sub>1</sub>). The
+          ratio g(f)/f falls as f grows, so saturation shrinks large values relative to small ones. If every stored value
+          were equal, g would rescale all scores alike and change no ranking; the more unequal the values, the more the
+          ranking moves. A smaller k<sub>1</sub> bends the curve harder and so moves it further.
         </p>
+        <p>
+          Pooled PQ and RQ are the limiting case. They store one active code per piece, all with the same value, and
+          every document has the same length, so their saturation and length effects are exactly zero in every one of
+          their rows, which also serves as an end-to-end check of the pipeline. Outside these two codes saturation almost
+          always helps, and how much it moves the ranking is a property of the index that can be measured without any
+          labels.
+        </p>
+        <p>
+          IDF and length normalisation behave differently. They too move the ranking by an amount the index fixes, but
+          whether the move <em>helps</em> depends on whether heavy documents were over-rewarded relative to their
+          relevance, and on whether rare features separate relevant documents from the rest. Both questions are about
+          relevance, which no statistic of the index records. That is why a predictor built on the frequency curve could
+          not tell when collection statistics help. The decision matters most for the strong representations: collection
+          statistics supply most of the gain for the weak pooled linear codes, but for the token-level SAE and PCA they
+          help after saturation on fewer than half the collections.
+        </p>
+
+        <h3>§8.5 · Testing the saturation account in advance</h3>
+        <p>
+          An explanation found by looking at the data needs a test the data did not shape. Before running any test we
+          committed six hypotheses to the repository, all using the k<sub>1</sub> and b sweep, which the exploration had
+          not touched. H2 to H6 are Holm-corrected together. H1 uses the default settings, which coincide with the
+          primary rows, so it checks consistency only.
+        </p>
+        <table class="tbl">
+          <thead><tr><th></th><th>Hypothesis</th><th class="n">Result</th></tr></thead>
+          <tbody>
+            <tr><td>H1</td><td>IDF + length share at the default settings lies in [.36, .42]</td><td class="n">.393</td></tr>
+            <tr><td>H2</td><td>φ<sub>sat</sub> at k<sub>1</sub> = 0.6 exceeds φ<sub>sat</sub> at k<sub>1</sub> = 2.4</td><td class="n">.093 &gt; .080</td></tr>
+            <tr><td>H3</td><td>within-corpus Spearman ρ(cv<sub>x</sub>, φ<sub>sat</sub>) ≥ 0.3</td><td class="n">.89, .89</td></tr>
+            <tr><td>H4</td><td>a cv<sub>x</sub> model fitted at k<sub>1</sub> = 1.2 ranks φ<sub>sat</sub> at ρ ≥ 0.5</td><td class="n hi">.87, .90</td></tr>
+            <tr><td>H5</td><td>φ<sub>len</sub> = 0 exactly at b = 0</td><td class="n">max 0.0</td></tr>
+            <tr><td>H6</td><td>φ<sub>len</sub> at b = 0.75 exceeds φ<sub>len</sub> at b = 0.5</td><td class="n">.045 &gt; .029</td></tr>
+          </tbody>
+        </table>
+        <p class="small">H2 and H6 have Holm-corrected p = 3.6 × 10<sup>−5</sup>. H3 and H4 are tested at k<sub>1</sub> = 0.6
+          and 2.4. H5 covers 210 rows.</p>
+        <p>
+          All six pass, but they are not equally informative. H5 holds by construction, since the length factor is
+          exactly one at b = 0, so it only checks the code. H2 and H6 test directions that follow from the form of the
+          scorer. H3 and H4 carry the real evidence: a model of saturation fitted on cv<sub>x</sub> at one value of
+          k<sub>1</sub> keeps its ranking at values of k<sub>1</sub> it never saw.
+        </p>
+
+        <h3>§8.6 · Supplying relevance without labels</h3>
+        <p>
+          If the missing ingredient is relevance, a stand-in for relevance should restore the prediction. Everything in
+          this subsection came after the confirmatory tests were fixed, so it is exploratory. We scored every
+          configuration against a reference retriever's top 10, treated as relevant, and compared the three tiers of
+          features from §6.
+        </p>
+        <table class="tbl">
+          <thead><tr><th>Target</th><th>Features</th><th class="n">Family</th><th class="n">Corpus</th><th class="n">Params</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="3">φ<sub>sat</sub></td><td>pre-registered</td><td class="n">−.46</td><td class="n">.14</td><td class="n">.02</td></tr>
+            <tr><td>+ index</td><td class="n">.47</td><td class="n">.42</td><td class="n">.50</td></tr>
+            <tr><td>+ pseudo-labels</td><td class="n">.56</td><td class="n">.62</td><td class="n">.76</td></tr>
+            <tr><td rowspan="3">φ<sub>len</sub></td><td>pre-registered</td><td class="n">−.30</td><td class="n">.14</td><td class="n">.00</td></tr>
+            <tr><td>+ index</td><td class="n">−.16</td><td class="n">.25</td><td class="n">−.02</td></tr>
+            <tr><td>+ pseudo-labels</td><td class="n">.49</td><td class="n">.70</td><td class="n">.77</td></tr>
+            <tr><td rowspan="3">φ<sub>idf</sub></td><td>pre-registered</td><td class="n">−.01</td><td class="n">.00</td><td class="n">.02</td></tr>
+            <tr><td>+ index</td><td class="n">.02</td><td class="n">.02</td><td class="n">.07</td></tr>
+            <tr><td>+ pseudo-labels</td><td class="n">.40</td><td class="n">.21</td><td class="n">.73</td></tr>
+            <tr><td rowspan="4">G</td><td>pre-registered</td><td class="n">−.07</td><td class="n">−.02</td><td class="n">.16</td></tr>
+            <tr><td>+ index</td><td class="n">−.05</td><td class="n">−.09</td><td class="n">.15</td></tr>
+            <tr><td>+ pseudo-labels (BM25)</td><td class="n">.38</td><td class="n">.52</td><td class="n">.62</td></tr>
+            <tr><td>+ pseudo-labels (E5)</td><td class="n">.51</td><td class="n hi">.66</td><td class="n">.80</td></tr>
+          </tbody>
+        </table>
+        <p class="small">Held-out R² of ridge regression fitted on the 139 primary rows of the ten collections outside MS
+          MARCO, holding out basis families or corpora, or predicting the 560 rows at other k<sub>1</sub> and b. Each tier
+          adds features to the one above it.</p>
+        <p>
+          The pattern is clean. The frequency diagnostics predict none of the targets. Index statistics predict
+          saturation and nothing else, as §8.4 would lead you to expect. Only the pseudo-label tier reaches positive
+          held-out R² on every target and every axis. The mechanism is simple: every target is a fixed linear combination
+          of the eight Q<sub>c</sub>, so a pseudo-quality that orders the configurations the same way as the true quality
+          yields correlated targets, and it does, with a median within-row Spearman correlation of 0.98.
+        </p>
+        <p>
+          The practical test is a decision. A rule with no fitted parameter uses collection statistics only where the
+          pseudo-label estimate of G is positive. It raises mean nDCG@10 from 0.143 (always using them) to 0.148, against
+          0.151 for an oracle that knows the true answer, which recovers 61% of a headroom that is itself below 0.01. The
+          gain holds at other budgets and parameters, though across seeds its interval reaches zero. The gains are small
+          because always using collection statistics is already close to the oracle on most rows, and we chose the rule
+          during exploration.
+        </p>
+        <div class="callout gotcha">
+          <div class="callout-label">the references have biases of their own</div>
+          <p>The correction under study is BM25 applied to other features, so agreement with text BM25 may reward
+            configurations simply for behaving like BM25, and lexical systems also contributed to the judgement pools of
+            several collections. The dense reference errs the other way: the sparse codes come from the same encoder, so
+            agreement with it partly measures how much of the embedding a configuration keeps. The prediction of G holds
+            with either reference, but since neither is free of bias, the result stays exploratory until it is tested on
+            data fixed in advance.</p>
+        </div>
       </section>
 
       <!-- ================================================================ §9 -->
-      <section id="results">
-        <h2><span class="num">§9</span>Results for Setting A</h2>
-
-        <h3>§9.1 · What ran</h3>
-        <p>
-          All 182 primary rows finished under all eight configurations, along with 26 reference runs (text BM25 and dense
-          E5 on each of the thirteen collections). We did not look at the grid until the last row had finished. The
-          seed, budget and k<sub>1</sub>/b families have not run yet, and neither have Settings B and C at scale.
-        </p>
-
-        <h3>§9.2 · The correction almost always helps</h3>
-        <p>
-          Of the 179 rows where the margin is defined (in the other three, every configuration scores the same), 161 are
-          positive, and at the token level the figure is 88 of 91. Every negative margin comes from a raw change smaller
-          than 0.01 nDCG@10. Twelve of the eighteen negatives come from pooled k-means or pooled PQ, whose codes leave the
-          correction almost nothing to reweight, and five more are on LIMIT. In other words, full BM25 never costs a
-          meaningful amount of quality, while its largest gains approach 0.5 nDCG@10.
-        </p>
-
-        <table class="tbl">
-          <thead>
-            <tr><th>Collection</th><th class="n">Text BM25</th><th class="n">Dense E5</th><th class="n">SAE-token · 000</th><th class="n">SAE-token · 111</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>MS MARCO dev</td><td class="n">.222</td><td class="n">.425</td><td class="n">.021</td><td class="n hi">.318</td></tr>
-            <tr><td>TREC-DL 2019</td><td class="n">.456</td><td class="n">.704</td><td class="n">.109</td><td class="n hi">.604</td></tr>
-            <tr><td>TREC-DL 2020</td><td class="n">.484</td><td class="n">.697</td><td class="n">.076</td><td class="n hi">.556</td></tr>
-            <tr><td>SciFact</td><td class="n">.662</td><td class="n">.694</td><td class="n">.222</td><td class="n">.419</td></tr>
-            <tr><td>NFCorpus</td><td class="n">.307</td><td class="n">.326</td><td class="n">.187</td><td class="n">.285</td></tr>
-            <tr><td>FiQA-2018</td><td class="n">.236</td><td class="n">.381</td><td class="n">.052</td><td class="n hi">.266</td></tr>
-            <tr><td>ArguAna</td><td class="n">.411</td><td class="n">.444</td><td class="n">.001</td><td class="n">.371</td></tr>
-            <tr><td>SCIDOCS</td><td class="n">.152</td><td class="n">.172</td><td class="n">.025</td><td class="n">.120</td></tr>
-            <tr><td>TREC-COVID</td><td class="n">.582</td><td class="n">.695</td><td class="n">.375</td><td class="n">.508</td></tr>
-            <tr><td>LIMIT</td><td class="n">.939</td><td class="n">.015</td><td class="n">.001</td><td class="n">.008</td></tr>
-            <tr><td>MIRACL-bn</td><td class="n">.407</td><td class="n">.700</td><td class="n">.047</td><td class="n hi">.490</td></tr>
-            <tr><td>MIRACL-hi</td><td class="n">.357</td><td class="n">.582</td><td class="n">.018</td><td class="n">.328</td></tr>
-            <tr><td>MIRACL-te</td><td class="n">.331</td><td class="n">.751</td><td class="n">.052</td><td class="n hi">.579</td></tr>
-          </tbody>
-        </table>
-        <p class="small">nDCG@10. Under full BM25 the token-level SAE is the strongest controlled representation on every
-          collection except LIMIT. Highlighted cells mark where BM25 over SAE features beats text BM25.</p>
-
-        <p>
-          The table shows the strongest of our controlled representations, the token-level SAE, next to the two
-          reference systems. With full BM25 on top, it beats text BM25 on six collections (MS MARCO dev, both TREC-DL
-          sets, FiQA, MIRACL-bn and MIRACL-te), though it stays below dense E5 on all thirteen. The three MS MARCO
-          collections are in-domain for the SAE, which was fitted on MS MARCO passages. Across the three MIRACL
-          languages its average is 0.466, against 0.365 for text BM25 and 0.678 for E5.
-        </p>
-        <p>
-          What stands out is how poorly the plain inner product does over the very same codes, falling as low as 0.001
-          on ArguAna. The likely reason is that summing token codes produces large and uneven feature values, with
-          features that fire on many tokens swamping the rest. That is precisely the situation saturation was designed
-          for.
-        </p>
-        <p>
-          The table also lets us check the result of Clavié et al. from §3. Over the pooled SAE, BM25 beats the inner
-          product on five of the six BEIR sets, so the direction of their finding holds up. The gains, however, are
-          small: between 0.003 and 0.020, apart from 0.071 on TREC-COVID, far short of the twenty points they report.
-          The token-level SAE gains between 0.10 and 0.37 on the same sets. LIMIT behaves differently from everything
-          else. Text BM25 scores 0.939 on it while every representation derived from E5 stays below 0.04, which says
-          more about single-vector embeddings than about the correction, so we will report it separately once its
-          document identifiers have been audited.
-        </p>
-
-        <h3>§9.3 · The exact predictions hold</h3>
-        <p>
-          Pooled PQ and RQ give margins of exactly ±2 on all twelve collections where the margin is defined, just as §8.2
-          predicts. (On LIMIT every configuration scores zero for them, so the margin is undefined.) Their saturation and
-          length effects are exactly zero on all thirteen collections, and so is the length effect of pooled k-means.
-          Because these values come out of the full pipeline, from encoding through to evaluation, they confirm that
-          every stage of it is working as intended.
-        </p>
-
-        <h3>§9.4 · Most of the gain comes from saturation</h3>
-        <div class="bars" role="img" aria-label="Average main effect in nDCG@10 points: saturation 7.8, length 3.7, IDF 1.5">
-          <div class="row"><span>Saturation</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="v">+7.8</span></div>
-          <div class="row"><span>Length norm.</span><div class="track"><div class="fill" style="width:47.4%"></div></div><span class="v">+3.7</span></div>
-          <div class="row"><span>IDF</span><div class="track"><div class="fill" style="width:19.2%"></div></div><span class="v">+1.5</span></div>
-        </div>
-        <p class="small">Main effect in nDCG@10 points, averaged over all 182 rows.</p>
-
-        <table class="tbl">
-          <thead>
-            <tr><th rowspan="2">Basis</th><th class="n" colspan="3">Pooled</th><th class="n" colspan="3">Token</th></tr>
-            <tr><th class="n">IDF</th><th class="n">Sat.</th><th class="n">Len.</th><th class="n">IDF</th><th class="n">Sat.</th><th class="n">Len.</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Identity</td><td class="n">4.1</td><td class="n">5.2</td><td class="n">6.9</td><td class="n">2.8</td><td class="n">6.8</td><td class="n">6.2</td></tr>
-            <tr><td>Gaussian</td><td class="n">0.3</td><td class="n">2.2</td><td class="n">6.7</td><td class="n">0.5</td><td class="n">3.2</td><td class="n">5.3</td></tr>
-            <tr><td>PCA</td><td class="n">1.3</td><td class="n">14.0</td><td class="n">3.6</td><td class="n">6.3</td><td class="n">16.5</td><td class="n">8.6</td></tr>
-            <tr><td>k-means</td><td class="n">−0.1</td><td class="n">0.0</td><td class="n">0*</td><td class="n">1.2</td><td class="n">12.6</td><td class="n">0.5</td></tr>
-            <tr><td>PQ</td><td class="n">0.1</td><td class="n">0*</td><td class="n">0*</td><td class="n">0.6</td><td class="n">9.9</td><td class="n">0.6</td></tr>
-            <tr><td>RQ</td><td class="n">1.5</td><td class="n">0*</td><td class="n">0*</td><td class="n">0.8</td><td class="n">17.8</td><td class="n">3.3</td></tr>
-            <tr><td>SAE</td><td class="n">0.2</td><td class="n">1.4</td><td class="n">2.5</td><td class="n">1.6</td><td class="n hi">19.3</td><td class="n">7.3</td></tr>
-          </tbody>
-        </table>
-        <p class="small">Main effect of each component in nDCG@10 points, averaged over the thirteen collections. 0* marks
-          an effect that is zero by construction (§8.2).</p>
-        <p>
-          Splitting the gain by component gives a clear ordering. Averaged over the whole grid, saturation adds 7.8
-          points of nDCG@10, length normalisation 3.7 and IDF 1.5. The bootstrap interval of the effect lies above zero
-          in 132 rows for saturation, 118 for length and 97 for IDF. IDF is also the only component whose interval ever
-          lies below zero, which happens in 14 rows. And when IDF is switched on last, after saturation and length are
-          already on (going from <code>011</code> to <code>111</code>), it actually lowers nDCG@10 in 99 of the 182
-          rows.
-        </p>
-        <div class="callout aha">
-          <div class="callout-label">why this matters for the project</div>
-          <p>IDF is the one collection statistic that all three settings lack, and predicting its value was the point of
-            the project. Yet at a budget of 128 features it turns out to be the smallest part of the gain. This fits the
-            account of Han et al., in which a hard top-k has already removed most of the common features that IDF would
-            otherwise down-weight. The sparsity family, which varies the budget, is the direct test of that account, and
-            we have moved it to the front of the queue.</p>
-        </div>
-
-        <h3>§9.5 · The predictor does not beat the majority sign</h3>
-        <table class="tbl">
-          <thead><tr><th>Held out</th><th class="n">n</th><th class="n">R²</th><th class="n">baseline R²</th><th class="n">MAE</th><th class="n">sign acc.</th><th class="n">AUC</th></tr></thead>
-          <tbody>
-            <tr><td>Family</td><td class="n">179</td><td class="n">.041</td><td class="n">−.095</td><td class="n">.767</td><td class="n">.899</td><td class="n">.634</td></tr>
-            <tr><td>Corpus</td><td class="n">179</td><td class="n">.022</td><td class="n">−.014</td><td class="n">.772</td><td class="n">.899</td><td class="n">.634</td></tr>
-            <tr><td>Indic</td><td class="n">42</td><td class="n">−.135</td><td class="n">−.232</td><td class="n">.518</td><td class="n">.976</td><td class="n">.756</td></tr>
-          </tbody>
-        </table>
-        <p>
-          The predictor we registered in advance fails its own test. Its sign accuracy, 0.899 on families and corpora and
-          0.976 on the Indic rows, is exactly what you would get by always guessing that the correction helps, and its
-          held-out R² is close to zero. It does beat the baseline R² by 0.14, 0.04 and 0.10, but only because those
-          baselines are themselves below zero. The inner search chose the strongest penalty available, and the frozen
-          model amounts to predicting a constant of 1.92, with no coefficient larger than 0.27 per standard deviation.
-          The six-feature and precision-weighted variants do no better, with R² between −0.17 and 0.12.
-        </p>
-
-        <div class="callout mechanism">
-          <div class="callout-label">why the target saturates</div>
-          <p>Of the 179 margins, 142 fall between 2 and 3.2, and the reason lies in how the margin is defined. Suppose
-            the inner product (<code>000</code>) scores Δ below the other seven configurations, and those seven are
-            roughly equal to one another. The mean then sits Δ/8 below the seven, the population variance is 7Δ²/64,
-            and the standard deviation is Δ√7/8. The margin works out to</p>
-          <p style="text-align:center"><em>m</em> = Δ / (Δ√7/8) = 8/√7 ≈ 3.02</p>
-          <p>regardless of how large Δ is, so a gain of 0.01 and a gain of 0.5 receive the same margin. What the margin
-            really records, then, is whether the inner product is the odd one out among the eight configurations, and
-            in this grid it nearly always is. The little variation that remains comes from the structural ±2 rows and
-            from rows where the raw change is close to zero and its sign is essentially noise. No diagnostic could be
-            expected to predict that.</p>
-        </div>
-        <p>
-          The raw difference Q<sub>111</sub> − Q<sub>000</sub>, which ranges from 0 to 0.5, keeps exactly the
-          information the margin discards. The flaw also weakens the planned transfer test, since a sign-accuracy
-          threshold of 70% can be met simply by predicting a gain everywhere. For that reason, and before any transfer
-          result exists, we have added the majority-sign baseline to the transfer comparison.
-        </p>
-
-        <h3>§9.6 · A floor on the corrected p-values</h3>
-        <p>
-          With 2,000 bootstrap draws, the smallest p-value the procedure can produce is 1/2001. Holm correction multiplies
-          the smallest p-value by 182, which gives a floor of 182/2001 ≈ 0.091. No primary comparison can therefore be
-          declared significant at the 0.05 level, however large its effect, and 134 of the 182 sit right at that floor.
-          Rerunning with 20,000 draws lowers the floor to 0.009, and that is the first task for October. The bootstrap
-          intervals quoted earlier are not affected by this limit.
-        </p>
-      </section>
-
-      <!-- ================================================================ §10 -->
       <section id="plan">
-        <h2><span class="num">§10</span>What happens next</h2>
-
-        <h3>§10.1 · What the results change</h3>
+        <h2><span class="num">§9</span>What happens next</h2>
         <p>
-          The frozen predictor stays frozen. It goes to Settings B and C exactly as it was registered, and every transfer
-          result will be reported alongside the majority-sign baseline so that readers can see whether it adds anything.
-          Any new target we try, such as the raw difference or the effect of a single component, will be labelled
-          exploratory, because we chose it after seeing the retrieval results. The sparsity family moves ahead of the
-          other secondary experiments, since it directly tests the one explanation we have for the component results.
+          The retrieval half leaves two predictors to carry into the transformer, as §7.3 describes. The first week of
+          October also commits a second pre-registration: the pseudo-label decision rule will be tested on the MS MARCO
+          budget rows, which nobody has seen yet, so that the exploratory result gets a test the data did not shape.
         </p>
 
-        <h3>§10.2 · Timeline to 31 October</h3>
+        <h3>§9.1 · Schedule to 31 October</h3>
         <table class="tbl">
           <thead><tr><th>Week</th><th>Work</th><th>Owner</th></tr></thead>
           <tbody>
-            <tr><td>1–7 Oct</td><td>Rerun the bootstrap with 20,000 draws and apply Holm correction. Audit LIMIT. Exploratory
-                analysis with the raw difference and component effects as targets. Slides for the mid viva.</td><td>Sankar, Singh, Gupta</td></tr>
-            <tr><td>8–14 Oct</td><td>Setting B calibration and runs on thirteen RULER tasks at 4K and 8K with two budgets,
-                against full attention, Quest and H2O, plus the sink ablation. In parallel, the sparsity family, then the
-                k<sub>1</sub>/b sweep, extra seeds and the controls on real corpora.</td><td>Sankar</td></tr>
-            <tr><td>15–21 Oct</td><td>Setting C on MMLU, GSM8K and WikiText with the native, frequency-bias and all eight
-                corrected configurations, plus the super-expert protection ablation. Transfer scoring of Setting B.</td><td>Sankar, Singh</td></tr>
-            <tr><td>22–28 Oct</td><td>Transfer scoring of Setting C. Write up the bilinear identity and how far it extends to
-                rectified codes. SPLADE-v3 external comparison.</td><td>Singh, Tripathy, Sankar</td></tr>
-            <tr><td>29–31 Oct</td><td>Final report, viva slides and code archive.</td><td>Tripathy, Gupta, Sankar</td></tr>
+            <tr><td rowspan="2">1 · 3–9 Oct</td><td>Resume the MS MARCO budget sweep (84 rows) after cluster maintenance. Run
+                SPLADE-v3 as the external comparison and the conceptual replication of the Appendix C reversal. Validate
+                both adapters at scale, with native parity, calibration cost and memory.</td><td>Anirudh</td></tr>
+            <tr><td>Commit the second pre-registration: the pseudo-label rule on the unseen MS MARCO budget rows, the
+                frozen transfer predictors and the transfer thresholds.</td><td>Mohit</td></tr>
+            <tr><td rowspan="2">2 · 10–16 Oct</td><td>Setting B on Llama-3.2-1B-Instruct over all 13 RULER tasks with 500
+                examples, 4K and 8K contexts, budgets of 512 and 1,024 tokens, with H2O.</td><td>Anirudh</td></tr>
+            <tr><td>Second confirmatory round in retrieval.</td><td>Mohit</td></tr>
+            <tr><td rowspan="2">3 · 17–23 Oct</td><td>Setting C on OLMoE-1B-7B: WikiText-2 negative log-likelihood and
+                zero-shot MMLU, with the loss-free-balancing analogue.</td><td>Anirudh</td></tr>
+            <tr><td>Write-up of the bilinear identity and its ranking conditions. Draft of the final report from the
+                retrieval results.</td><td>Arihant</td></tr>
+            <tr><td rowspan="2">4 · 24–28 Oct</td><td>Transfer scoring with uncertainty for both predictors, per setting,
+                against the majority sign.</td><td>Mohit</td></tr>
+            <tr><td>Figures and tables from the saved artifacts. Viva slides.</td><td>Arihant, Aviral</td></tr>
+            <tr><td rowspan="2">5 · 29–31 Oct</td><td>Final report.</td><td>Arihant</td></tr>
+            <tr><td>Slides and presentation. Code archive.</td><td>Aviral, Anirudh</td></tr>
           </tbody>
         </table>
-
-        <h3>§10.3 · If time runs short</h3>
         <p>
-          If the schedule slips, experiments will be dropped in a fixed order. GSM8K goes first, because greedy
-          generation over a 7B mixture-of-experts model is our most expensive run. The 8K contexts go next, followed by
-          the extra seeds and then the k<sub>1</sub>/b sweep. The sparsity family and at least one transfer setting will
-          not be cut under any circumstances.
+          If time runs short, experiments are dropped in a fixed order: GSM8K and expert preservation first, then the 8K
+          context in Setting B, then MMLU in Setting C (keeping WikiText), and finally the Appendix C replication.
         </p>
 
-        <h3>§10.4 · Who does what</h3>
+        <h3>§9.2 · Who does what</h3>
         <table class="tbl">
           <thead><tr><th>Member</th><th>Role</th></tr></thead>
           <tbody>
-            <tr><td>Aviral Gupta</td><td>Proposed the project idea and explained it to the team, and makes the presentations.</td></tr>
-            <tr><td>Anirudh Sankar</td><td>Writes and runs the experiment code in all three settings.</td></tr>
-            <tr><td>Mohit Kumar Singh</td><td>Wrote and revised the proposal, and analyses the results.</td></tr>
-            <tr><td>Arihant Tripathy</td><td>Writes the report, presenting the results alongside the relevant literature.</td></tr>
+            <tr><td>Aviral Gupta</td><td>Proposed the idea, and makes the presentations.</td></tr>
+            <tr><td>Anirudh Sankar</td><td>Writes and runs the experiment code.</td></tr>
+            <tr><td>Mohit Kumar Singh</td><td>Analyses the results and owns the pre-registrations.</td></tr>
+            <tr><td>Arihant Tripathy</td><td>Writes the report and relates the results to the literature.</td></tr>
           </tbody>
         </table>
       </section>
 
-      <!-- ================================================================ §11 -->
+      <!-- ================================================================ §10 -->
       <section id="limits">
-        <h2><span class="num">§11</span>Risks and limitations</h2>
+        <h2><span class="num">§10</span>Limitations</h2>
         <p>
-          The most basic limitation is that every basis is built on the same encoder, so the effect of the basis cannot
-          be fully separated from the effect of E5 itself. E5 has also seen MIRACL training data, which means the Indic
-          results say nothing about languages the encoder has never encountered; our claims concern the fitted bases,
-          the scoring and the prediction, not the encoder's reach. In Setting B the whole cache remains in memory, so
-          the experiments say nothing about savings in speed or memory, and Setting C concerns routing at inference time
-          only, not training.
+          One encoder underlies every representation, so the effect of the basis cannot be fully separated from the
+          effect of E5 itself. E5 has also seen MIRACL in training, which means the Indic results say nothing about
+          languages the encoder has never encountered. The sparse codes are far weaker than the encoder they come from,
+          so the attribution of the gain may not hold for strong learned sparse retrievers such as SPLADE, which is one
+          reason the SPLADE-v3 comparison is on the schedule.
         </p>
         <p>
-          Every retrieval number so far also comes from a single budget of 32/128 features, and IDF's small role may not
-          survive at larger budgets, where document frequencies spread out. Finally, any transfer result scored in margin
-          units inherits the weakness described in §9.5, which is why it will always be reported next to the
-          majority-sign baseline.
+          The label-free predictor is not free to run: it needs queries and a run of a second retriever. Routing is
+          tested only at inference, so nothing here speaks to training. And the transfer test inherits the weakness of
+          the margin described in §8.2, which is why every transfer result will sit next to the majority-sign baseline.
         </p>
         <div class="callout aha">
           <div class="callout-label">the most informative outcome</div>
@@ -967,14 +1014,15 @@
         </div>
       </section>
 
-      <!-- ================================================================ §12 -->
+      <!-- ================================================================ §11 -->
       <section id="eng">
-        <h2><span class="num">§12</span>Engineering for the hardware we had</h2>
+        <h2><span class="num">§11</span>Engineering for the hardware we had</h2>
         <p class="section-intro">
-          Our nodes have four GPUs with 11 GB each and support neither bf16 nor FlashAttention-2. The full grid takes
-          days to run, so every stage writes a manifest recording its configuration hash, the checksums of its inputs
-          and the code version. Each stage can resume from checkpoints and verifies checksums before reusing anything it
-          has already produced. Three bottlenecks dominated the first full pass, and each needed its own fix.
+          This section comes from the project's execution notes rather than the report itself, but it explains how a
+          grid this size fitted on the hardware. Our nodes have four GPUs with 11 GB each and support neither bf16 nor
+          FlashAttention-2. The full grid takes days to run, so every stage writes a manifest recording its
+          configuration hash, the checksums of its inputs and the code version, resumes from checkpoints, and verifies
+          checksums before reusing anything it has already produced.
         </p>
         <table class="tbl">
           <thead><tr><th>Bottleneck</th><th>Problem</th><th>Fix</th><th>Effect</th></tr></thead>
@@ -991,11 +1039,6 @@
               <td>512 queries went from 24.0 s to 1.8 s, matching the CPU path exactly on 960 comparisons.</td></tr>
           </tbody>
         </table>
-        <p>
-          Two smaller decisions are worth noting. The encoding batch size stays at 8, because larger batches pushed some
-          quantised assignments outside our numerical tolerance. And exact dense search over 8.8 million passages does
-          not fit on a single 11 GB card, so it runs over shards on the GPU and merges the results from each shard.
-        </p>
         <div class="callout gotcha">
           <div class="callout-label">why exact matches matter</div>
           <p>With a top-k cut-off, even a tiny floating-point difference can swap two documents near the boundary and
@@ -1005,70 +1048,81 @@
         </div>
       </section>
 
-      <!-- ================================================================ §13 -->
+      <!-- ================================================================ §12 -->
       <section id="changes">
-        <h2><span class="num">§13</span>Changes since the proposal (28 Aug)</h2>
+        <h2><span class="num">§12</span>How the design changed since the proposal</h2>
         <table class="tbl">
-          <thead><tr><th>Item</th><th>Proposal</th><th>Now, and why</th></tr></thead>
+          <thead><tr><th>Item</th><th>Proposal (28 Aug)</th><th>Mid report, and why</th></tr></thead>
           <tbody>
             <tr><td>Bases</td><td>Eight, SPLADE included</td><td>Seven fitted on E5. SPLADE-v3 is external, since it shares no
                 encoder with the rest.</td></tr>
-            <tr><td>Representations</td><td>16</td><td>14, plus a token-fitted SAE dictionary applied at pooled level as a
+            <tr><td>Representations</td><td>16</td><td>14, plus a shared SAE dictionary across both granularities as a
                 secondary check.</td></tr>
             <tr><td>Switches</td><td>IDF, saturation, length, top-k</td><td>Three switches. Top-k is a fixed matched budget,
-                varied separately in the sparsity family.</td></tr>
+                varied separately in the budget family.</td></tr>
             <tr><td>Collections</td><td>14, one code-mixed</td><td>13, with no code-mixed set, since we use neither synthetic
                 code-mixing nor new relevance annotation.</td></tr>
-            <tr><td>Regression rows</td><td>224</td><td>14 × 13 = 182, over 11 corpora and 4 families.</td></tr>
-            <tr><td>Regressors</td><td>Six</td><td>Three primary, fixed in advance, with all six in a secondary model.</td></tr>
-            <tr><td>Validation</td><td>Family and corpus</td><td>Family, corpus and English to Indic.</td></tr>
-            <tr><td>Clavié App. C check</td><td>Reproduce the reversal</td><td>A conceptual replication on E5, since their
-                exact checkpoint and preprocessing are not available to us.</td></tr>
-            <tr><td>Setting B models</td><td>Llama-3.2-1B/3B, Qwen2.5-7B</td><td>Llama-3.2-1B, with Qwen2.5-1.5B as fallback,
-                on RULER only, because 11 GB cards limit context length and model size.</td></tr>
-            <tr><td>Setting C precision</td><td>4-bit OLMoE</td><td>fp16 split over two GPUs, so that quantisation noise does
-                not affect routing.</td></tr>
+            <tr><td>Rows</td><td>224</td><td>182 primary, plus 1,226 sensitivity rows over budgets, k<sub>1</sub>/b, seeds and
+                controls.</td></tr>
+            <tr><td>Targets</td><td>The margin</td><td>The margin as registered, plus exact Shapley values and the collection
+                gain G, after the margin proved poorly shaped.</td></tr>
+            <tr><td>Features</td><td>Six frequency diagnostics</td><td>The six as registered, plus index statistics and
+                exploratory pseudo-labels.</td></tr>
+            <tr><td>Validation</td><td>Family and corpus</td><td>Family, corpus and held-out k<sub>1</sub>/b settings, plus six
+                pre-registered confirmatory tests.</td></tr>
+            <tr><td>Setting B models</td><td>Llama-3.2-1B/3B, Qwen2.5-7B</td><td>Llama-3.2-1B-Instruct on RULER, because 11 GB
+                cards limit context length and model size.</td></tr>
+            <tr><td>Setting C</td><td>4-bit OLMoE</td><td>OLMoE-1B-7B on WikiText-2 and MMLU, with GSM8K first in line to be
+                cut.</td></tr>
           </tbody>
         </table>
       </section>
 
-      <!-- ================================================================ §14 -->
+      <!-- ================================================================ §13 -->
       <section id="glossary">
-        <h2><span class="num">§14</span>Glossary</h2>
+        <h2><span class="num">§13</span>Glossary</h2>
         <table class="tbl">
           <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
           <tbody>
             <tr><td>nDCG@10</td><td>A score from 0 to 1 for the top ten results, which rewards relevant documents more the
                 higher they are ranked and normalises by the best possible ordering.</td></tr>
             <tr><td>MS MARCO, TREC-DL</td><td>Web-passage retrieval from Bing. TREC-DL 2019 and 2020 are smaller query sets over
-                the same corpus with deeper human judgements.</td></tr>
+                the same passages with deeper human judgements.</td></tr>
             <tr><td>BEIR</td><td>A suite of retrieval datasets from different domains, used to test out-of-domain
                 generalisation.</td></tr>
             <tr><td>MIRACL</td><td>A multilingual Wikipedia retrieval benchmark, of which we use Hindi, Bengali and Telugu.</td></tr>
             <tr><td>LIMIT</td><td>A benchmark built to expose the limits of single-vector embedding retrieval.</td></tr>
             <tr><td>Zipfian</td><td>A distribution in which frequency falls off as a power of rank, with a few very common
                 items and a long tail of rare ones, as with words in text.</td></tr>
-            <tr><td>SAE (Top-K)</td><td>A sparse autoencoder that rewrites a vector as exactly K active features out of many.</td></tr>
+            <tr><td>SAE (Top-K)</td><td>A sparse autoencoder that rewrites a vector as at most K active features out of many.</td></tr>
             <tr><td>PQ / RQ</td><td>Product and residual quantisation, two ways of compressing a vector into a few discrete codes.</td></tr>
+            <tr><td>Shapley value</td><td>A fair split of a total effect among contributors, averaging each one's marginal
+                effect over every order in which they could be added. Exact here because all eight configurations were run.</td></tr>
+            <tr><td>Coefficient of variation</td><td>Standard deviation divided by mean; a unit-free measure of how spread out
+                values are.</td></tr>
+            <tr><td>Pseudo-labels</td><td>Treating another system's top results as if they were relevant, to estimate quality
+                without human judgements.</td></tr>
+            <tr><td>Query performance prediction</td><td>Estimating how well a retriever did on a query from the query and its
+                ranking alone, with no labels.</td></tr>
             <tr><td>KV cache</td><td>The stored keys and values of earlier tokens, reused at every decoding step.</td></tr>
             <tr><td>Quest</td><td>Query-aware selection of KV pages, which uses per-page minimum and maximum keys to bound attention.</td></tr>
             <tr><td>H2O</td><td>KV-cache eviction that keeps recent tokens plus the "heavy hitters" with the most accumulated attention.</td></tr>
             <tr><td>Attention sink</td><td>Early tokens that absorb a large share of attention, and whose removal breaks generation.</td></tr>
             <tr><td>RULER</td><td>A synthetic long-context benchmark built from needle-in-a-haystack tasks and harder variants.</td></tr>
             <tr><td>OLMoE</td><td>A fully open mixture-of-experts language model with 64 experts per layer, 8 of them active.</td></tr>
-            <tr><td>Super experts</td><td>A handful of experts, identified by activation magnitude, whose removal breaks the model.</td></tr>
             <tr><td>Ridge regression</td><td>Linear regression with an L2 penalty that shrinks the weights towards zero.</td></tr>
             <tr><td>Bootstrap</td><td>Estimating uncertainty by resampling the data with replacement many times.</td></tr>
             <tr><td>Holm correction</td><td>A way of adjusting p-values across many tests so that false positives stay under control.</td></tr>
-            <tr><td>Kendall's τ</td><td>How often two rankings agree on the order of a pair, from −1 to 1.</td></tr>
+            <tr><td>Spearman ρ</td><td>The correlation between two rankings, from −1 to 1.</td></tr>
+            <tr><td>Wilcoxon test</td><td>A test of whether paired differences tend to be positive, without assuming they are normal.</td></tr>
             <tr><td>Pre-registered</td><td>Fixed before the results are seen, so the analysis cannot be tuned to the outcome.</td></tr>
           </tbody>
         </table>
       </section>
 
-      <!-- ================================================================ §15 -->
+      <!-- ================================================================ §14 -->
       <section id="viva">
-        <h2><span class="num">§15</span>Viva questions</h2>
+        <h2><span class="num">§14</span>Viva questions</h2>
         <p class="section-intro">Questions that are likely to come up about the mid submission, each with an answer short
           enough to give out loud.</p>
         <ol class="qa">
@@ -1077,54 +1131,53 @@
               <summary>Explain the project in two sentences.</summary>
               <div class="a">
                 <p>"Retrieval, KV-page selection and MoE routing all take a dot product against non-negative features
-                  and keep the top k, and none of them uses the collection-frequency statistics that BM25 is built on. We
-                  test when BM25's corrections help across a controlled family of learned vocabularies, try to predict
-                  that from label-free statistics, and then carry the predictor into attention and routing."</p>
+                  and keep the top k, and only lexical retrieval corrects that score, through BM25. We test when each of
+                  BM25's three components helps across a controlled family of learned vocabularies, try to predict that
+                  without relevance labels, and then carry the predictors into attention and routing."</p>
               </div>
             </details>
           </li>
           <li>
             <details>
-              <summary>Why eight configurations and not just BM25 against the inner product?</summary>
+              <summary>What is the main finding so far?</summary>
               <div class="a">
-                <p>"Because BM25 is really three changes bundled together. Switching each one independently gives us a
-                  2³ factorial design, so we can attribute the gain to individual components. That is how we found that
-                  saturation does most of the work and IDF the least."</p>
+                <p>"The correction helps in 90% of rows, but 62% of the gain comes from saturation, which uses no
+                  collection statistics. How much saturation helps is set by how unequal the stored values are, which we
+                  confirmed with pre-registered tests. Whether IDF and length normalisation help depends on relevance,
+                  which is why our frequency-based predictor failed."</p>
               </div>
             </details>
           </li>
           <li>
             <details>
-              <summary>Why divide the gain by the standard deviation over configurations?</summary>
+              <summary>Why use Shapley values instead of ordinary main effects?</summary>
               <div class="a">
-                <p>"To make it unitless, so that the same predicted value means the same thing for nDCG, RULER accuracy
-                  and MMLU. The drawback, which we found in the results, is that it saturates: when the inner product is
-                  the only outlier, the margin is 8/√7, about 3.02, whatever the size of the gain. It is also bounded by
-                  4."</p>
+                <p>"Because the components interact, so the effect of turning IDF on depends on what else is on. Shapley
+                  values average each switch's marginal effect over every order of turning them on, and they add up
+                  exactly to the total gain. With all eight configurations run, they are exact, with no sampling."</p>
               </div>
             </details>
           </li>
           <li>
             <details>
-              <summary>Why is the pooled PQ margin exactly ±2?</summary>
+              <summary>Your pre-registered predictor failed. Why should we believe anything else?</summary>
               <div class="a">
-                <p>"Pooled PQ has one active code per subspace, all with the same value, so every document has the same
-                  length and saturation maps every value to the same constant. Saturation and length therefore only
-                  rescale the scores uniformly, and only IDF can change the ranking. Four configurations score Q000 and
-                  four score Q111, so the standard deviation is half the gap and the margin is ±2. We got exactly that on
-                  all twelve collections where it is defined, which checks the pipeline end to end."</p>
+                <p>"We report the failure as registered and explain it. Part of it is the target: the margin saturates
+                  near 3 whenever the inner product is the outlier, whatever the size of the gain. The rest is that the
+                  frequency curve cannot see relevance. The saturation account was then tested on data the exploration
+                  never touched, and the pseudo-label result is clearly labelled exploratory, with a second
+                  pre-registration planned on the unseen MS MARCO budget rows."</p>
               </div>
             </details>
           </li>
           <li>
             <details>
-              <summary>Your predictor failed. Why should we believe anything else?</summary>
+              <summary>Why does saturation depend on the coefficient of variation?</summary>
               <div class="a">
-                <p>"The failure lies in the target, not in the retrieval grid. The raw results stand on their own: 161 of
-                  179 margins are positive, the exact ±2 checks come out right, and the component split has bootstrap
-                  intervals behind it. We traced the failure to the saturating margin, kept the frozen predictor as
-                  registered for the transfer test, added a majority-sign baseline, and we label any new target as
-                  exploratory."</p>
+                <p>"Saturation maps f to (k1+1)f/(f+k1), and the ratio of output to input falls as f grows, so it shrinks
+                  large values relative to small ones. If every stored value were equal it would rescale every score alike
+                  and change no ranking. The more unequal the values, the more it reorders. Pooled PQ and RQ store equal
+                  values, and their saturation effect is exactly zero."</p>
               </div>
             </details>
           </li>
@@ -1132,40 +1185,43 @@
             <details>
               <summary>Why is IDF so weak here when CL-SR loses up to 18% without it?</summary>
               <div class="a">
-                <p>"At a budget of 128 document features, the top-k truncation has already removed most of the very
-                  common features that IDF would down-weight. That is the explanation Han et al. give. The sparsity
-                  family varies the budget to test it directly, which is why we moved it forward."</p>
+                <p>"At a cap of 128 document features, the top-k truncation has already removed most of the very common
+                  features that IDF would down-weight, which is the explanation Han et al. give. IDF's share shrinks as the
+                  budget grows and is slightly negative at native support. It isn't empty, though: shuffling the
+                  frequencies makes it worse in 83% of rows."</p>
               </div>
             </details>
           </li>
           <li>
             <details>
-              <summary>Why does the inner product over token-level SAE codes score so badly?</summary>
+              <summary>How does the pseudo-label predictor work, and what is wrong with it?</summary>
               <div class="a">
-                <p>"A token-level document is the sum of its tokens' codes, so features that fire on many tokens build up
-                  very large values and dominate the dot product. Saturation was designed for exactly that case, and the
-                  saturation effect for the token-level SAE is the largest in the table, at 19.3 points."</p>
+                <p>"We treat a reference retriever's top 10 as relevant and compute nDCG for each configuration against
+                  it. Plugging those pseudo-qualities into the Shapley and G formulas gives label-free estimates, which
+                  reach held-out R² of 0.52 to 0.66 for G. The weaknesses are that both references are biased, BM25
+                  towards BM25-like behaviour and E5 towards the encoder, that it needs a second retriever run, and that
+                  the decision rule built on it gains only 0.005 nDCG@10."</p>
               </div>
             </details>
           </li>
           <li>
             <details>
-              <summary>How do you get df for KV pages and experts, which are not documents?</summary>
+              <summary>Why does the inner product over the sparse codes score so badly?</summary>
               <div class="a">
-                <p>"We use selection counts. For a page, it is how many of 64 sampled prefill positions put it in the
-                  top-k. For an expert, it is how many tokens chose it across 256 calibration documents. The scores go
-                  through a positive map first, a softplus for Quest and the router probabilities for OLMoE, so that
-                  saturation is well defined."</p>
+                <p>"The codes are capped and, at token level, summed, so a few features build up very large values and
+                  dominate the dot product. Saturation was designed for exactly that case, which is why the token-level
+                  SAE, with the most unequal values, also has the largest saturation effect."</p>
               </div>
             </details>
           </li>
           <li>
             <details>
-              <summary>Why is nothing significant after Holm correction?</summary>
+              <summary>How do you get frequencies for KV pages and experts, which aren't documents?</summary>
               <div class="a">
-                <p>"With 2,000 bootstrap draws the smallest possible p-value is 1/2001, and Holm multiplies it by 182, so
-                  the floor is 0.091. That is a limit on resolution, not evidence that there is no effect, and 134 rows sit
-                  at it. We are rerunning with 20,000 draws, which lowers the floor to 0.009."</p>
+                <p>"We use selection counts on a calibration set. For a page, it is the fraction of calibration queries
+                  for which it enters the top-k among the pages that exist then. For an expert, it is the share of
+                  calibration tokens routed to it. Scores go through a positive map first, a softplus for Quest and the
+                  router probabilities for OLMoE, so that saturation is well defined."</p>
               </div>
             </details>
           </li>
@@ -1173,9 +1229,9 @@
             <details>
               <summary>What is the biggest limitation?</summary>
               <div class="a">
-                <p>"Everything comes from one encoder at one budget. That means we cannot fully separate the basis from
-                  the encoder, and IDF's small role might change at larger budgets. On top of that, E5 has seen MIRACL
-                  training data, so the Indic results are not about unseen languages."</p>
+                <p>"Everything comes from one encoder, and the sparse codes are much weaker than it, so the attribution
+                  might not hold for a strong retriever like SPLADE. E5 has also seen MIRACL, so the Indic results aren't
+                  about unseen languages."</p>
               </div>
             </details>
           </li>
@@ -1211,16 +1267,15 @@
         <a href="#gap">§3 the puzzle</a>
         <a href="#problem">§4 problem</a>
         <a href="#built">§5 retrieval setup</a>
-        <a href="#predictor">§6 predictor</a>
+        <a href="#predictor">§6 predictors</a>
         <a href="#bc">§7 attention · routing</a>
-        <a href="#exact">§8 exact cases</a>
-        <a href="#results">§9 results</a>
-        <a href="#plan">§10 plan</a>
-        <a href="#limits">§11 limitations</a>
-        <a href="#eng">§12 engineering</a>
-        <a href="#changes">§13 changes</a>
-        <a href="#glossary">§14 glossary</a>
-        <a href="#viva">§15 viva</a>
+        <a href="#results">§8 results</a>
+        <a href="#plan">§9 plan</a>
+        <a href="#limits">§10 limitations</a>
+        <a href="#eng">§11 engineering</a>
+        <a href="#changes">§12 changes</a>
+        <a href="#glossary">§13 glossary</a>
+        <a href="#viva">§14 viva</a>
       </div>
     </aside>
   </div>
