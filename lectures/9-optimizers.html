@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Lecture 9 · Optimizers — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Lecture 9 of Advanced NLP, Monsoon 2026 IIIT-H: optimizers from gradient descent through momentum, AdaGrad, RMSProp, Adam and AdamW, to the matrix-aware Muon optimizer.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/9-optimizers.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Optimizers: from gradient descent to Muon | ANLP">
+  <meta property="og:description"
+    content="A first-principles tour of how a network turns gradients into weight updates: GD, momentum, AdaGrad, RMSProp, Adam, AdamW, and Muon.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/9-optimizers.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L9-optimizers/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP Optimizers lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Optimizers: from gradient descent to Muon | ANLP">
+  <meta name="twitter:description"
+    content="Which direction to move, and how far: every optimizer in the lecture, built up one fix at a time.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L9-optimizers/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 9: Optimizers","url":"https://arihant25.github.io/anlp-study-guide/lectures/9-optimizers.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#deck">The deck at a glance</a>
+        <a href="#where">§1 · Where the optimizer fits</a>
+        <a href="#gd">§2 · Gradient descent</a>
+        <a href="#momentum">§3 · Momentum</a>
+        <a href="#adaptive">§4 · AdaGrad &amp; RMSProp</a>
+        <a href="#adam">§5 · Adam</a>
+        <a href="#adamw">§6 · AdamW</a>
+        <a href="#muon">§7 · Muon</a>
+        <a href="#further">§8 · Further reading</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="8-feed-forward.html">← Lecture 8: Feed Forward</a>
+        <a href="../seminars/vishal-rao-data-creation.html">Next: Seminar · Data Creation →</a>
+        <a href="../assignments/2-moe-optimizers-decoding.html#p2">A2 · Optimisers from scratch</a>
+        <a href="../index.html">Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Lecture 09 · 29 slides</div>
+        <h1>Optimizers: <em>which way to step, and how far.</em></h1>
+        <p class="lead">
+          Backpropagation hands you a gradient for every weight. The
+          optimizer decides what to do with it. This lecture starts
+          with plain gradient descent and fixes one flaw at a time:
+          momentum for zig-zagging, AdaGrad and RMSProp for giving each
+          weight its own step size, Adam for doing both at once, AdamW
+          for making weight decay behave, and Muon for treating a
+          weight matrix as a matrix instead of a bag of numbers.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Lecture 09</span>
+          <span class="pill">29 slides</span>
+          <span class="pill">Manish Shrivastava · Aparajitha Allamraju</span>
+        </div>
+      </section>
+
+      <section id="deck">
+        <h2><span class="num">§0</span>The deck at a glance</h2>
+        <p class="section-intro">
+          The deck is short and tells one story. Slides 1–3 place the
+          optimizer in the training loop: it is step 4, the weight
+          update. Slides 4–8 cover gradient descent and momentum, which
+          both answer the question <em>which direction should I
+          move?</em> Slide 9 changes the question to <em>how far should
+          I move?</em>, and slides 10–12 answer it with AdaGrad and
+          RMSProp. Slides 13–17 combine both answers into Adam. Slides
+          18–22 fix how Adam handles regularisation, which gives AdamW,
+          the default optimizer for LLMs for the last several years.
+          Slides 23–28 list what AdamW still gets wrong and introduce
+          Muon. Slide 29 lists further reading.
+        </p>
+        <p>
+          The same optimizers appear in code in
+          <a href="../assignments/2-moe-optimizers-decoding.html#p2">Assignment 2, Part 2</a>,
+          where you implement AdamW and Muon from scratch. Read this
+          page first for the reasoning, then that one for the code.
+        </p>
+      </section>
+
+      <hr class="soft">
+
+      <section id="where">
+        <h2><span class="num">§1</span>Where the optimizer fits</h2>
+        <p class="section-intro">
+          Every training step does the same four things. The first
+          three are fixed by the model and the loss. The optimizer
+          is the only part of step 4 you get to choose.
+        </p>
+
+        <div class="slide" id="s1">
+          <div class="slide-frame">
+            <div class="tag">Slide 01 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-01.png"
+              alt="Title slide: Optimizers, Advanced NLP M26, Manish Shrivastava and Aparajitha, IIIT Hyderabad, August 31 2026.">
+            <div class="slide-caption">slide 01 · title</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Lecture 9 of Advanced NLP Monsoon 2026, given on 31 August 2026. The topic is the optimizer: the rule
+              that turns gradients into changes to the weights.</p>
+            <h4>Why it gets a lecture</h4>
+            <p>The earlier lectures built the model: tokens, positions, attention, normalisation, the FFN. None of
+              that matters until the weights are trained, and the optimizer controls the training. Two
+              identical transformers trained with different optimizers can end up at different losses, use
+              different amounts of memory, and need different amounts of compute to get there. At LLM scale
+              these differences cost real money, which is why optimizer research is active again.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s2">
+          <div class="slide-frame">
+            <div class="tag">Slide 02 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-02.png"
+              alt="Recap: Steps of Training an ML Model. 1. Pass data through model to get predicted values. 2. Calculate the loss with predicted values and ground truth. 3. Perform backpropagation with loss to get gradients of parameters. 4. Update parameters with gradients.">
+            <div class="slide-caption">slide 02 · the four steps of a training iteration</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The training loop in four lines: forward pass, loss, backward pass, update.</p>
+            <h4>In PyTorch terms</h4>
+            <p>The four steps map onto four lines you have written many times:</p>
+            <ol>
+              <li><code>pred = model(x)</code>: forward pass.</li>
+              <li><code>loss = loss_fn(pred, y)</code>: a single number measuring how wrong the predictions are.</li>
+              <li><code>loss.backward()</code>: fills in <code>p.grad</code> for every parameter <code>p</code>.
+                This is the partial derivative of the loss with respect to that parameter.</li>
+              <li><code>optimizer.step()</code>: reads each <code>p.grad</code> and changes <code>p</code>.</li>
+            </ol>
+            <p>(Plus <code>optimizer.zero_grad()</code>, because PyTorch adds new gradients to old ones unless you
+              clear them.)</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s3">
+          <div class="slide-frame">
+            <div class="tag">Slide 03 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-03.png"
+              alt="Where does an Optimizer fit in? Same four steps, with step 4, Update parameters with gradients, in bold and an arrow pointing to the word Optimizer.">
+            <div class="slide-caption">slide 03 · the optimizer is step 4</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The same list, with step 4 marked as the optimizer's job.</p>
+            <h4>What to take from it</h4>
+            <p>The gradient tells you how the loss changes if you nudge each weight a tiny bit. It does
+              <em>not</em> tell you how big a step to take, whether to trust this one noisy mini-batch, or whether
+              some weights need bigger steps than others. Every optimizer in this lecture is a different answer to
+              those questions. The gradient is the same input in all of them; only the update rule changes.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>An optimizer is a function from (current weights, current gradient, some memory of past
+                gradients) to new weights. The "memory" part is called the <em>optimizer state</em>, and how big it
+                is turns out to matter a lot (§7).</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="gd">
+        <h2><span class="num">§2</span>Gradient descent</h2>
+        <p class="section-intro">
+          The simplest possible rule: step against the gradient, by a
+          fixed amount. Slides 4–6 state it, show what the one
+          hyperparameter does, and list where it goes wrong.
+        </p>
+
+        <div class="slide" id="s4">
+          <div class="slide-frame">
+            <div class="tag">Slide 04 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-04.png"
+              alt="Gradient Descent. Bullets: Gradient Descent is climbing down the valley rather than moving up. It is a minimization algorithm which minimizes a given function. Mathematically, the update is w_{t+1} = w_t − η ∇L(w_t). Right: a 3D bowl-shaped surface with a red path descending from the rim to the minimum.">
+            <div class="slide-caption">slide 04 · the gradient descent update</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Gradient descent walks downhill on the loss surface. The update is:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <msub><mi>w</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub>
+                <mo>=</mo>
+                <msub><mi>w</mi><mi>t</mi></msub>
+                <mo>−</mo>
+                <mi>η</mi>
+                <mo>∇</mo><mi>L</mi><mo>(</mo><msub><mi>w</mi><mi>t</mi></msub><mo>)</mo>
+              </math>
+            </div>
+            <h4>Reading the equation</h4>
+            <ul>
+              <li><em>w<sub>t</sub></em> is the vector of all weights at step <em>t</em>.</li>
+              <li><em>∇L(w<sub>t</sub>)</em> is the gradient: a vector, the same size as <em>w</em>, pointing in the
+                direction in which the loss <em>increases</em> fastest.</li>
+              <li>The minus sign turns that into the direction of fastest decrease.</li>
+              <li><em>η</em> (eta) is the learning rate, a positive number that scales the step.</li>
+            </ul>
+            <p>In practice the gradient is computed on a mini-batch rather than the whole dataset, which makes it a
+              noisy estimate. That version is called <em>stochastic</em> gradient descent (SGD), and the slides use
+              "GD" and "SGD" for the same thing.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s5">
+          <div class="slide-frame">
+            <div class="tag">Slide 05 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-05.png"
+              alt="Gradient Descent: Effect of Learning Rate. Too large: oscillation or divergence. Too small: slow progress. Two parabolas: with a big learning rate, red arrows bounce from wall to wall and climb upward; with a small learning rate, many tiny arrows creep down toward the minimum. Equation w_{t+1} = w_t − η ∇L(w_t).">
+            <div class="slide-caption">slide 05 · too big a learning rate, too small a learning rate</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two parabolas. With a big <em>η</em>, each step jumps past the minimum to the other wall, and the
+              jumps can grow until training diverges. With a small <em>η</em>, every step is safe but there are a
+              great many of them.</p>
+            <h4>A one-line example</h4>
+            <p>Take <em>L(w) = w²</em>, so the gradient is <em>2w</em> and the update is
+              <em>w ← w − η·2w = (1 − 2η)w</em>. Each step multiplies <em>w</em> by <em>(1 − 2η)</em>:</p>
+            <ul>
+              <li><em>η = 0.1</em>: factor 0.8. Smooth, steady approach to 0.</li>
+              <li><em>η = 0.9</em>: factor −0.8. <em>w</em> flips sign every step (the bouncing in the left picture)
+                but still shrinks.</li>
+              <li><em>η = 1.1</em>: factor −1.2. <em>w</em> flips sign and grows. Divergence.</li>
+              <li><em>η = 0.001</em>: factor 0.998. Converges, after thousands of steps.</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The safe learning rate depends on how steep (curved) the surface is. A real loss surface is steep
+                in some directions and flat in others, so no single <em>η</em> is right for all of them. That one
+                fact drives the rest of the lecture.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s6">
+          <div class="slide-frame">
+            <div class="tag">Slide 06 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-06.png"
+              alt="To be or not to be: Limitations of Gradient Descent. May take a long time to reach the bottom of the hill, even though it is clearly traveling in the same direction. May bounce back and forth between the walls of the steep ravine without reaching the bottom fast.">
+            <div class="slide-caption">slide 06 · two ways gradient descent wastes steps</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two failure modes. (1) On a long gentle slope, GD keeps taking small steps even though every step
+              points the same way. (2) In a narrow ravine, GD bounces between the steep walls and makes little
+              progress along the floor.</p>
+            <h4>Why both happen at once</h4>
+            <p>Picture a long narrow valley: steep across, nearly flat along. The gradient is mostly made of the
+              steep "across" component, so GD spends its steps bouncing wall to wall. If you lower <em>η</em> to
+              stop the bouncing, the steps along the flat floor become tiny. GD has no memory: each step looks only
+              at the current gradient, so it cannot notice that "along the floor" has been the right direction for
+              the last hundred steps. Momentum adds that memory.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="momentum">
+        <h2><span class="num">§3</span>Momentum</h2>
+        <p class="section-intro">
+          Keep a running average of recent gradients and step along
+          that instead. Directions that agree from step to step add
+          up; directions that flip sign cancel out.
+        </p>
+
+        <div class="slide" id="s7">
+          <div class="slide-frame">
+            <div class="tag">Slide 07 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-07.png"
+              alt="Optimizing Gradient Descent: Momentum. Momentum allows loss to take larger steps towards the minimum. Mathematically, v_{t+1} = β v_t + (1 − β) ∇L(w_t); w_{t+1} = w_t − η v_{t+1}. Right: a grey mesh surface with two dips; a blue ball (normal SGD) is stuck in a shallow dip while a purple ball (SGD with momentum) has rolled into the deeper one.">
+            <div class="slide-caption">slide 07 · momentum update</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable>
+                  <mtr><mtd>
+                    <msub><mi>v</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub>
+                    <mo>=</mo><mi>β</mi><msub><mi>v</mi><mi>t</mi></msub>
+                    <mo>+</mo><mo>(</mo><mn>1</mn><mo>−</mo><mi>β</mi><mo>)</mo>
+                    <mo>∇</mo><mi>L</mi><mo>(</mo><msub><mi>w</mi><mi>t</mi></msub><mo>)</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi>w</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub>
+                    <mo>=</mo><msub><mi>w</mi><mi>t</mi></msub><mo>−</mo><mi>η</mi>
+                    <msub><mi>v</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <p>The picture: plain SGD (blue) settles into the first shallow dip it finds; SGD with momentum
+              (purple) carries enough speed to roll past it into the deeper one.</p>
+            <h4>What <em>v</em> is</h4>
+            <p><em>v</em> is an <em>exponential moving average</em> (EMA) of past gradients. Each step keeps a
+              fraction <em>β</em> of the old average and mixes in <em>(1 − β)</em> of the new gradient. With the
+              usual <em>β = 0.9</em>, <em>v</em> is roughly the average of the last ~10 gradients
+              (1 / (1 − β) = 10).</p>
+            <h4>How this fixes slide 6</h4>
+            <ul>
+              <li><strong>The ravine.</strong> The "across" component flips sign every step (+, −, +, −), so in the
+                average it mostly cancels. The bouncing shrinks.</li>
+              <li><strong>The gentle slope.</strong> The "along" component has the same sign every step, so it
+                does not cancel. Steps in that direction stay full-size and keep coming.</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Two conventions</div>
+              <p>The slide uses the EMA form with <em>(1 − β)</em>. PyTorch's <code>SGD(momentum=0.9)</code> uses
+                <em>v ← βv + g</em> with no <em>(1 − β)</em>. The two differ only by a constant factor of 10 at
+                <em>β = 0.9</em>, which the learning rate absorbs. Same algorithm, different <em>η</em>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s8">
+          <div class="slide-frame">
+            <div class="tag">Slide 08 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-08.png"
+              alt="All parameters are equal, but some are more equal than others: Limitations of Momentum. Learning rate remains constant. Why is this bad? Overshooting. Learning rate is the same for all parameters even though some parameters are sparse (rarely updated) while others are dense (updated often).">
+            <div class="slide-caption">slide 08 · what momentum still gets wrong</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Momentum still has one global learning rate <em>η</em>. Two problems follow: overshooting (the
+              built-up velocity carries you past the minimum) and the same step size for every parameter, whether
+              it gets a gradient every step or almost never.</p>
+            <h4>Why sparse parameters matter in NLP</h4>
+            <p>Take a word-embedding table. The row for "the" receives a gradient in nearly every batch. The row
+              for "anaphora" receives one only in the rare batch that contains that word. With one global
+              <em>η</em>, the rare row barely moves across all of training, because it gets a handful of small
+              updates while "the" gets thousands. Ideally, a rarely-updated weight would take a <em>bigger</em>
+              step whenever it does get a signal. Momentum cannot do this, because it scales every parameter by
+              the same <em>η</em>.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="adaptive">
+        <h2><span class="num">§4</span>Per-parameter step sizes: AdaGrad and RMSProp</h2>
+        <p class="section-intro">
+          Slide 9 changes the question from <em>which direction</em>
+          to <em>how far</em>. AdaGrad and RMSProp answer it by giving
+          every weight its own learning rate, scaled down for weights
+          that have seen large gradients.
+        </p>
+
+        <div class="slide" id="s9">
+          <div class="slide-frame">
+            <div class="tag">Slide 09 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-09.png"
+              alt="Changing the Question. Which direction to move? An arrow points down to: How much to move?">
+            <div class="slide-caption">slide 09 · from "which direction" to "how far"</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The turning point of the lecture. GD and momentum were about choosing the <em>direction</em> of the
+              step. The next family is about choosing its <em>size</em>, separately for each weight.</p>
+            <h4>Why these are separate questions</h4>
+            <p>A step is a direction times a length. Momentum improved the direction by averaging. But slide 5
+              showed that the right length depends on how steep the surface is, and slide 8 showed that the
+              right length depends on how often a weight is updated. Both of these differ from weight to weight.
+              So the next idea is to divide each weight's step by something that measures how big its gradients
+              usually are.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s10">
+          <div class="slide-frame">
+            <div class="tag">Slide 10 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-10.png"
+              alt="AdaGrad. Weights which are infrequently updated should be updated with a larger learning rate than weights which are frequently updated. The learning rate for each parameter is updated adaptively based on the history of its squared gradients. Equations on a dark background: V_{t+1} = V_t + (∇L(W_t))^2; W_{t+1} = W_t − α ∇W_t / (sqrt(V_{t+1}) + ε). A red arrow points at ε with the note: Very small (prevents 0 division (bad)). Citation: Duchi, Hazan and Singer (2011).">
+            <div class="slide-caption">slide 10 · AdaGrad</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable>
+                  <mtr><mtd>
+                    <msub><mi>V</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub>
+                    <mo>=</mo><msub><mi>V</mi><mi>t</mi></msub><mo>+</mo>
+                    <msup><mrow><mo>(</mo><mo>∇</mo><mi>L</mi><mo>(</mo><msub><mi>W</mi><mi>t</mi></msub><mo>)</mo><mo>)</mo></mrow><mn>2</mn></msup>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi>W</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub>
+                    <mo>=</mo><msub><mi>W</mi><mi>t</mi></msub><mo>−</mo><mi>α</mi>
+                    <mfrac>
+                      <mrow><mo>∇</mo><mi>L</mi><mo>(</mo><msub><mi>W</mi><mi>t</mi></msub><mo>)</mo></mrow>
+                      <mrow><msqrt><msub><mi>V</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub></msqrt><mo>+</mo><mi>ε</mi></mrow>
+                    </mfrac>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <p>(The slide writes the numerator as "∇W<sub>t</sub>"; it means the gradient of the loss with respect
+              to <em>W</em>, the same quantity as in the first line.) Everything is element-wise: each weight has
+              its own <em>V</em>.</p>
+            <h4>What each piece does</h4>
+            <ul>
+              <li><em>V</em> is a running <em>sum</em> of that weight's squared gradients over all of training.</li>
+              <li>The step is the gradient divided by <em>√V</em>. A weight that has seen big gradients has a big
+                <em>V</em> and gets small steps. A weight that has rarely had a gradient has a small <em>V</em>
+                and gets large steps. That fixes the "anaphora" row from slide 8.</li>
+              <li><em>ε</em> (around 10<sup>−8</sup>) keeps you from dividing by zero for a weight that has never
+                received a gradient.</li>
+            </ul>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
+              <p>Dividing by <em>√V</em> also makes the step roughly scale-free. If you multiplied the loss by 100,
+                every gradient would be 100× larger, but <em>√V</em> would also be 100× larger, and the step would
+                stay the same. Plain GD would take 100× bigger steps and probably diverge.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s11">
+          <div class="slide-frame">
+            <div class="tag">Slide 11 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-11.png"
+              alt="The Fault in our Sums: Limitations of AdaGrad. Tends to reduce the learning rate too drastically over time, causing the model to stop learning effectively. How? The gradients in the V term keep accumulating, so the denominator in the weight update equation keeps increasing, so the learning rate is reduced. AdaGrad equations repeated on a dark background.">
+            <div class="slide-caption">slide 11 · AdaGrad's step size only ever shrinks</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p><em>V</em> is a sum of squares, so it can only grow. The denominator only grows, so the effective
+              learning rate <em>α / √V</em> only shrinks. Eventually it is so small that training stalls.</p>
+            <h4>How fast it shrinks</h4>
+            <p>Suppose a weight gets a gradient of about 1 every step. After <em>t</em> steps, <em>V ≈ t</em>,
+              so its step size is about <em>α / √t</em>. After 10,000 steps that is α/100; after a million it is
+              α/1000. For a convex problem trained once, that decay is fine and is part of why AdaGrad has good
+              theory. For a neural network trained for hundreds of thousands of steps on a loss surface that keeps
+              changing, it means the model stops learning long before it should.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s12">
+          <div class="slide-frame">
+            <div class="tag">Slide 12 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-12.png"
+              alt="RMSProp. Instead of accumulating all past squared gradients as AdaGrad does, RMSProp uses a moving average. RMSProp gives more weight to recent gradients, allowing it to adapt more effectively without diminishing the learning rate too quickly. Equations: V_{t+1} = β V_t + (1 − β)(∇L(W_t))^2; W_{t+1} = W_t − α ∇W_t / (sqrt(V_{t+1}) + ε).">
+            <div class="slide-caption">slide 12 · RMSProp: a moving average instead of a sum</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <msub><mi>V</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub>
+                <mo>=</mo><mi>β</mi><msub><mi>V</mi><mi>t</mi></msub><mo>+</mo>
+                <mo>(</mo><mn>1</mn><mo>−</mo><mi>β</mi><mo>)</mo>
+                <msup><mrow><mo>(</mo><mo>∇</mo><mi>L</mi><mo>(</mo><msub><mi>W</mi><mi>t</mi></msub><mo>)</mo><mo>)</mo></mrow><mn>2</mn></msup>
+              </math>
+            </div>
+            <p>The weight update is the same as AdaGrad's. Only the line for <em>V</em> changes.</p>
+            <h4>Why one change is enough</h4>
+            <p>This is the same EMA trick as momentum, applied to squared gradients instead of gradients. An EMA
+              forgets old values, so <em>V</em> tracks the <em>recent</em> typical size of the gradient instead of
+              the total since step 0. In the example from slide 11 (gradient always about 1), RMSProp's <em>V</em>
+              settles at about 1 and stays there, so the step size stays about <em>α</em> instead of decaying to
+              zero.</p>
+            <p>The name comes from this: <em>√V</em> is a running <strong>r</strong>oot-<strong>m</strong>ean-<strong>s</strong>quare
+              of the gradient, and the update divides ("<strong>prop</strong>agates") by it. RMSProp was never
+              formally published; it comes from Geoffrey Hinton's 2012 Coursera lecture slides.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="adam">
+        <h2><span class="num">§5</span>Adam</h2>
+        <p class="section-intro">
+          Momentum answers "which direction". RMSProp answers "how far".
+          Adam uses both: the momentum average goes in the numerator,
+          and the RMSProp average goes in the denominator.
+        </p>
+
+        <div class="slide" id="s13">
+          <div class="slide-frame">
+            <div class="tag">Slide 13 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-13.png"
+              alt="Can we answer 2 questions at once? 1. Which direction to move? 2. How much to move?">
+            <div class="slide-caption">slide 13 · both questions at once</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Can a single optimizer answer both questions?</p>
+            <h4>The answer, before the slides give it</h4>
+            <p>Yes. Momentum keeps an EMA of gradients (a <em>first moment</em>, roughly the mean) to pick the
+              direction. RMSProp keeps an EMA of squared gradients (a <em>second moment</em>, roughly the mean
+              square) to pick the size. Neither uses the other's statistic, so you can keep both and use both.
+              That optimizer is Adam: <strong>Ada</strong>ptive <strong>m</strong>oment estimation.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s14">
+          <div class="slide-frame">
+            <div class="tag">Slide 14 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-14.png"
+              alt="Adam. Screenshot of the first page of Adam: A Method for Stochastic Optimization, published as a conference paper at ICLR 2015, by Diederik P. Kingma (University of Amsterdam, OpenAI) and Jimmy Lei Ba (University of Toronto), with its abstract. Citation: Kingma and Ba (2015).">
+            <div class="slide-caption">slide 14 · the Adam paper (Kingma &amp; Ba, ICLR 2015)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The first page of the Adam paper. The abstract's main claims: it is first-order (gradients only),
+              cheap, needs little memory, is invariant to rescaling the gradient, handles noisy and sparse
+              gradients, and its hyperparameters need little tuning.</p>
+            <h4>Why this paper matters so much</h4>
+            <p>Adam, and its variant AdamW (§6), has been the default optimizer for transformers almost since the
+              transformer was invented. The original 2017 transformer was trained with Adam; so were BERT, GPT-2,
+              GPT-3, LLaMA and most models since. The claim that "the hyperparameters need little tuning" is
+              mostly true: <em>β<sub>1</sub> = 0.9</em>, <em>β<sub>2</sub> = 0.999</em> (often 0.95 for LLMs), and
+              you tune the learning rate.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s15">
+          <div class="slide-frame">
+            <div class="tag">Slide 15 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-15.png"
+              alt="Playing with Adam. Adam reaches the global minima before SGD reaches the minima. Right: a green and red 3D bowl; a dark blue path labelled Adam Optimizer reaches the bottom of the bowl while a cyan path labelled Gradient Descent stops partway, near a region labelled plateau.">
+            <div class="slide-caption">slide 15 · Adam vs gradient descent on a surface with a plateau</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two paths from the same starting point. Adam (dark blue) reaches the minimum; gradient descent
+              (cyan) is still on its way, slowed down near the flat region marked "plateau".</p>
+            <h4>Why Adam wins on a plateau</h4>
+            <p>On a plateau the gradient is tiny, so GD's step <em>η·g</em> is tiny too. Adam divides by
+              <em>√v</em>, which is also tiny on a plateau, so the ratio stays around 1 and Adam keeps moving at
+              roughly its normal speed. This is the scale-free property from slide 10, and it is Adam's biggest
+              practical advantage: it does not slow to a crawl just because the gradients got small.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s16">
+          <div class="slide-frame">
+            <div class="tag">Slide 16 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-16.png"
+              alt="A Comparison of Optimization Algorithms for Deep Learning, Derya Soydaner. Table 3: Comparison of the algorithms on MNIST for classification. Test loss and test accuracy for three CNNs. Rows SGD, SGD-momentum, RMSProp and Adam are highlighted. SGD: 99.00, 99.03, 99.24. SGD-momentum: 99.26, 99.18, 99.26. SGD-Nesterov: 99.34, 99.35, 99.41. AdaGrad: 98.57, 98.79, 99.08. AdaDelta: 99.50 (best on CNN-1), 99.49, 99.40. RMSProp: 99.26, 98.70, 99.32. Adam: 99.35, 99.00, 99.29. AdaMax: 99.37, 99.51 (best on CNN-2), 99.42 (best on CNN-3). Nadam: 99.32, 99.19, 99.16. AMSGrad: 99.24, 99.28, 99.36.">
+            <div class="slide-caption">slide 16 · a head-to-head on MNIST (Soydaner, 2020)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Ten optimizers, three CNNs, MNIST digit classification. The highlighted rows are the four the
+              lecture has covered so far: SGD, SGD with momentum, RMSProp and Adam.</p>
+            <h4>How to read it</h4>
+            <ul>
+              <li>All accuracies are between 98.6% and 99.5%. MNIST is easy, so the differences are small.</li>
+              <li>Momentum beats plain SGD on every network, as §3 predicts.</li>
+              <li>AdaGrad is the worst row on all three networks, consistent with slide 11's shrinking step size.</li>
+              <li>Adam is not the winner on any network here. The best accuracies come from AdaDelta (CNN-1) and
+                AdaMax (CNN-2, CNN-3), both members of the same adaptive family.</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>Don't conclude "Adam is mediocre" from this table. On a small, easy, well-conditioned problem,
+                most reasonable optimizers end up close together. Adam's advantages (robustness to scale, to
+                plateaus and to sparse gradients) matter most on large, badly-conditioned problems like
+                transformer pre-training, where plain SGD often trains much worse.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s17">
+          <div class="slide-frame">
+            <div class="tag">Slide 17 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-17.png"
+              alt="Adam Algorithm (Adamgorithm?). Left: Algorithm 1 from the Adam paper with defaults alpha = 0.001, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-8; initialise m0 = 0, v0 = 0, t = 0; loop: t = t+1, g_t = gradient, m_t = beta1 m_{t-1} + (1 − beta1) g_t, v_t = beta2 v_{t-1} + (1 − beta2) g_t^2, m-hat_t = m_t / (1 − beta1^t), v-hat_t = v_t / (1 − beta2^t), theta_t = theta_{t-1} − alpha m-hat_t / (sqrt(v-hat_t) + epsilon). Right: the same in the lecture's notation, M_t, V_t, M-hat_t, V-hat_t, and W_{t+1} = W_t − alpha M-hat_t / (sqrt(V-hat_t) + epsilon).">
+            <div class="slide-caption">slide 17 · the full Adam algorithm</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Algorithm 1 from the paper on the left, and the same five lines in the lecture's notation on the
+              right:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <msub><mi>M</mi><mi>t</mi></msub><mo>=</mo>
+                    <msub><mi>β</mi><mn>1</mn></msub><msub><mi>M</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub>
+                    <mo>+</mo><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>β</mi><mn>1</mn></msub><mo>)</mo>
+                    <mo>∇</mo><mi>L</mi><mo>(</mo><msub><mi>W</mi><mi>t</mi></msub><mo>)</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi>V</mi><mi>t</mi></msub><mo>=</mo>
+                    <msub><mi>β</mi><mn>2</mn></msub><msub><mi>V</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub>
+                    <mo>+</mo><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>β</mi><mn>2</mn></msub><mo>)</mo>
+                    <msup><mrow><mo>(</mo><mo>∇</mo><mi>L</mi><mo>(</mo><msub><mi>W</mi><mi>t</mi></msub><mo>)</mo><mo>)</mo></mrow><mn>2</mn></msup>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mover accent="true"><mi>M</mi><mo>^</mo></mover><mi>t</mi></msub><mo>=</mo>
+                    <mfrac><msub><mi>M</mi><mi>t</mi></msub><mrow><mn>1</mn><mo>−</mo><msubsup><mi>β</mi><mn>1</mn><mi>t</mi></msubsup></mrow></mfrac>
+                    <mo>,</mo><mspace width="1em"/>
+                    <msub><mover accent="true"><mi>V</mi><mo>^</mo></mover><mi>t</mi></msub><mo>=</mo>
+                    <mfrac><msub><mi>V</mi><mi>t</mi></msub><mrow><mn>1</mn><mo>−</mo><msubsup><mi>β</mi><mn>2</mn><mi>t</mi></msubsup></mrow></mfrac>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi>W</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo>
+                    <msub><mi>W</mi><mi>t</mi></msub><mo>−</mo><mi>α</mi>
+                    <mfrac>
+                      <msub><mover accent="true"><mi>M</mi><mo>^</mo></mover><mi>t</mi></msub>
+                      <mrow><msqrt><msub><mover accent="true"><mi>V</mi><mo>^</mo></mover><mi>t</mi></msub></msqrt><mo>+</mo><mi>ε</mi></mrow>
+                    </mfrac>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <h4>Line by line</h4>
+            <ul>
+              <li><strong>M</strong> is momentum (§3): the EMA of gradients, which picks the direction.</li>
+              <li><strong>V</strong> is RMSProp (§4): the EMA of squared gradients, which sets the per-weight
+                scale.</li>
+              <li><strong>The hats</strong> are <em>bias correction</em>, the only new idea in Adam. See below.</li>
+              <li><strong>The update</strong> is momentum divided by RMS: direction from <em>M̂</em>, size from
+                <em>√V̂</em>.</li>
+            </ul>
+            <h4>Why bias correction is needed</h4>
+            <p><em>M</em> and <em>V</em> start at 0. After one step with gradient <em>g</em>,
+              <em>M<sub>1</sub> = (1 − 0.9)g = 0.1g</em>, ten times too small, and
+              <em>V<sub>1</sub> = 0.001g²</em>, a thousand times too small. Both averages are biased toward zero
+              until enough steps have passed to fill them up. Dividing by <em>1 − β<sup>t</sup></em> undoes this
+              exactly: at <em>t = 1</em>, <em>M̂<sub>1</sub> = 0.1g / 0.1 = g</em> and
+              <em>V̂<sub>1</sub> = 0.001g² / 0.001 = g²</em>. As <em>t</em> grows, <em>β<sup>t</sup> → 0</em> and
+              the correction fades away.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Work out Adam's first step: <em>M̂ / √V̂ = g / |g| = ±1</em> for every weight (ignoring ε). So
+                the first update moves every single weight by exactly <em>α</em>, whatever the size of its
+                gradient. In general, Adam's step per weight is roughly bounded by <em>α</em>. That is why the
+                learning rate in Adam is roughly "the largest amount any weight moves in one step", and why it is
+                so much easier to tune than SGD's.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="adamw">
+        <h2><span class="num">§6</span>AdamW: weight decay done right</h2>
+        <p class="section-intro">
+          Regularisation pulls weights toward zero to fight
+          overfitting. With plain SGD there are two equivalent ways to
+          do it. With Adam they stop being equivalent, and the obvious
+          way turns out to be the worse one.
+        </p>
+
+        <div class="slide" id="s18">
+          <div class="slide-frame">
+            <div class="tag">Slide 18 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-18.png"
+              alt="Making Adam Regular. In vanilla Adam with L2 regularization, the weight decay is implemented by adding a term to the gradient before applying Adam's adaptive update rule. The Adam update then processes this combined gradient with all its scaling, momentum, and bias corrections. Equations: L = L_error + lambda ||w||^2; v_t = beta1 v_{t-1} + (1 − beta1)(dL/dw + lambda w); s_t = beta2 s_{t-1} + (1 − beta2)(dL/dw + lambda w)^2.">
+            <div class="slide-caption">slide 18 · Adam with L2 regularisation</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Add an L2 penalty to the loss, <em>𝓛 = 𝓛<sub>error</sub> + λ‖w‖²</em>. Its gradient adds a term
+              <em>λw</em> to every weight's gradient (strictly <em>2λw</em>; the 2 is usually folded into λ). That
+              combined gradient then goes into both of Adam's moving averages.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation</div>
+              <p>Slides 18–22 rename Adam's moments: <em>v<sub>t</sub></em> is now the <em>first</em> moment
+                (what slide 17 called <em>M</em>) and <em>s<sub>t</sub></em> is the second (slide 17's
+                <em>V</em>). Same algorithm, new letters, taken from a different source.</p>
+            </div>
+            <h4>Why this is the obvious thing to do</h4>
+            <p>For plain SGD, adding <em>λw</em> to the gradient gives
+              <em>w ← w − η(g + λw) = (1 − ηλ)w − ηg</em>. The <em>(1 − ηλ)</em> factor shrinks every weight by the
+              same fraction every step: that is literally "weight decay". So for SGD, "L2 penalty in the loss" and
+              "decay the weights directly" are the same thing, and deep-learning libraries implemented Adam's
+              <code>weight_decay</code> argument the first way.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s19">
+          <div class="slide-frame">
+            <div class="tag">Slide 19 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-19.png"
+              alt="Problem with Adam L2 Regularization. Doesn't purely decay weights in a uniform way, as Adam's per-parameter learning rates distort the effect. Same three equations as the previous slide.">
+            <div class="slide-caption">slide 19 · Adam distorts the decay</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>With Adam, the <em>λw</em> term gets divided by <em>√s</em> like everything else, so different
+              weights are decayed by different amounts.</p>
+            <h4>A worked example</h4>
+            <p>Two weights, both equal to 1, with <em>λ = 0.01</em>. Weight A has had large gradients, so
+              <em>√s ≈ 10</em>. Weight B has had small ones, so <em>√s ≈ 0.1</em>. The decay part of each step is
+              <em>α·λw/√s</em>:</p>
+            <ul>
+              <li>A: <em>α · 0.01 / 10 = 0.001α</em></li>
+              <li>B: <em>α · 0.01 / 0.1 = 0.1α</em></li>
+            </ul>
+            <p>Weight B is decayed <strong>100× harder</strong> than A, and the reason is how big its gradients
+              have been, which has nothing to do with whether it is overfitting. Worse, the weights with large
+              gradients, often the ones you most want to keep in check, are barely regularised at all. Turning λ up
+              does not fix this, because the ratio between A and B stays the same.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s20">
+          <div class="slide-frame">
+            <div class="tag">Slide 20 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-20.png"
+              alt="Turning Adam's L into a W: Introducing AdamW. Removes the L2 penalty from the gradient and applies weight decay directly to the parameters after the gradient update. Equations: L = L_error; v_t = beta1 v_{t-1} + (1 − beta1) dL/dw; s_t = beta2 s_{t-1} + (1 − beta2)(dL/dw)^2.">
+            <div class="slide-caption">slide 20 · AdamW: decouple the decay</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Take the penalty out of the loss, so both moments see only the error gradient. Then decay the
+              weights directly, as a separate step. The slide shows the first half; written out, the full update
+              is:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <msub><mi>w</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo>
+                <msub><mi>w</mi><mi>t</mi></msub><mo>−</mo><mi>α</mi>
+                <mrow><mo>(</mo>
+                  <mfrac>
+                    <msub><mover accent="true"><mi>v</mi><mo>^</mo></mover><mi>t</mi></msub>
+                    <mrow><msqrt><msub><mover accent="true"><mi>s</mi><mo>^</mo></mover><mi>t</mi></msub></msqrt><mo>+</mo><mi>ε</mi></mrow>
+                  </mfrac>
+                  <mo>+</mo><mi>λ</mi><msub><mi>w</mi><mi>t</mi></msub>
+                <mo>)</mo></mrow>
+              </math>
+            </div>
+            <p>The <em>λw</em> term sits <em>outside</em> the fraction, so <em>√ŝ</em> never touches it.</p>
+            <h4>Where the name comes from</h4>
+            <p>The slide title is a pun: Adam with <strong>L</strong>2 becomes Adam with <strong>W</strong>eight
+              decay. The method is from Loshchilov &amp; Hutter, "Decoupled Weight Decay Regularization" (ICLR 2019).
+              In PyTorch, <code>torch.optim.Adam(weight_decay=…)</code> is still the coupled L2 version and
+              <code>torch.optim.AdamW(weight_decay=…)</code> is the decoupled one, so the class you pick matters.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s21">
+          <div class="slide-frame">
+            <div class="tag">Slide 21 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-21.png"
+              alt="Turning Adam's L into a W: Introducing AdamW. Why this helps? Weight decay is applied the same way to all parameters, independent of Adam's internal scaling. The regularization is not distorted by the adaptive learning rates. Same equations as the previous slide.">
+            <div class="slide-caption">slide 21 · why decoupling helps</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two benefits: decay is uniform across parameters, and it is no longer distorted by the adaptive
+              learning rates.</p>
+            <h4>Back to the example</h4>
+            <p>With AdamW, weights A and B from slide 19 are both decayed by <em>αλw = 0.01α</em> per step. Every
+              weight loses the same fraction of itself each step, which is what "weight decay" was supposed to mean.
+              A practical bonus: λ and the learning rate now behave more independently, so you can tune one without
+              re-tuning the other.</p>
+            <div class="callout link">
+              <div class="callout-label">→ In practice</div>
+              <p>AdamW is the default for LLM pre-training. A typical recipe: β<sub>1</sub> = 0.9,
+                β<sub>2</sub> = 0.95, weight decay 0.1, with a learning rate that warms up and then decays on a
+                cosine schedule. Biases and normalisation gains are usually left out of the weight decay.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s22">
+          <div class="slide-frame">
+            <div class="tag">Slide 22 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-22.png"
+              alt="Have we reached the pinnacle of human existence with AdamW?">
+            <div class="slide-caption">slide 22 · is AdamW the end of the story?</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A rhetorical question to open the last part of the lecture. The answer comes two slides later.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="muon">
+        <h2><span class="num">§7</span>Muon: treating a weight matrix as a matrix</h2>
+        <p class="section-intro">
+          Every optimizer so far treats the model as one long list of
+          numbers and updates each number on its own. But most of a
+          transformer's parameters live in 2-D weight matrices, and a
+          matrix has structure that a list does not. Muon uses it.
+        </p>
+
+        <div class="slide" id="s23">
+          <div class="slide-frame">
+            <div class="tag">Slide 23 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-23.png"
+              alt="Issues with Adam's Family: Limitations of AdamW. Keeps the first and second moments for every parameter, making optimizer size about twice as large as the actual model. Vector-based: treats every parameter as independent (misses the forest for the trees, with forest for the trees struck through and replaced by matrix for the parameters). Momentum matrix: momentum matrix becomes almost low-rank in practice, with very few dimensions contributing a lot while most dimensions don't contribute much.">
+            <div class="slide-caption">slide 23 · three problems with AdamW</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three complaints about AdamW.</p>
+            <h4>1 · Memory</h4>
+            <p>Adam stores <em>M</em> and <em>V</em>, each the same shape as the weights. So the optimizer state
+              is twice the size of the model. For a 7B-parameter model in fp32 that is 28 GB of weights plus
+              56 GB of Adam state, before you count gradients or activations. Optimizer state is often the biggest
+              single item in training memory.</p>
+            <h4>2 · Vector-based</h4>
+            <p>Adam works element by element: each weight's update depends only on that weight's own gradient
+              history. But a weight matrix <em>W</em> in a linear layer is a single object. It maps input vectors
+              to output vectors, and what matters is how it stretches and rotates them as a whole. The struck-out
+              joke on the slide: Adam misses the <s>forest for the trees</s> matrix for the parameters.</p>
+            <h4>3 · Low-rank momentum</h4>
+            <p>Take the momentum buffer for one weight matrix and compute its singular values. In practice a few
+              are large and the rest are close to zero: the matrix is almost low-rank. So each update pushes the
+              weights hard along a handful of directions and barely at all along the rest. Those rare directions
+              may still matter for learning, but they get drowned out.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s24">
+          <div class="slide-frame">
+            <div class="tag">Slide 24 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-24.png"
+              alt="Have we reached the pinnacle of human existence with AdamW? No.">
+            <div class="slide-caption">slide 24 · no</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The answer to slide 22: no.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s25">
+          <div class="slide-frame">
+            <div class="tag">Slide 25 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-25.png"
+              alt="Introducing Muon. Screenshot of the first page of Muon is Scalable for LLM Training, a technical report by Jingyuan Liu, Jianlin Su and others at Moonshot AI and UCLA. The abstract says Muon, based on matrix orthogonalization, worked well for small language models; the authors add weight decay and adjust the per-parameter update scale, find about 2x computational efficiency over AdamW, and train Moonlight, a 3B/16B-parameter MoE model on 5.7T tokens. Footer citation: Jordan et al. (2024), Muon: An Optimizer for Hidden Layers in Neural Networks.">
+            <div class="slide-caption">slide 25 · introducing Muon</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two sources share this slide. The footer cites the original Muon, from Keller Jordan and
+              collaborators (2024, a blog post and open-source code). The screenshot is a later paper,
+              <em>Muon is Scalable for LLM Training</em> (Liu et al., Moonshot AI, 2025), which showed that Muon
+              still works at LLM scale.</p>
+            <h4>What the Moonshot paper adds</h4>
+            <ul>
+              <li><strong>Weight decay.</strong> Without it, weights under Muon kept growing over long training
+                runs. They add AdamW-style decoupled decay.</li>
+              <li><strong>Update-scale matching.</strong> They rescale Muon's update so its average size per
+                element matches AdamW's. That way, the learning rate and weight decay tuned for AdamW can be
+                reused unchanged.</li>
+              <li><strong>Result.</strong> About 2× better compute efficiency than AdamW in their scaling-law
+                experiments, and a 16B-parameter MoE (Moonlight, 3B active) trained on 5.7T tokens with Muon.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide" id="s26">
+          <div class="slide-frame">
+            <div class="tag">Slide 26 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-26.png"
+              alt="Issues with Adam's Family: Limitations of AdamW. A repeat of slide 23: optimizer state twice the model size, vector-based updates that ignore matrix structure, and an almost low-rank momentum matrix.">
+            <div class="slide-caption">slide 26 · slide 23 again, now as Muon's to-do list</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Slide 23 repeated. This time, read it as the list of problems Muon is meant to fix:</p>
+            <ul>
+              <li><strong>Memory:</strong> Muon keeps only a momentum buffer, with no second moment. That is half
+                of Adam's optimizer state.</li>
+              <li><strong>Vector-based:</strong> Muon updates each 2-D weight matrix as a whole matrix.</li>
+              <li><strong>Low-rank momentum:</strong> Muon's key step (next slide) gives every direction the same
+                weight, so the small directions are no longer drowned out.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide" id="s27">
+          <div class="slide-frame">
+            <div class="tag">Slide 27 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-27.png"
+              alt="What Muon does. Muon says, Let's adjust the momentum update so it's better aligned with the shape of the bowl before we take the step. It is based on orthogonalizing the update given by SGD-Nesterov-momentum in an efficient way. Equations: M_t = mu M_{t-1} + gradient of L_t(W_{t-1}); O_t = Newton-Schulz(M_t); W_t = W_{t-1} − eta_t O_t.">
+            <div class="slide-caption">slide 27 · the Muon update</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <msub><mi mathvariant="bold">M</mi><mi>t</mi></msub><mo>=</mo>
+                    <mi>μ</mi><msub><mi mathvariant="bold">M</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub>
+                    <mo>+</mo><mo>∇</mo><msub><mi>𝓛</mi><mi>t</mi></msub>
+                    <mo>(</mo><msub><mi mathvariant="bold">W</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>)</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi mathvariant="bold">O</mi><mi>t</mi></msub><mo>=</mo>
+                    <mtext>Newton-Schulz</mtext><mo>(</mo><msub><mi mathvariant="bold">M</mi><mi>t</mi></msub><mo>)</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi mathvariant="bold">W</mi><mi>t</mi></msub><mo>=</mo>
+                    <msub><mi mathvariant="bold">W</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub>
+                    <mo>−</mo><msub><mi>η</mi><mi>t</mi></msub><msub><mi mathvariant="bold">O</mi><mi>t</mi></msub>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <p>Lines 1 and 3 are plain SGD with momentum. All the new work is in line 2.</p>
+            <h4>What "orthogonalize" means</h4>
+            <p>Any matrix can be written with its singular value decomposition, <em>M = UΣVᵀ</em>. <em>U</em> and
+              <em>V</em> hold the directions; <em>Σ</em> is diagonal and holds the singular values, one per
+              direction, saying how strongly <em>M</em> pushes along it. Orthogonalizing means replacing every
+              singular value with 1:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mi mathvariant="bold">M</mi><mo>=</mo><mi>U</mi><mi>Σ</mi><msup><mi>V</mi><mo>⊤</mo></msup>
+                <mspace width="1em"/><mo>⟶</mo><mspace width="1em"/>
+                <mi mathvariant="bold">O</mi><mo>=</mo><mi>U</mi><msup><mi>V</mi><mo>⊤</mo></msup>
+              </math>
+            </div>
+            <p><em>O</em> keeps every direction <em>M</em> pointed in but gives them all equal strength. This
+              fixes problem 3 from slide 23: in a nearly low-rank momentum matrix, the few dominant directions get
+              scaled down to 1 and the many weak directions get scaled up to 1. Every direction now gets
+              learned.</p>
+            <h4>Why Newton–Schulz instead of SVD</h4>
+            <p>Computing an exact SVD of every weight matrix on every step is too slow on GPUs. Newton–Schulz is
+              an iteration that reaches the same <em>UVᵀ</em> using only matrix multiplications, which GPUs are
+              very fast at. Normalise <em>X<sub>0</sub> = M / ‖M‖<sub>F</sub></em> (so all singular values are at
+              most 1), then repeat about five times:</p>
+            <div class="eq">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <msub><mi>X</mi><mrow><mi>k</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo>
+                <mi>a</mi><msub><mi>X</mi><mi>k</mi></msub><mo>+</mo>
+                <mi>b</mi><mo>(</mo><msub><mi>X</mi><mi>k</mi></msub><msubsup><mi>X</mi><mi>k</mi><mo>⊤</mo></msubsup><mo>)</mo><msub><mi>X</mi><mi>k</mi></msub>
+                <mo>+</mo>
+                <mi>c</mi><msup><mrow><mo>(</mo><msub><mi>X</mi><mi>k</mi></msub><msubsup><mi>X</mi><mi>k</mi><mo>⊤</mo></msubsup><mo>)</mo></mrow><mn>2</mn></msup><msub><mi>X</mi><mi>k</mi></msub>
+              </math>
+            </div>
+            <p>Each step applies the same odd polynomial to every singular value at once. The coefficients
+              (Jordan's are <em>a, b, c = 3.4445, −4.7750, 2.0315</em>) are chosen so that this polynomial pushes
+              any value between 0 and 1 quickly toward 1. Five steps leave them roughly between 0.7 and 1.2, not
+              exactly 1, and in practice that is close enough.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The bullet says "SGD-<em>Nesterov</em>-momentum", but the equations show plain momentum. The
+                reference implementation uses the Nesterov variant: it orthogonalizes <em>g + μM</em> rather than
+                <em>M</em>, which looks one step ahead (see slide 29). Also, Muon is only used for the 2-D
+                <em>hidden</em> weight matrices. Embeddings, the output head, biases and norm gains are still
+                trained with AdamW.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s28">
+          <div class="slide-frame">
+            <div class="tag">Slide 28 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-28.png"
+              alt="Muon in Practice. Plot titled Compute Resources vs Training Time Tradeoff for Loss 1.3 Nats (Python): number of devices (y, 0 to 128) against total time in hours (x, 0 to 19). The orange Muon curve lies to the left of and below the blue AdamW curve: with 128 or 64 devices Muon reaches the target in well under an hour, while AdamW with 64 devices takes about 1.5 hours. The curves meet at 8 devices. Caption: Figure 1, Muon (Jordan et al., 2024) explicitly expands the Pareto frontier over AdamW on the compute-time tradeoff by retaining data efficiency at large batch sizes. Citation: Shah et al. (2025), Practical Efficiency of Muon for Pretraining.">
+            <div class="slide-caption">slide 28 · Muon beats AdamW on devices vs time</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Each point is a training run that reached the same target loss (1.3 nats on Python code). The y-axis
+              is how many devices it used; the x-axis is how long it took. Lower-left is better: fewer devices,
+              less time.</p>
+            <h4>How to read it</h4>
+            <ul>
+              <li>The Muon curve lies below and to the left of the AdamW curve. For any number of devices, Muon gets
+                there at least as fast. This is what "expands the Pareto frontier" means.</li>
+              <li>The gap is widest with many devices. To use more devices you raise the batch size, and AdamW
+                gets less out of each example at very large batches. Muon keeps its data efficiency there, so
+                adding devices still saves time.</li>
+              <li>At 8 devices (small batch) the two curves meet. Muon's advantage is mostly a large-batch
+                advantage, which is the regime that LLM pre-training runs in.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="further">
+        <h2><span class="num">§8</span>Further reading</h2>
+
+        <div class="slide" id="s29">
+          <div class="slide-frame">
+            <div class="tag">Slide 29 / 29</div>
+            <img src="../assets/slides/L9-optimizers/slide-29.png"
+              alt="Other cool optimizers (Further Reading): SGD with Nesterov Accelerated Gradient (NAG); AdaDelta; LiMuon.">
+            <div class="slide-caption">slide 29 · other optimizers worth knowing</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three optimizers left for further reading. One line on each:</p>
+            <ul>
+              <li><strong>Nesterov Accelerated Gradient (NAG).</strong> Momentum that looks ahead. Instead of
+                taking the gradient at the current point, take it at the point the velocity is about to carry you
+                to, <em>w − ηβv</em>. If you are about to overshoot, that look-ahead gradient already points back,
+                so the overshoot is corrected one step earlier. It is the "Nesterov" in Muon's description (slide
+                27) and the SGD-Nesterov row of slide 16's table.</li>
+              <li><strong>AdaDelta</strong> (Zeiler, 2012). Another fix for AdaGrad's shrinking step size, from
+                the same time as RMSProp. It also replaces the sum of squared gradients with a moving average, and
+                in addition replaces the global learning rate with a running average of past update sizes, so in
+                principle there is no learning rate to tune. It had the best CNN-1 result in slide 16's table.</li>
+              <li><strong>LiMuon.</strong> A 2025 variant of Muon designed to be lighter, cutting Muon's memory and
+                compute cost further for large models.</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="section-intro" style="margin-top:1.5rem">
+          Zoom out. Each optimizer in this lecture fixes one problem with
+          the one before it. Momentum stops gradient descent from
+          zig-zagging. AdaGrad gives each weight its own step size, and
+          RMSProp keeps that step size from decaying to zero. Adam
+          combines momentum and RMSProp and corrects their start-up
+          bias. AdamW moves weight decay out of Adam's adaptive scaling
+          so it applies uniformly. Muon stops treating the parameters as
+          one flat vector and orthogonalizes each matrix's momentum,
+          using half the memory. For an exam, be able to write each
+          update rule and say which problem it fixes.
+        </p>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="8-feed-forward.html">
+          <span class="dir">← back</span>
+          <span class="lbl">08 · Feed Forward</span>
+        </a>
+        <a class="next" href="../seminars/vishal-rao-data-creation.html">
+          <span class="dir">next →</span>
+          <span class="lbl">Seminar · Data Creation</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Lecture 09 · Optimizers · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#deck">at a glance</a>
+        <a href="#where">§1 where it fits</a>
+        <a href="#gd">§2 gradient descent</a>
+        <a href="#momentum">§3 momentum</a>
+        <a href="#adaptive">§4 AdaGrad &amp; RMSProp</a>
+        <a href="#adam">§5 Adam</a>
+        <a href="#adamw">§6 AdamW</a>
+        <a href="#muon">§7 Muon</a>
+        <a href="#further">§8 further reading</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>
