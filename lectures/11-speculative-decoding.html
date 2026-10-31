@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Lecture 11 · Speculative Decoding — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Lecture 11 of Advanced NLP, Monsoon 2026 IIIT-H: why autoregressive decoding is slow, min-p sampling, speculative decoding with a draft model, and speculative sampling with its accept/reject rule.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/11-speculative-decoding.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Speculative Decoding: draft cheaply, verify in parallel | ANLP">
+  <meta property="og:description"
+    content="A first-principles walk through min-p sampling, speculative decoding and speculative sampling, with the accept/reject rule worked out on numbers.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/11-speculative-decoding.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L11-speculative-decoding/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP Decoding and Generation lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Speculative Decoding: draft cheaply, verify in parallel | ANLP">
+  <meta name="twitter:description"
+    content="Let a small model guess several tokens, let the big model check them all in one pass, and keep the big model's exact output distribution.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L11-speculative-decoding/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 11: Speculative Decoding","url":"https://arihant25.github.io/anlp-study-guide/lectures/11-speculative-decoding.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#deck">The deck at a glance</a>
+        <a href="#slow">§1 · Why decoding is slow</a>
+        <a href="#minp">§2 · Min-p sampling</a>
+        <a href="#timeline">§3 · A short history</a>
+        <a href="#idea">§4 · Speculative decoding: the idea</a>
+        <a href="#algorithm">§5 · The algorithm</a>
+        <a href="#limits">§6 · Limitations</a>
+        <a href="#sps">§7 · Speculative sampling</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="10-decoding.html">← Lecture 10: Decoding</a>
+        <a href="12-evaluation.html">Next: Lecture 12 · Evaluation →</a>
+        <a href="../index.html">Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Lecture 11 · 25 slides</div>
+        <h1>Speculative Decoding: <em>guess cheaply, check in parallel.</em></h1>
+        <p class="lead">
+          A language model writes one token per forward pass, and each
+          pass through a large model is slow. This lecture has two parts.
+          The first is min-p sampling, a way to choose <em>which</em>
+          tokens are allowed when sampling. The second is speculative
+          decoding: a small draft model guesses several tokens ahead, the
+          large model checks all of them in a single pass, and a careful
+          accept/reject rule makes the result follow exactly the
+          distribution the large model would have produced on its own.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Lecture 11</span>
+          <span class="pill">25 slides</span>
+          <span class="pill">Manish Shrivastava · Aparajitha Allamraju</span>
+        </div>
+      </section>
+
+      <section id="deck">
+        <h2><span class="num">§0</span>The deck at a glance</h2>
+        <p class="section-intro">
+          The deck is titled "Decoding &amp; Generation" and continues
+          from Lecture 10. Slides 1–4 recap plain autoregressive decoding
+          and name its problem: it is slow. Slide 5 lists five more
+          decoding strategies. Slides 6–13 cover min-p sampling, which is
+          about output quality rather than speed. Slide 14 is a timeline of
+          speculative methods. Slides 15–23 cover speculative decoding
+          (Leviathan et al., Google, 2022): the idea, the algorithm, a
+          worked figure, and its limitations. Slides 24–25 cover
+          speculative sampling (Chen et al., DeepMind, 2023), the same
+          idea developed independently, with the accept/reject rule
+          written out.
+        </p>
+        <p>
+          The deck was put together from several earlier decks, so the
+          page numbers printed in the slide corners (3, 20, 24, 19, 4, 16,
+          8, 15, 17 and so on) do not match the slide order. This page uses
+          the slide's position in the PDF. Two items on slide 5, Lookahead
+          Decoding and Medusa, are listed but not covered. There is a short
+          note on each under slide 5.
+        </p>
+      </section>
+
+      <hr class="soft">
+
+      <section id="slow">
+        <h2><span class="num">§1</span>Why decoding is slow</h2>
+        <p class="section-intro">
+          A model that generates text writes one token, appends it to the
+          input, and runs again. Every new token costs a full forward pass
+          through the whole model, and the passes cannot overlap, because
+          each one needs the previous output.
+        </p>
+
+        <div class="slide" id="s1">
+          <div class="slide-frame">
+            <div class="tag">Slide 01 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-01.png"
+              alt="Title slide: Decoding &amp; Generation. Manish Shrivastava + Aparajitha Allamraju. Advanced NLP - M2026, IIIT Hyderabad logo.">
+            <div class="slide-caption">slide 01 · title</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The title is "Decoding &amp; Generation", the same theme as Lecture 10. The course site lists this
+              lecture as "Speculative Decoding" (the PDF is named <code>ANLP-M26-Advanced_Decoding.pdf</code>),
+              because that is its main new topic.</p>
+            <h4>Where this fits</h4>
+            <p>Lecture 10 covered how to <em>pick</em> the next token from the model's probability distribution:
+              greedy, beam search, temperature, top-k, top-p. This lecture adds one more way to pick (min-p) and
+              then changes the question. Speculative decoding does not change <em>what</em> the model generates.
+              It changes how fast it is generated.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s2">
+          <div class="slide-frame">
+            <div class="tag">Slide 02 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-02.png"
+              alt="Naive Autoregressive Sampling. Diagram of three LLM calls in a row. The input 'Once upon' goes into the LLM, which outputs 'a'. 'a' is appended to make 'Once upon a', which goes into the LLM and outputs 'time'. 'time' is appended to make 'Once upon a time', which goes into the LLM and outputs 'there', with a dashed arrow continuing to the right.">
+            <div class="slide-caption">slide 02 · one token per model call</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>"Once upon" goes in, "a" comes out. "Once upon a" goes in, "time" comes out. "Once upon a time" goes
+              in, "there" comes out. Each output token is fed back as part of the next input.</p>
+            <h4>Why it has to be sequential</h4>
+            <p>The model defines the probability of a sequence as a product of next-token probabilities,
+              <em>P(x<sub>1</sub>, …, x<sub>T</sub>) = ∏ P(x<sub>t</sub> | x<sub>&lt;t</sub>)</em>. To sample
+              token <em>t</em> you need tokens 1 to <em>t</em>−1 already fixed. So generating 100 tokens means
+              100 forward passes, one after another. A GPU can do a great deal of work in parallel, but it cannot
+              start pass 2 before pass 1 has finished.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s3">
+          <div class="slide-frame">
+            <div class="tag">Slide 03 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-03.png"
+              alt="Autoregressive Decoding. Algorithm 1 Autoregressive Decoding. Require: language model M_q, input sequence x_1, ..., x_t, and target sequence length T. 1: initialize n ← t. 2: while n &lt; T do. 3: Set q_{n+1} ← M_q(x | x_{&lt;n+1}). 4: Sample x_{n+1} ~ q_{n+1}. 5: n ← n + 1. 6: end while. Source: Unlocking Efficiency in Large Language Model Inference: A Comprehensive Survey of Speculative Decoding.">
+            <div class="slide-caption">slide 03 · the loop written as an algorithm</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The same loop as slide 2, from the survey by Xia et al. (2024):</p>
+            <ul>
+              <li><em>M<sub>q</sub></em> is the language model. <em>x<sub>1</sub>, …, x<sub>t</sub></em> is the
+                prompt, and <em>T</em> is the length to stop at.</li>
+              <li>Line 3: run the model on everything so far, <em>x<sub>&lt;n+1</sub></em>, to get
+                <em>q<sub>n+1</sub></em>, a probability distribution over the whole vocabulary for the next
+                position.</li>
+              <li>Line 4: draw one token from it. This is where greedy, top-k, top-p or min-p would plug in.</li>
+              <li>Line 5: move one position forward and repeat.</li>
+            </ul>
+            <p>The loop body runs <em>T − t</em> times, and each run is one full forward pass.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation</div>
+              <p>Here the letter <em>q</em> belongs to the model we actually want to sample from. In slide 19
+                (Leviathan et al.) <em>q</em> is the small <em>draft</em> model and <em>p</em> is the large target.
+                In slide 25 (Chen et al.) it flips again: <em>q</em> is the target and <em>p</em> is the draft.
+                Always check which letter is which before reading a formula.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s4">
+          <div class="slide-frame">
+            <div class="tag">Slide 04 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-04.png"
+              alt="Naive Autoregressive Sampling. Limitations: Inference from large autoregressive models like Transformers is slow (slow in bold).">
+            <div class="slide-caption">slide 04 · the limitation: it is slow</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>One bullet: inference from large autoregressive models is slow.</p>
+            <h4>Why it is slow, more precisely</h4>
+            <p>The time per token is not mostly spent on arithmetic. When you generate for one user, each forward
+              pass processes a single new token, but it still has to read <em>every</em> weight of the model from
+              GPU memory. A 70B-parameter model in 16-bit precision is about 140 GB of weights. Reading that much
+              memory takes far longer than doing the matrix-vector products with it, so the GPU's compute units
+              sit mostly idle. This is called being <em>memory-bandwidth bound</em>.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Since the cost of a pass is dominated by reading the weights, running the model on 5 tokens at once
+                costs about the same time as running it on 1 token. The weights are read once either way. Speculative
+                decoding is built entirely on this fact: if we had good guesses for the next few tokens, the big
+                model could check all of them for roughly the price of one step.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s5">
+          <div class="slide-frame">
+            <div class="tag">Slide 05 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-05.png"
+              alt="More Decoding Strategies: Min-p Sampling; Speculative Decoding; Speculative Sampling; Lookahead Decoding; Medusa.">
+            <div class="slide-caption">slide 05 · the menu for this lecture</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Five strategies. They fall into two groups:</p>
+            <ul>
+              <li><strong>Choosing better tokens:</strong> min-p sampling. It changes the output, not the speed.</li>
+              <li><strong>Generating the same tokens faster:</strong> speculative decoding, speculative sampling,
+                Lookahead Decoding and Medusa. All four produce more than one token per pass of the big model.</li>
+            </ul>
+            <h4>The two the deck does not cover</h4>
+            <p>Both are alternatives to having a separate draft model. One line each, for orientation only:</p>
+            <ul>
+              <li><strong>Medusa</strong> (Cai et al., 2024) adds a few extra output heads to the target model
+                itself. Head <em>k</em> predicts the token <em>k</em> positions ahead. Their guesses are then
+                verified by the same model in one pass, using a tree of candidate continuations.</li>
+              <li><strong>Lookahead Decoding</strong> (Fu et al., 2024) also uses no draft model. It guesses
+                several future tokens with a fixed-point (Jacobi) iteration, collects n-grams from those guesses,
+                and verifies promising n-grams with the target model.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="minp">
+        <h2><span class="num">§2</span>Min-p sampling</h2>
+        <p class="section-intro">
+          Top-p and top-k cut off the unlikely tail of the distribution
+          before sampling. Min-p does the same, but sets the cut-off
+          relative to the most likely token, so the cut-off moves with how
+          confident the model is.
+        </p>
+
+        <div class="slide" id="s6">
+          <div class="slide-frame">
+            <div class="tag">Slide 06 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-06.png"
+              alt="Section divider: MIN-P SAMPLING.">
+            <div class="slide-caption">slide 06 · section divider</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section title only.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s7">
+          <div class="slide-frame">
+            <div class="tag">Slide 07 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-07.png"
+              alt="Min-p Sampling. Dynamically adjust the sampling threshold based on the model's confidence at each decoding step. Improving sensitivity to context and uncertainty while better balancing creativity and coherence, especially at high temperatures. Source: Turning Up the Heat: Min-p Sampling for Creative and Coherent LLM Outputs, ICLR 2025.">
+            <div class="slide-caption">slide 07 · a threshold that moves with confidence</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Min-p sets its sampling threshold separately at every step, based on how confident the model is at
+              that step. The claim is that this balances creativity and coherence better, especially at high
+              temperature. The source is Nguyen et al., ICLR 2025.</p>
+            <h4>The problem it is aimed at</h4>
+            <p>Raising the temperature <em>τ</em> divides the logits by <em>τ</em> before the softmax, which flattens
+              the distribution. That makes text more varied, but it also gives more probability to junk tokens far
+              down the tail. Top-p keeps the smallest set of tokens whose probabilities add up to <em>p</em>. When
+              the distribution is flat, that set can be very large and include many bad tokens. Min-p is meant to
+              stay strict in that case.</p>
+            <div class="callout link">
+              <div class="callout-label">→ Recap</div>
+              <p>Temperature, top-k and top-p are explained in <a href="10-decoding.html">Lecture 10</a>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s8">
+          <div class="slide-frame">
+            <div class="tag">Slide 08 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-08.png"
+              alt="Min-p Sampling. Intution [sic]. Token truncation thresholds are relative and depend on how certain the distribution is for that token. When the model is highly confident about the next token, min-p restricts the pool to high-probability candidates to maintain coherence. Conversely, when the model is less confident, relaxing the sampling pool allows for a more creative and diverse generation.">
+            <div class="slide-caption">slide 08 · intuition</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The threshold is relative. A confident model gets a small pool of candidates; an unsure model gets a
+              larger one. ("Intution" on the slide is a typo for "intuition".)</p>
+            <h4>Why "relative" is the key word</h4>
+            <p>Top-k uses a fixed count and top-p a fixed amount of probability mass. Neither looks at how peaked the
+              distribution is. Min-p's threshold is a fraction of the top token's probability, so a high peak means
+              a high bar and a flat distribution means a low bar. The next slide gives an example of each case, and
+              slide 10 gives the formula.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s9">
+          <div class="slide-frame">
+            <div class="tag">Slide 09 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-09.png"
+              alt="Min-p Sampling. Examples. Low-Certainty Next Token Prompt: 'You will pay for what you have done,' she hissed, her blade flashing in the moonlight. The battle that ensued ____. High-Certainty Next Token Prompt: A rainbow is an optically brilliant meteorological event, resulting from the refraction, reflection, and dispersion of ____.">
+            <div class="slide-caption">slide 09 · low-certainty vs high-certainty prompts</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two prompts. After "The battle that ensued", many continuations are fine: "was", "lasted",
+              "raged", "left". After "refraction, reflection, and dispersion of", the answer is almost certainly
+              "light".</p>
+            <h4>Putting numbers on it</h4>
+            <p>Use a base threshold <em>p<sub>base</sub> = 0.1</em>.</p>
+            <ul>
+              <li><strong>Rainbow:</strong> say P(light) = 0.85, then 0.06, 0.05, 0.04 for the next three. The
+                threshold is 0.1 × 0.85 = 0.085, so only "light" survives. Top-p with <em>p</em> = 0.9 would keep
+                two tokens (0.85 + 0.06 = 0.91 ≥ 0.9), letting in a 6% option for no reason.</li>
+              <li><strong>Battle:</strong> say the top token has 0.12 and the probabilities fall off slowly. The
+                threshold is 0.1 × 0.12 = 0.012, so every token above 1.2% stays in the pool, and there could be
+                dozens.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide" id="s10">
+          <div class="slide-frame">
+            <div class="tag">Slide 10 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-10.png"
+              alt="Min-p Sampling, formal definition from the paper. At each time step t, let V denote the vocabulary and P(x_t | x_{1:t-1}) the conditional distribution over the vocabulary for the next token. 1. Calculate the Maximum Probability: p_max = max over v in V of P(v | x_{1:t-1}). 2. Truncation Threshold: set a base probability threshold p_base in (0, 1], scale it by p_max: p_scaled = p_base × p_max (1). This threshold ensures that tokens with sufficiently high relative probabilities are considered while filtering out less probable tokens in a context-dependent manner. 3. Define Sampling Pool: V_min = {v in V : P(v | x_{1:t-1}) ≥ p_scaled} (2). 4. Sample from Pool: sample the next token x_t from the normalized set: P'(v) = P(v | x_{1:t-1}) / sum over v' in V_min of P(v' | x_{1:t-1}) for v in V_min (3).">
+            <div class="slide-caption">slide 10 · the algorithm in four steps</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four steps:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <msub><mi>p</mi><mtext>max</mtext></msub><mo>=</mo>
+                    <munder><mo movablelimits="true">max</mo><mrow><mi>v</mi><mo>∈</mo><mi>𝒱</mi></mrow></munder>
+                    <mi>P</mi><mo>(</mo><mi>v</mi><mo>∣</mo><msub><mi>x</mi><mrow><mn>1</mn><mo>:</mo><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>)</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi>p</mi><mtext>scaled</mtext></msub><mo>=</mo>
+                    <msub><mi>p</mi><mtext>base</mtext></msub><mo>×</mo><msub><mi>p</mi><mtext>max</mtext></msub>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi>𝒱</mi><mtext>min</mtext></msub><mo>=</mo>
+                    <mo>{</mo><mi>v</mi><mo>∈</mo><mi>𝒱</mi><mo>:</mo>
+                    <mi>P</mi><mo>(</mo><mi>v</mi><mo>∣</mo><msub><mi>x</mi><mrow><mn>1</mn><mo>:</mo><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>)</mo>
+                    <mo>≥</mo><msub><mi>p</mi><mtext>scaled</mtext></msub><mo>}</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msup><mi>P</mi><mo>′</mo></msup><mo>(</mo><mi>v</mi><mo>)</mo><mo>=</mo>
+                    <mfrac>
+                      <mrow><mi>P</mi><mo>(</mo><mi>v</mi><mo>∣</mo><msub><mi>x</mi><mrow><mn>1</mn><mo>:</mo><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>)</mo></mrow>
+                      <mrow><msub><mo>∑</mo><mrow><msup><mi>v</mi><mo>′</mo></msup><mo>∈</mo><msub><mi>𝒱</mi><mtext>min</mtext></msub></mrow></msub>
+                        <mi>P</mi><mo>(</mo><msup><mi>v</mi><mo>′</mo></msup><mo>∣</mo><msub><mi>x</mi><mrow><mn>1</mn><mo>:</mo><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>)</mo></mrow>
+                    </mfrac>
+                    <mspace width="1em"/><mtext>for </mtext><mi>v</mi><mo>∈</mo><msub><mi>𝒱</mi><mtext>min</mtext></msub>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <h4>Reading it</h4>
+            <ul>
+              <li><em>𝒱</em> is the vocabulary. <em>P(v | x<sub>1:t−1</sub>)</em> is the model's probability for
+                token <em>v</em> given everything so far.</li>
+              <li><em>p<sub>base</sub></em> is the one hyperparameter. Values around 0.05–0.1 are common.
+                <em>p<sub>base</sub></em> = 1 keeps only the top token (greedy, ignoring ties). Smaller values keep
+                more tokens.</li>
+              <li><em>𝒱<sub>min</sub></em> is the pool of tokens that pass. The top token always passes, because
+                <em>p<sub>max</sub> ≥ p<sub>base</sub> · p<sub>max</sub></em>, so the pool is never empty.</li>
+              <li>The last line renormalises: divide each surviving probability by their total so they sum to 1,
+                then sample.</li>
+            </ul>
+            <h4>Small example</h4>
+            <p>Probabilities (0.5, 0.3, 0.15, 0.05) and <em>p<sub>base</sub></em> = 0.2. Then
+              <em>p<sub>scaled</sub></em> = 0.2 × 0.5 = 0.1. The first three tokens pass and the last one (0.05) is
+              dropped. The survivors sum to 0.95, so the new probabilities are 0.5/0.95 ≈ 0.526,
+              0.3/0.95 ≈ 0.316 and 0.15/0.95 ≈ 0.158.</p>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
+              <p>The cost is one max, one comparison per token, and a renormalisation, all of which are cheap next to
+                the forward pass. Top-p needs the probabilities sorted to compute a cumulative sum; min-p does not.
+                Where temperature is applied relative to the min-p filter differs between libraries, and it changes
+                the result, so check the order in the one you use.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s11">
+          <div class="slide-frame">
+            <div class="tag">Slide 11 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-11.png"
+              alt="Min-p Sampling. Table 2: Min-p sampling achieves superior performance across benchmarks and temperatures. Accuracy (%) on GPQA Main and GSM8K CoT (Mistral 7B). All tests done on VLLM except eta and epsilon sampling using Hugging Face. Best scores bolded; best scores beyond std err (±1-1.5%) in italics. GPQA Main (5-shot) at tau = 0.7, 1.0, 1.5, 2.0, 3.0 and GSM8K CoT (8-shot) at the same temperatures. Temp only: 27.23, 22.77, 25.22, 5.80, 0.89 | 29.56, 17.51, 0.00, 0.00, 0.00. Top-k: 26.34, 23.66, 22.77, 16.52, 5.88 | 30.63, 17.59, 0.00, 0.00, 0.00. Eta sampling: 28.13, 25.45, 24.55, –, – | 32.63, 26.99, 0.49, –, –. Epsilon sampling: 27.90, 25.45, 24.11, –, – | 31.69, 26.84, 0.56, –, –. Top-p: 29.02, 25.00, 24.78, 6.47, 0.46 | 36.09 (bold), 27.67, 0.68, 0.00, 0.00. Min-p: 29.18, 25.89, 28.13, 26.34, 24.55 | 35.18, 30.86, 18.42, 6.21, 0.00.">
+            <div class="slide-caption">slide 11 · accuracy as temperature rises (Mistral 7B)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Accuracy of Mistral 7B on two benchmarks, with six sampling methods and five temperatures. GPQA Main
+              is graduate-level science multiple choice; GSM8K is grade-school maths word problems solved with
+              chain-of-thought (CoT).</p>
+            <h4>How to read it</h4>
+            <ul>
+              <li><strong>Low temperature (τ = 0.7):</strong> all methods are close. Top-p is best on GSM8K (36.09),
+                min-p is slightly behind (35.18).</li>
+              <li><strong>High temperature:</strong> the others collapse and min-p degrades slowly. On GSM8K at
+                τ = 1.5, min-p scores 18.42 while top-p scores 0.68. On GPQA at τ = 3.0, min-p scores 24.55 and top-p
+                scores 0.46.</li>
+              <li><strong>τ = 3.0 on GSM8K:</strong> everything is at 0, min-p included. No filter rescues a
+                temperature that high on a task that needs a long, exact chain of reasoning.</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>GPQA questions have four options, so random guessing scores about 25%. Min-p's 24–28% on GPQA at
+                high temperature is close to chance. That shows min-p avoids producing broken output, which is why
+                the other methods drop to near 0% (they fail to produce a usable answer at all). It does not show
+                that min-p reasons well at τ = 3. The GSM8K columns, where chance is near 0%, are the more telling
+                comparison.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s12">
+          <div class="slide-frame">
+            <div class="tag">Slide 12 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-12.png"
+              alt="Min-p Sampling. Advantages: Balancing Creativity and Coherence; Robustness at High Temperatures; Simple Algorithm.">
+            <div class="slide-caption">slide 12 · advantages</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three advantages, each of which maps to an earlier slide:</p>
+            <ul>
+              <li><strong>Creativity and coherence:</strong> the relative threshold from slides 8–9, which is strict
+                when the model is sure and loose when it is not.</li>
+              <li><strong>Robustness at high temperature:</strong> the table on slide 11.</li>
+              <li><strong>Simple:</strong> four lines on slide 10, one hyperparameter, no sorting.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide" id="s13">
+          <div class="slide-frame">
+            <div class="tag">Slide 13 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-13.png"
+              alt="Three columns. Greedy Decoding: often produces repetitive and generic text due to lack of diversity. Top-p Sampling: at higher temperatures, can still allow low-probability tokens into the sampling pool, leading to incoherent outputs. Min-p Sampling: improves text generation quality and diversity, especially at high temperatures.">
+            <div class="slide-caption">slide 13 · greedy vs top-p vs min-p</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A one-line verdict on each method. Greedy is repetitive because it never takes a risk. Top-p becomes
+              incoherent at high temperature because the flattened tail sneaks into the pool. Min-p is presented as
+              the fix for both.</p>
+            <h4>A fair summary</h4>
+            <p>Min-p mainly helps when you want high temperature, for example creative writing or generating many
+              varied samples. At ordinary temperatures (around 0.7–1.0) the methods behave similarly, as the first
+              columns of slide 11 show. For a task with one right answer, low temperature or greedy decoding is often
+              still the safer choice.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="timeline">
+        <h2><span class="num">§3</span>A short history of draft-then-verify</h2>
+        <p class="section-intro">
+          The rest of the lecture is about speed. Before the method itself,
+          one slide shows where it came from.
+        </p>
+
+        <div class="slide" id="s14">
+          <div class="slide-frame">
+            <div class="tag">Slide 14 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-14.png"
+              alt="Decoding Timeline. A horizontal timeline. 2018: Blockwise Decoding (Google, UC Berkeley), proposing the draft-then-verify paradigm with specialized drafting heads. 2021: Aggressive Decoding (Microsoft, Peking University). 2022.03: Speculative Decoding (Microsoft, Peking University), proposing the concept of Speculative Decoding with an independent non-autoregressive LM as the drafter. 2022.11: Speculative Decoding (Google), using off-the-shelf small LMs for drafting and supporting speculative sampling. 2023.02: Speculative Sampling (DeepMind), applying the paradigm to LLM inference and supporting sampling as concurrent work. Around 2023.04: BiLD, LLMA. 2023.05: Assistant Generation (Hugging Face), SpecInfer, Parallel Decoding. 2023.08: PPD, StagedSpec, SpecTr. 2023.09: LLMCad, Draft &amp; Verify, Medusa. Caption: Timeline illustrating the evolution of Speculative Decoding. After 2022, Speculative Decoding was formally introduced as a general decoding paradigm to accelerate LLM inference and garnered widespread attention. Source: Unlocking Efficiency in Large Language Model Inference: A Comprehensive Survey of Speculative Decoding.">
+            <div class="slide-caption">slide 14 · from blockwise decoding (2018) to Medusa (2023)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A timeline from the Xia et al. survey. The main milestones:</p>
+            <ul>
+              <li><strong>2018, Blockwise Decoding</strong> (Stern et al.): the first draft-then-verify method.
+                Extra heads on the model propose several tokens and the model checks them. This is an ancestor of
+                Medusa.</li>
+              <li><strong>2022.03, Speculative Decoding</strong> (Xia et al.): introduces the name, with a separate
+                non-autoregressive drafter.</li>
+              <li><strong>2022.11, Speculative Decoding</strong> (Leviathan et al., Google): uses an ordinary small
+                language model as the drafter and adds an accept/reject rule that works for sampling, not only for
+                greedy decoding. This is the algorithm on slide 19.</li>
+              <li><strong>2023.02, Speculative Sampling</strong> (Chen et al., DeepMind): the same idea, found
+                independently and applied to a 70B model. This is slides 24–25.</li>
+              <li><strong>2023 onwards:</strong> many variants. Hugging Face's "Assistant Generation" put it into the
+                <code>transformers</code> library; SpecInfer and SpecTr verify trees or sets of drafts; Medusa
+                removes the separate draft model.</li>
+            </ul>
+            <p>Logos on the slide mark the institutions: Google, UC Berkeley, Microsoft, Peking University, DeepMind,
+              Hugging Face, Stanford, Princeton and others.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="idea">
+        <h2><span class="num">§4</span>Speculative decoding: the idea</h2>
+        <p class="section-intro">
+          Many tokens are easy enough that a small model would predict the
+          same thing as a large one. Let the small model guess them, and
+          use the large model only to check.
+        </p>
+
+        <div class="slide" id="s15">
+          <div class="slide-frame">
+            <div class="tag">Slide 15 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-15.png"
+              alt="Section divider: SPECULATIVE DECODING.">
+            <div class="slide-caption">slide 15 · section divider</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section title only.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s16">
+          <div class="slide-frame">
+            <div class="tag">Slide 16 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-16.png"
+              alt="Speculative Decoding. Runs two models in parallel. Target Model: the main LLM we want to use for our task. Small Draft Model: a smaller, lightweight LLM that runs alongside to help speed up the main LLM's inference process; drafts multiple future tokens as a speculation of the target LLM's output. Promises 2–3X speedups of LLM inference.">
+            <div class="slide-caption">slide 16 · a target model and a draft model</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two models. The <strong>target</strong> is the large model whose output we want. The
+              <strong>draft</strong> is a much smaller model, typically from the same family and with the same
+              tokenizer, that guesses several tokens ahead. The promised speed-up is 2–3×.</p>
+            <h4>What "in parallel" means here</h4>
+            <p>The two models do not run at the same moment on the same token. They take turns. The draft runs
+              <em>γ</em> times in a row (fast, because it is small) to propose <em>γ</em> tokens. Then the target
+              runs <em>once</em> on all <em>γ</em> proposals together. The "parallel" part is that the target scores
+              <em>γ</em> positions in parallel inside a single forward pass.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The draft and target must share a vocabulary, because the target is asked "what is your probability
+                for <em>this</em> token?" about the draft's tokens. That is why drafts are usually small members of
+                the same model family.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s17">
+          <div class="slide-frame">
+            <div class="tag">Slide 17 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-17.png"
+              alt="Speculative Decoding. Smaller model to predict the easy tokens. Use the big model only for predicting more difficult tokens. Right: two blue boxes labelled 100B model. Left box: input 'Geoffrey Hinton did his PhD at the University...', output 'of', labelled Very Easy, use 1B draft model. Right box: input 'Geoffrey Hinton did his PhD at the University of...', output 'Edinburgh', labelled Difficult, use 100B model.">
+            <div class="slide-caption">slide 17 · easy tokens and hard tokens</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>After "Geoffrey Hinton did his PhD at the University", the next token "of" is very easy, and a 1B model
+              would get it right. After "…at the University of", the next token "Edinburgh" needs real knowledge, and
+              only the 100B model is likely to get it right.</p>
+            <h4>Why this suggests a speed-up</h4>
+            <p>In ordinary text a large share of tokens are like "of": function words, the second half of a word, the
+              closing of a common phrase. Spending a 100B-parameter forward pass on each of them is wasteful. If a 1B
+              model handles the easy ones, the big model's work is only needed for the hard ones. The difficulty is
+              that we don't know in advance which tokens are easy. The next slide shows how to find out cheaply.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s18">
+          <div class="slide-frame">
+            <div class="tag">Slide 18 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-18.png"
+              alt="Speculative Decoding. Even though these models typically generate one word at a time, they process multiple tokens at once. While generating the next token, they check all tokens in the sequence at once. Right: a 100B model box. Input: 'Geoffrey Hinton did his PhD' followed by grey draft text 'at the University of Toronto'. Output above the box: 'at the University of' in green and 'Toronto' in red.">
+            <div class="slide-caption">slide 18 · checking a whole draft in one pass</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The draft model has proposed "at the University of Toronto" (grey). The 100B model reads the prompt
+              plus the whole draft in one forward pass. It agrees with "at the University of" (green) and disagrees
+              with "Toronto" (red). Hinton's PhD was from Edinburgh, as slide 17 says.</p>
+            <h4>Why one pass is enough to check all of them</h4>
+            <p>This is the same property that makes training efficient. A causal transformer outputs a next-token
+              distribution at <em>every</em> position of its input, not only the last. Fed "Geoffrey Hinton did his
+              PhD at the University of Toronto", the target gives in one pass:</p>
+            <ul>
+              <li>its distribution after "…PhD", to check "at",</li>
+              <li>its distribution after "…PhD at", to check "the",</li>
+              <li>and so on up to its distribution after "…University of", to check "Toronto",</li>
+              <li>plus its distribution after "…Toronto", which gives one extra token if everything is accepted.</li>
+            </ul>
+            <p>The first rejected position is where the draft and target part ways. Everything after it is thrown away,
+              because it was conditioned on a wrong token. At the rejected position, the target's own distribution is
+              already available, so it supplies the replacement ("Edinburgh") at no extra cost.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>One target pass now produces between 1 and <em>γ</em> + 1 tokens instead of exactly 1. Because the pass
+                is memory-bound (slide 4), checking <em>γ</em> + 1 positions costs about the same as generating 1.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="algorithm">
+        <h2><span class="num">§5</span>The algorithm</h2>
+        <p class="section-intro">
+          For greedy decoding the rule is simple: keep draft tokens while they
+          equal the target's top choice. For sampling it needs more care,
+          because we want the output to have exactly the target model's
+          distribution. Slide 19 gives the rule that achieves this.
+        </p>
+
+        <div class="slide" id="s19">
+          <div class="slide-frame">
+            <div class="tag">Slide 19 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-19.png"
+              alt="Algorithm. Left note: target language model M_p, drafter model M_q, input sequence x_1, ..., x_t, block size gamma. Right: Algorithm 1 SpeculativeDecodingStep. Inputs: M_p, M_q, prefix. Comment: Sample gamma guesses x_1..gamma from M_q autoregressively. for i = 1 to gamma do: q_i(x) ← M_q(prefix + [x_1, ..., x_{i-1}]); x_i ~ q_i(x). end for. Comment: Run M_p in parallel. p_1(x), ..., p_{gamma+1}(x) ← M_p(prefix), ..., M_p(prefix + [x_1, ..., x_gamma]). Comment: Determine the number of accepted guesses n. r_1 ~ U(0,1), ..., r_gamma ~ U(0,1). n ← min({i − 1 | 1 ≤ i ≤ gamma, r_i &gt; p_i(x)/q_i(x)} ∪ {gamma}). Comment: Adjust the distribution from M_p if needed. p'(x) ← p_{n+1}(x). if n &lt; gamma then p'(x) ← norm(max(0, p_{n+1}(x) − q_{n+1}(x))). end if. Comment: Return one token from M_p, and n tokens from M_q. t ~ p'(x). return prefix + [x_1, ..., x_n, t]. Source: Fast Inference from Transformers via Speculative Decoding.">
+            <div class="slide-caption">slide 19 · one step of speculative decoding (Leviathan et al.)</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Algorithm 1 from Leviathan, Kalman and Matias (ICML 2023). Notation: <em>M<sub>p</sub></em> is the
+              <strong>target</strong> with distributions <em>p</em>; <em>M<sub>q</sub></em> is the
+              <strong>draft</strong> with distributions <em>q</em>; <em>γ</em> (gamma) is how many tokens the draft
+              guesses per step.</p>
+            <h4>The four phases</h4>
+            <ol>
+              <li><strong>Draft.</strong> Run the small model <em>γ</em> times to sample guesses
+                <em>x<sub>1</sub>, …, x<sub>γ</sub></em>, remembering each distribution <em>q<sub>i</sub></em>.</li>
+              <li><strong>Verify.</strong> Run the big model once on prefix + all guesses. This yields
+                <em>γ</em> + 1 distributions <em>p<sub>1</sub>, …, p<sub>γ+1</sub></em>, one for each position
+                (slide 18).</li>
+              <li><strong>Accept or reject.</strong> For each guess <em>i</em>, draw a uniform random number
+                <em>r<sub>i</sub></em>. Guess <em>i</em> is rejected if <em>r<sub>i</sub> &gt;
+                p<sub>i</sub>(x<sub>i</sub>) / q<sub>i</sub>(x<sub>i</sub>)</em>. <em>n</em> is the number of guesses
+                accepted before the first rejection (or <em>γ</em> if none is rejected).</li>
+              <li><strong>Fix up.</strong> Sample one more token <em>t</em> from the target. If a guess was rejected,
+                sample from the corrected distribution below. If all were accepted, sample from
+                <em>p<sub>γ+1</sub></em>, the free extra position.</li>
+            </ol>
+            <h4>The accept/reject rule</h4>
+            <p>The rejection condition <em>r &gt; p/q</em> is the same as accepting with probability</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mi>P</mi><mo>(</mo><mtext>accept </mtext><mi>x</mi><mo>)</mo><mo>=</mo>
+                <mo>min</mo><mrow><mo>(</mo><mn>1</mn><mo>,</mo>
+                  <mfrac><mrow><mi>p</mi><mo>(</mo><mi>x</mi><mo>)</mo></mrow><mrow><mi>q</mi><mo>(</mo><mi>x</mi><mo>)</mo></mrow></mfrac>
+                <mo>)</mo></mrow>
+              </math>
+            </div>
+            <p>and, after a rejection, sampling the replacement from the <em>residual</em> distribution</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <msup><mi>p</mi><mo>′</mo></msup><mo>(</mo><mi>x</mi><mo>)</mo><mo>=</mo>
+                <mfrac>
+                  <mrow><mo>max</mo><mo>(</mo><mn>0</mn><mo>,</mo><mi>p</mi><mo>(</mo><mi>x</mi><mo>)</mo><mo>−</mo><mi>q</mi><mo>(</mo><mi>x</mi><mo>)</mo><mo>)</mo></mrow>
+                  <mrow><msub><mo>∑</mo><msup><mi>x</mi><mo>′</mo></msup></msub><mo>max</mo><mo>(</mo><mn>0</mn><mo>,</mo><mi>p</mi><mo>(</mo><msup><mi>x</mi><mo>′</mo></msup><mo>)</mo><mo>−</mo><mi>q</mi><mo>(</mo><msup><mi>x</mi><mo>′</mo></msup><mo>)</mo><mo>)</mo></mrow>
+                </mfrac>
+              </math>
+            </div>
+            <p>In words: if the target likes the draft's token at least as much as the draft did
+              (<em>p ≥ q</em>), always keep it. If the draft was over-confident (<em>q &gt; p</em>), keep it only with
+              probability <em>p/q</em>. When you reject, pick a replacement only from tokens the draft
+              <em>under</em>-weighted, in proportion to how much it under-weighted them.</p>
+            <h4>A worked example</h4>
+            <p>A three-word vocabulary. At some position the draft and target give:</p>
+            <ul>
+              <li>draft <em>q</em> = (cat 0.6, dog 0.3, fox 0.1)</li>
+              <li>target <em>p</em> = (cat 0.4, dog 0.4, fox 0.2)</li>
+            </ul>
+            <p><strong>Acceptance probabilities.</strong> cat: min(1, 0.4/0.6) = 2/3. dog: min(1, 0.4/0.3) = 1. fox:
+              min(1, 0.2/0.1) = 1. Only "cat", which the draft over-weights, can be rejected.</p>
+            <p><strong>Residual.</strong> max(0, <em>p − q</em>) = (0, 0.1, 0.1). It sums to 0.2, so the normalised
+              residual is (cat 0, dog 0.5, fox 0.5).</p>
+            <p><strong>Check that the output follows <em>p</em>.</strong> The probability of a rejection is
+              0.6 × (1/3) = 0.2. Then:</p>
+            <ul>
+              <li>P(cat) = 0.6 × 2/3 + 0.2 × 0 = 0.4</li>
+              <li>P(dog) = 0.3 × 1 + 0.2 × 0.5 = 0.4</li>
+              <li>P(fox) = 0.1 × 1 + 0.2 × 0.5 = 0.2</li>
+            </ul>
+            <p>That is exactly <em>p</em>. The output has the target's distribution even though most tokens came from
+              the draft.</p>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood: why it always works</div>
+              <p>For any token <em>x</em>, the chance of drafting it and keeping it is
+                <em>q(x) · min(1, p(x)/q(x)) = min(p(x), q(x))</em>. The chance of a rejection overall is
+                <em>1 − Σ min(p, q)</em>, which equals <em>Σ max(0, p − q)</em>, the normaliser of the residual. So
+                the chance of producing <em>x</em> via a rejection is <em>max(0, p(x) − q(x))</em>. Adding the two
+                paths gives <em>min(p, q) + max(0, p − q) = p(x)</em> for every <em>x</em>. This is a form of
+                rejection sampling, and it is why speculative decoding is <strong>lossless</strong>: the outputs are
+                distributed exactly as if the target had generated them alone.</p>
+            </div>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation on the slide</div>
+              <p>In the line computing <em>n</em>, "<em>p<sub>i</sub>(x) / q<sub>i</sub>(x)</em>" means the
+                probabilities of the specific drafted token, <em>p<sub>i</sub>(x<sub>i</sub>) /
+                q<sub>i</sub>(x<sub>i</sub>)</em>. The <em>x</em> without a subscript is the paper's shorthand. Also,
+                <em>norm(·)</em> means "divide by the sum so it adds up to 1".</p>
+            </div>
+            <h4>The greedy special case</h4>
+            <p>With greedy decoding, both <em>p</em> and <em>q</em> put probability 1 on their top token. The rule then
+              becomes: accept the draft token if it equals the target's argmax, otherwise replace it with the target's
+              argmax. That is exactly the Toronto/Edinburgh picture on slide 18.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s20">
+          <div class="slide-frame">
+            <div class="tag">Slide 20 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-20.png"
+              alt="Speculative Decoding. Without speculative decoding: a large network icon; the text 'My favorite thing about fall is the' followed by one highlighted token 'change'. With speculative decoding: the same large network plus a small network icon; the text 'My favorite thing about fall is the change in color.' followed by highlighted tokens 'The leaves start'. Source: Looking back at speculative decoding.">
+            <div class="slide-caption">slide 20 · more tokens in the same time</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A still frame from an animation in Google Research's blog post <em>Looking back at speculative
+              decoding</em>. In the same amount of time, the large model alone has produced "change", while the large
+              and small model together have reached "change in color. The leaves start".</p>
+            <h4>What to take from it</h4>
+            <p>Both runs sample from the same distribution, the target's (slide 19 shows why). Only the time taken
+              differs. Two real runs would print the same words only if they used the same random numbers, so read the
+              figure as a statement about speed, not about the specific text.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s21">
+          <div class="slide-frame">
+            <div class="tag">Slide 21 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-21.png"
+              alt="Speculative Decoding. How many tokens generated in one pass? Worst case: first token is rejected → 1 token. Best case: all tokens accepted → gamma + 1 tokens (gamma guesses).">
+            <div class="slide-caption">slide 21 · between 1 and γ + 1 tokens per target pass</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <ul>
+              <li><strong>Worst case, 1 token:</strong> the first guess is rejected, and the target's replacement is
+                the only new token. This is no worse than ordinary decoding in tokens per target pass.</li>
+              <li><strong>Best case, γ + 1 tokens:</strong> all <em>γ</em> guesses are accepted, plus the free token
+                from <em>p<sub>γ+1</sub></em>.</li>
+            </ul>
+            <h4>The average case</h4>
+            <p>The slide gives only the extremes. Leviathan et al. also derive the average. Let <em>α</em> be the
+              acceptance rate, the probability that a single draft token is accepted. Averaged over the draft's
+              choices this is <em>α = Σ<sub>x</sub> min(p(x), q(x))</em>, so it measures how similar the two models
+              are. In the slide 19 example, <em>α</em> = 0.4 + 0.3 + 0.1 = 0.8. Treating each position as an
+              independent trial with the same <em>α</em>, the expected number of tokens per target pass is</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mi>E</mi><mo>[</mo><mtext>tokens per pass</mtext><mo>]</mo><mo>=</mo>
+                <mn>1</mn><mo>+</mo><mi>α</mi><mo>+</mo><msup><mi>α</mi><mn>2</mn></msup><mo>+</mo><mo>⋯</mo><mo>+</mo><msup><mi>α</mi><mi>γ</mi></msup>
+                <mo>=</mo>
+                <mfrac>
+                  <mrow><mn>1</mn><mo>−</mo><msup><mi>α</mi><mrow><mi>γ</mi><mo>+</mo><mn>1</mn></mrow></msup></mrow>
+                  <mrow><mn>1</mn><mo>−</mo><mi>α</mi></mrow>
+                </mfrac>
+              </math>
+            </div>
+            <p>Each term is the chance of getting that far: you always get at least 1 token, you get a 2nd if the first
+              guess is accepted (probability <em>α</em>), a 3rd if the first two are accepted (<em>α²</em>), and so
+              on.</p>
+            <p><strong>Example.</strong> <em>α</em> = 0.8, <em>γ</em> = 4: (1 − 0.8<sup>5</sup>) / (1 − 0.8) =
+              (1 − 0.328) / 0.2 ≈ 3.36 tokens per target pass. With <em>α</em> = 0.5 and the same <em>γ</em>:
+              (1 − 0.5<sup>5</sup>) / 0.5 ≈ 1.94.</p>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood: tokens per pass is not the speed-up</div>
+              <p>Each step also pays for <em>γ</em> draft passes. If one draft pass costs a fraction <em>c</em> of a
+                target pass, a step costs about <em>γc</em> + 1 target-pass units, so the speed-up is roughly
+                <em>(1 − α<sup>γ+1</sup>) / ((1 − α)(γc + 1))</em>. With <em>α</em> = 0.8, <em>γ</em> = 4,
+                <em>c</em> = 0.05: 3.36 / 1.2 ≈ 2.8×. Larger <em>γ</em> gives more tokens when the draft is good, but
+                more wasted draft work when it is not, so <em>γ</em> is tuned to <em>α</em> and <em>c</em>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s22">
+          <div class="slide-frame">
+            <div class="tag">Slide 22 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-22.png"
+              alt="Speculative Decoding. Figure 1 from the paper: nine lines, each one iteration, building the sentence '[START] japan ' s benchmark nikkei 225 index rose 226 . 69 points , or 1 . 5 percent , to 10 , 989 . 79 in late morning trading . [END]'. Line 1: 'japan ' s benchmark' green, 'bond' red and struck through, 'n' blue. Line 2: 'ikkei 22' green, '7' red, '5' blue. Line 3: 'index rose 22' green, '7' red, '6' blue. Line 4: '. 69' green, ',' red, 'points' blue. Line 5: ', or' green, '0' red, '1' blue. Line 6: '. 5 percent , to 10 , 98' green, '5' red, '9' blue. Line 7: '. 79' green, ',' red, 'in' blue. Line 8: 'tokyo' red and struck through, 'late' blue. Line 9: 'morning trading . [END]' green. Caption: Our technique illustrated in the case of unconditional language modeling. Each line represents one iteration of the algorithm. The green tokens are the suggestions made by the approximation model (here, a GPT-like Transformer decoder with 6M parameters trained on lm1b with 8k tokens) that the target model (here, a GPT-like Transformer decoder with 97M parameters in the same setting) accepted, while the red and blue tokens are the rejected suggestions and their corrections, respectively. For example, in the first line the target model was run only once, and 5 tokens were generated. Source: Fast Inference from Transformers via Speculative Decoding.">
+            <div class="slide-caption">slide 22 · the algorithm on a real sentence</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Figure 1 of the Leviathan et al. paper. A 6M-parameter draft and a 97M-parameter target, both trained on
+              the lm1b news dataset, generate one sentence. Each line is one call to the target model.</p>
+            <ul>
+              <li><strong>Green:</strong> draft tokens the target accepted.</li>
+              <li><strong>Red (struck through):</strong> the first draft token the target rejected.</li>
+              <li><strong>Blue:</strong> the token the target sampled in its place, from the residual distribution.</li>
+            </ul>
+            <h4>Reading the first line</h4>
+            <p>The draft proposed "japan ' s benchmark bond". The target accepted the first four tokens, rejected "bond",
+              and sampled "n" instead (the start of "nikkei"). One target call gave five tokens: four green and one blue.
+              If all draft tokens had been accepted, the target's extra position would have produced one more token.</p>
+            <h4>Counting the whole figure</h4>
+            <p>The full sentence after [START] is about 38 tokens, and it took nine target calls, about 4 tokens per call
+              on average. Plain decoding would have needed about 38 calls. The rejections are where you would expect
+              a small model to struggle: the exact digits of the index value ("226", "989"), and "tokyo" vs "late".</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="limits">
+        <h2><span class="num">§6</span>Limitations</h2>
+        <p class="section-intro">
+          The output is guaranteed correct, but the speed-up is not
+          guaranteed. Everything depends on how often the draft agrees with
+          the target.
+        </p>
+
+        <div class="slide" id="s23">
+          <div class="slide-frame">
+            <div class="tag">Slide 23 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-23.png"
+              alt="Speculative Decoding. Limitations: Training a well-generalized draft model is non-trivial. Draft model accuracy drops on longer sequences. Verification overhead increases decoding latency.">
+            <div class="slide-caption">slide 23 · limitations</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three limitations. Each one lowers the acceptance rate <em>α</em> or raises the cost per step, so each can
+              be read against the speed-up formula under slide 21.</p>
+            <ul>
+              <li><strong>A good draft is hard to get.</strong> The draft must be much cheaper than the target and still
+                agree with it most of the time, on the same tokenizer. If no small model in the same family exists, you
+                have to train or distil one, and it may agree well on some domains (prose) and badly on others (code,
+                maths, another language).</li>
+              <li><strong>Accuracy drops on longer sequences.</strong> Small models handle long contexts less well, so
+                <em>α</em> can fall as the context grows. Also, within one step, guess <em>i</em> is only useful if
+                guesses 1 to <em>i</em>−1 were all accepted, so later guesses are worth less.</li>
+              <li><strong>Verification overhead.</strong> When <em>α</em> is low, each step pays for <em>γ</em> draft
+                passes plus a target pass that is slightly heavier than usual, and gets back about one token. That can
+                be <em>slower</em> than plain decoding.</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Another limitation worth knowing</div>
+              <p>The method relies on the target being memory-bound (slide 4). When a server batches many users'
+                requests together, the GPU is already busy with arithmetic, and verifying extra positions is no longer
+                close to free. The gains from speculative decoding are therefore largest for a single request or a
+                small batch, and shrink at large batch sizes. It also needs memory for the draft model's weights and
+                its own KV cache.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="sps">
+        <h2><span class="num">§7</span>Speculative sampling</h2>
+        <p class="section-intro">
+          DeepMind's version of the same idea, published a few months later
+          and found independently. The algorithm is the same up to notation,
+          and the notation is reversed.
+        </p>
+
+        <div class="slide" id="s24">
+          <div class="slide-frame">
+            <div class="tag">Slide 24 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-24.png"
+              alt="Speculative Sampling. 1. Draft Model: generate a short draft of length K with either a parallel model or by calling a faster, auto-regressive model K times. 2. Target Model: score the draft using the larger, more powerful model from we wish to sample from. 3. Use a modified rejection sampling scheme to accept a subset of the K draft tokens from left to right, recovering the distribution of the target model in the process. Source: Accelerating Large Language Model Decoding with Speculative Sampling.">
+            <div class="slide-caption">slide 24 · speculative sampling in three steps</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three steps from Chen et al. (DeepMind, 2023): draft <em>K</em> tokens, score them with the target, then
+              accept a prefix of them with modified rejection sampling so the output follows the target's distribution.
+              (Step 2 has a small typo: "the model from we wish to sample from" should read "the model we wish to sample
+              from".)</p>
+            <h4>Mapping to the previous section</h4>
+            <ul>
+              <li><em>K</em> here is <em>γ</em> on slide 19.</li>
+              <li>Step 1 allows the draft to be "a parallel model", one that proposes all <em>K</em> tokens at once,
+                not only a small autoregressive model.</li>
+              <li>"Recovering the distribution of the target model" is the lossless property proved under slide 19.</li>
+            </ul>
+            <p>The paper used Chinchilla 70B as the target with a much smaller draft model and reported a 2–2.5×
+              speed-up in its distributed setup, in line with the 2–3× on slide 16.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s25">
+          <div class="slide-frame">
+            <div class="tag">Slide 25 / 25</div>
+            <img src="../assets/slides/L11-speculative-decoding/slide-25.png"
+              alt="Algorithm 2 Speculative Sampling (SpS) with Auto-Regressive Target and Draft Models. Given lookahead K and minimum target sequence length T. Given auto-regressive target model q(.|.), and auto-regressive draft model p(.|.), initial prompt sequence x_0, ..., x_t. Initialise n ← t. while n &lt; T do: for t = 1 : K do: sample draft auto-regressively x̃_t ~ p(x | x_1, ..., x_n, x̃_1, ..., x̃_{t-1}). end for. In parallel, compute K + 1 sets of logits from drafts x̃_1, ..., x̃_K: q(x | x_1, ..., x_n), q(x | x_1, ..., x_n, x̃_1), ..., q(x | x_1, ..., x_n, x̃_1, ..., x̃_K). for t = 1 : K do: sample r ~ U[0, 1] from a uniform distribution. if r &lt; min(1, q(x | x_1, ..., x_{n+t-1}) / p(x | x_1, ..., x_{n+t-1})), then set x_{n+t} ← x̃_t and n ← n + 1. else sample x_{n+t} ~ (q(x | x_1, ..., x_{n+t-1}) − p(x | x_1, ..., x_{n+t-1}))_+ and exit for loop. end if. end for. If all tokens x_{n+1}, ..., x_{n+K} are accepted, sample extra token x_{n+K+1} ~ q(x | x_1, ..., x_n, x_{n+K}) and set n ← n + 1. end while. Source: Accelerating Large Language Model Decoding with Speculative Sampling.">
+            <div class="slide-caption">slide 25 · Algorithm 2 (SpS), with target q and draft p</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The full loop from Chen et al. In their notation:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <mtext>accept </mtext><msub><mover accent="true"><mi>x</mi><mo>~</mo></mover><mi>t</mi></msub>
+                    <mtext> if </mtext><mi>r</mi><mo>&lt;</mo>
+                    <mo>min</mo><mrow><mo>(</mo><mn>1</mn><mo>,</mo>
+                      <mfrac>
+                        <mrow><mi>q</mi><mo>(</mo><msub><mover accent="true"><mi>x</mi><mo>~</mo></mover><mi>t</mi></msub><mo>∣</mo><mo>…</mo><mo>)</mo></mrow>
+                        <mrow><mi>p</mi><mo>(</mo><msub><mover accent="true"><mi>x</mi><mo>~</mo></mover><mi>t</mi></msub><mo>∣</mo><mo>…</mo><mo>)</mo></mrow>
+                      </mfrac>
+                    <mo>)</mo></mrow>
+                    <mo>,</mo><mspace width="1em"/><mi>r</mi><mo>∼</mo><mi>U</mi><mo>[</mo><mn>0</mn><mo>,</mo><mn>1</mn><mo>]</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <mtext>otherwise sample from </mtext>
+                    <msub><mrow><mo>(</mo><mi>q</mi><mo>(</mo><mi>x</mi><mo>∣</mo><mo>…</mo><mo>)</mo><mo>−</mo><mi>p</mi><mo>(</mo><mi>x</mi><mo>∣</mo><mo>…</mo><mo>)</mo><mo>)</mo></mrow><mo>+</mo></msub>
+                    <mtext> and stop</mtext>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <h4>It is the same algorithm as slide 19</h4>
+            <ul>
+              <li>Draft <em>K</em> tokens <em>x̃<sub>1</sub>, …, x̃<sub>K</sub></em> with the small model.</li>
+              <li>One target pass gives <em>K</em> + 1 distributions.</li>
+              <li>Go left to right. Accept each draft token with probability min(1, target/draft). At the first rejection,
+                sample a replacement from the positive part of (target − draft), normalised, and stop.</li>
+              <li>If all <em>K</em> are accepted, sample one bonus token from the target's last distribution.</li>
+            </ul>
+            <p>The subscript <em>+</em> in <em>(·)<sub>+</sub></em> means "keep the positive part", that is
+              <em>max(0, ·)</em>, applied to each token separately. The paper defines it to include normalisation,
+              so it is the same residual as slide 19's <em>norm(max(0, p − q))</em> with the letters swapped.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out: the letters are swapped</div>
+              <p>On slide 19 (Leviathan et al.), <em>p</em> is the <strong>target</strong> and <em>q</em> is the
+                <strong>draft</strong>. On this slide (Chen et al.), <em>q</em> is the <strong>target</strong> and
+                <em>p</em> is the <strong>draft</strong>. Both papers accept with min(1, target/draft) and resample from
+                (target − draft)<sub>+</sub>. Write the rule in words ("target over draft") and it will be right
+                whichever paper you are reading.</p>
+            </div>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Loose indexing on the slide</div>
+              <p>Three details on the slide, copied from the paper, should be read loosely:</p>
+              <ul>
+                <li>In the acceptance test, <em>q(x | …)</em> and <em>p(x | …)</em> mean the probabilities of the drafted
+                  token <em>x̃<sub>t</sub></em>, not of a generic <em>x</em>.</li>
+                <li>The inner loop increases both <em>t</em> and <em>n</em> on each acceptance, so read literally,
+                  <em>x<sub>n+t</sub></em> would skip positions. The intended meaning is simply "append the accepted
+                  token to the sequence".</li>
+                <li>The variable <em>t</em> is used both for the prompt length (<em>x<sub>0</sub>, …, x<sub>t</sub></em>)
+                  and for the loop counter. They are different things.</li>
+              </ul>
+            </div>
+            <h4>The worked example in this notation</h4>
+            <p>Re-using slide 19's numbers: target <em>q</em> = (0.4, 0.4, 0.2), draft <em>p</em> = (0.6, 0.3, 0.1).
+              Accept "cat" with probability min(1, 0.4/0.6) = 2/3. The residual (<em>q − p</em>)<sub>+</sub> =
+              (0, 0.1, 0.1), normalised to (0, 0.5, 0.5). The arithmetic is identical; only the letters changed.</p>
+          </div>
+        </div>
+
+        <p class="section-intro" style="margin-top:1.5rem">
+          Zoom out. Autoregressive generation takes one forward pass per
+          token, and each pass is slow mostly because it has to read every
+          weight from memory. Min-p sampling is about which tokens to allow:
+          it keeps tokens whose probability is at least a fixed fraction of
+          the top token's, which keeps output usable at high temperature.
+          Speculative decoding and speculative sampling are about speed. A
+          small draft model proposes <em>γ</em> tokens, and the target checks
+          them all in one pass. Each draft token is accepted with probability
+          min(1, target/draft), and the first rejected one is replaced by a
+          sample from the normalised residual max(0, target − draft). That rule
+          makes the output follow exactly the target's distribution, and the
+          number of tokens per target pass is between 1 and <em>γ</em> + 1, about
+          (1 − α<sup>γ+1</sup>)/(1 − α) on average. For an exam, be able to state
+          the accept/reject rule, show on a small example that it reproduces the
+          target distribution, and say which letter means which model in each
+          paper.
+        </p>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="10-decoding.html">
+          <span class="dir">← back</span>
+          <span class="lbl">10 · Decoding</span>
+        </a>
+        <a class="next" href="12-evaluation.html">
+          <span class="dir">next →</span>
+          <span class="lbl">12 · Evaluation</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Lecture 11 · Speculative Decoding · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#deck">at a glance</a>
+        <a href="#slow">§1 why decoding is slow</a>
+        <a href="#minp">§2 min-p sampling</a>
+        <a href="#timeline">§3 a short history</a>
+        <a href="#idea">§4 the idea</a>
+        <a href="#algorithm">§5 the algorithm</a>
+        <a href="#limits">§6 limitations</a>
+        <a href="#sps">§7 speculative sampling</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>

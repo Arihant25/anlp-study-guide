@@ -78,6 +78,10 @@
         <a href="lectures/7-normalization.html">7 · Normalization</a>
         <a href="lectures/8-feed-forward.html">8 · Feed Forward</a>
         <a href="lectures/9-optimizers.html">9 · Optimizers</a>
+        <a href="lectures/10-decoding.html">10 · Decoding</a>
+        <a href="lectures/11-speculative-decoding.html">11 · Speculative Decoding</a>
+        <a href="lectures/12-evaluation.html">12 · Evaluation</a>
+        <a href="lectures/13-quantization.html">13 · Quantization</a>
 
         <div class="grp">Seminars</div>
         <a href="seminars/sian-shinjo-linear-rnns.html">Linear RNNs</a>
@@ -125,8 +129,8 @@
           need a second pass.
         </p>
         <div class="meta">
-          <span class="pill heat">9 lectures</span>
-          <span class="pill">344 slides</span>
+          <span class="pill heat">13 lectures</span>
+          <span class="pill">512 slides</span>
           <span class="pill">6 seminars</span>
           <span class="pill">2 tutorials</span>
           <span class="pill">1 project</span>
@@ -268,6 +272,34 @@
             <p>How gradients become weight updates: gradient descent, momentum, AdaGrad, RMSProp, Adam, AdamW with
               decoupled weight decay, and the matrix-aware Muon.</p>
             <div class="foot"><span>Adam</span><span>AdamW</span><span>Muon</span></div>
+          </a>
+          <a class="chapter-card" href="lectures/10-decoding.html">
+            <div class="kicker">Lecture 10 · 27 slides</div>
+            <h3>Decoding</h3>
+            <p>How next-token probabilities become text: greedy and beam search, why the most probable output
+              degenerates, then top-k, top-p, epsilon sampling, temperature and re-ranking.</p>
+            <div class="foot"><span>beam search</span><span>top-p</span><span>temperature</span></div>
+          </a>
+          <a class="chapter-card" href="lectures/11-speculative-decoding.html">
+            <div class="kicker">Lecture 11 · 25 slides</div>
+            <h3>Speculative Decoding</h3>
+            <p>Why token-by-token generation is slow, min-p sampling, and speculative decoding: a small model drafts,
+              the big model verifies, with no change to the output distribution.</p>
+            <div class="foot"><span>min-p</span><span>draft &amp; verify</span><span>rejection sampling</span></div>
+          </a>
+          <a class="chapter-card" href="lectures/12-evaluation.html">
+            <div class="kicker">Lecture 12 · 83 slides</div>
+            <h3>Evaluation</h3>
+            <p>How to measure what a language model can do: the statistics behind a score, human evaluation, and
+              metrics from BLEU and ROUGE to BERTScore, COMET and MAUVE.</p>
+            <div class="foot"><span>BLEU &amp; ROUGE</span><span>human eval</span><span>learned metrics</span></div>
+          </a>
+          <a class="chapter-card" href="lectures/13-quantization.html">
+            <div class="kicker">Lecture 13 · 33 slides</div>
+            <h3>Quantization</h3>
+            <p>Storing an LLM in 8, 4 or 2 bits per weight: number formats, absmax scaling, outliers, LLM.int8(),
+              SmoothQuant, GPTQ, AWQ and quantization-aware training.</p>
+            <div class="foot"><span>INT8 / INT4</span><span>outliers</span><span>GPTQ &amp; AWQ</span></div>
           </a>
         </div>
 

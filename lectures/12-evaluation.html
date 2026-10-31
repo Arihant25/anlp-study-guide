@@ -1,0 +1,2238 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Lecture 12 · Evaluation — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Lecture 12 of Advanced NLP, Monsoon 2026 IIIT-H: how to evaluate language models, from the statistics of noisy scores through human evaluation, lexical metrics (WER, TER, BLEU, ROUGE, chrF, METEOR), embedding metrics (BERTScore, MoverScore, COMET) and reference-free metrics (COMET-Kiwi, xCOMET, MAUVE).">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/12-evaluation.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Evaluation: measuring what a language model can do | ANLP">
+  <meta property="og:description"
+    content="A first-principles tour of NLP evaluation: why loss is not enough, the statistics behind a score, human evaluation, and every automatic metric in the lecture with worked examples.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/12-evaluation.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L12-evaluation/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP Evaluation lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Evaluation: measuring what a language model can do | ANLP">
+  <meta name="twitter:description"
+    content="BLEU, ROUGE, chrF, BERTScore, COMET, MAUVE and human evaluation, each worked through on a small example.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L12-evaluation/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 12: Evaluation","url":"https://arihant25.github.io/anlp-study-guide/lectures/12-evaluation.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#deck">The deck at a glance</a>
+        <a href="#why">§1 · Why evaluate, and why loss is not enough</a>
+        <a href="#stats">§2 · Statistics of a score</a>
+        <a href="#tasks">§3 · Closed vs open-ended tasks</a>
+        <a href="#human">§4 · Human evaluation</a>
+        <a href="#lexical">§5 · Lexical metrics</a>
+        <a href="#embedding">§6 · Embedding-based metrics</a>
+        <a href="#reffree">§7 · Reference-free metrics</a>
+        <a href="#hard">§8 · Choosing a metric</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="11-speculative-decoding.html">← Lecture 11: Speculative Decoding</a>
+        <a href="13-quantization.html">Next: Lecture 13 · Quantization →</a>
+        <a href="../index.html">Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Lecture 12 · 83 slides</div>
+        <h1>Evaluation: <em>measuring what the model can actually do.</em></h1>
+        <p class="lead">
+          Training gives you a loss curve. Decoding gives you text. Neither
+          tells you whether the text is any good. This lecture is about that
+          gap: why a single number from a test set is a noisy estimate, how
+          humans judge outputs, and how a long line of automatic metrics
+          tries to stand in for them. It starts with word-overlap counts like
+          BLEU and ROUGE, moves to embedding similarity with BERTScore and
+          COMET, and ends with metrics that need no reference at all.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Lecture 12</span>
+          <span class="pill">83 slides</span>
+          <span class="pill">Manish Shrivastava · Aparajitha</span>
+        </div>
+      </section>
+
+      <section id="deck">
+        <h2><span class="num">§0</span>The deck at a glance</h2>
+        <p class="section-intro">
+          Slides 1–8 ask why we evaluate at all and why the training loss
+          does not answer that question, ending on Goodhart's law. Slides
+          9–16 treat an evaluation score as a random variable and bring in
+          the sample mean, the law of large numbers and the central limit
+          theorem. Slides 17–28 split tasks into closed-ended and
+          open-ended and show how QA, summarization and MT are evaluated.
+          Slides 29–39 lay out the taxonomy of metrics and cover human
+          evaluation: direct assessment, ranking and MQM. Slides 40–58 cover
+          lexical metrics: WER, TER, BLEU, ROUGE, chrF and METEOR, and why
+          they break down. Slides 59–68 cover embedding-based metrics:
+          BERTScore, MoverScore, COMET and MEE4, with a summary table.
+          Slides 69–79 cover reference-free metrics: SUPERT, ROUGE-C,
+          COMET-Kiwi, xCOMET-XL and MAUVE. Slides 80–83 give a decision tree
+          for picking a metric and explain why evaluation is still unsolved.
+        </p>
+        <p>
+          Most of the deck is a catalogue: each metric gets a "what it is"
+          slide and a "pros and cons" slide. The slides give almost no
+          formulas, so this page adds the formula and a tiny worked example
+          for each metric where one exists. If you can compute BLEU, ROUGE,
+          WER and chrF by hand on a six-word sentence, you understand them.
+        </p>
+      </section>
+
+      <hr class="soft">
+
+      <section id="why">
+        <h2><span class="num">§1</span>Why evaluate, and why loss is not enough</h2>
+        <p class="section-intro">
+          The first eight slides set up the problem. A trained model has a
+          low loss, but loss measures how well the model predicts held-out
+          text, which is not the same as how well it does the job you care
+          about. Optimising a measurable stand-in too hard can make the real
+          goal worse.
+        </p>
+
+        <div class="slide" id="s1">
+          <div class="slide-frame">
+            <div class="tag">Slide 01 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-01.png"
+              alt="Title slide: Evaluation, Advanced NLP M26, Manish Shrivastava + Aparajitha, IIIT Hyderabad logo, October 15, 2026.">
+            <div class="slide-caption">slide 01 · title</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Lecture 12 of Advanced NLP Monsoon 2026, given on 15 October 2026 by Manish Shrivastava and
+              Aparajitha. The topic is evaluation: how to put a number on how good a model's outputs are.</p>
+            <h4>Why it gets a lecture</h4>
+            <p>Every claim in NLP research ("our model is better", "this trick helps") is a claim about an
+              evaluation number. If the number is noisy or measures the wrong thing, the claim is worthless. The
+              rest of the course builds and speeds up models; this lecture is about checking whether they work.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s2">
+          <div class="slide-frame">
+            <div class="tag">Slide 02 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-02.png"
+              alt="Recap. Bullets: Model trained with training data; sub-bullet Loss calculations. Model used to generate - Decoding.">
+            <div class="slide-caption">slide 02 · recap: training, then decoding</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Where we are: the model has been trained by minimising a loss on training data, and the previous
+              lectures covered how to generate text from it (decoding, speculative decoding).</p>
+            <h4>What is missing</h4>
+            <p>Both steps produce something you can look at: a loss value and some generated text. Neither step
+              says whether the text is correct, fluent or useful. Evaluation is the third step that closes the
+              loop.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s3">
+          <div class="slide-frame">
+            <div class="tag">Slide 03 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-03.png"
+              alt="Why evaluate? Bullets: Understand model performance. To ship or not to ship. Model Comparison. Model Reliability.">
+            <div class="slide-caption">slide 03 · four reasons to evaluate</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four reasons: understand how the model performs, decide whether to deploy it, compare it with other
+              models, and check that it is reliable.</p>
+            <h4>Different reasons need different evaluations</h4>
+            <ul>
+              <li><strong>Understanding</strong> needs diagnostic detail: which inputs fail and why.</li>
+              <li><strong>Ship or not</strong> needs an absolute bar: is it good enough for users?</li>
+              <li><strong>Comparison</strong> only needs a relative answer: is A better than B? This is easier
+                and, as §4 shows, can be measured more reliably.</li>
+              <li><strong>Reliability</strong> needs consistency: does the model behave well on unusual or
+                adversarial inputs, not just on average?</li>
+            </ul>
+            <p>Keep these four in mind. Each metric later in the lecture is good at some of them and bad at
+              others.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s4">
+          <div class="slide-frame">
+            <div class="tag">Slide 04 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-04.png"
+              alt="Cycle of NLP Model Evaluation: four coloured arrows in a circle. Identify Challenges: recognize unique evaluation challenges in NLP tasks. Compare Models: evaluate models to determine the best fit for tasks. Assess Reliability: ensure model outputs are reliable for real-world use. Iterate and Improve: use evaluation insights to enhance model performance.">
+            <div class="slide-caption">slide 04 · evaluation is a cycle</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A loop of four stages: identify the challenges of the task, compare models, assess reliability,
+              then use what you learned to improve the model, and go round again.</p>
+            <h4>Why a cycle matters</h4>
+            <p>Evaluation is not a one-off exam at the end. Each change to the model gets evaluated, and the
+              results decide the next change. That is exactly why a bad metric is dangerous: if you iterate
+              against it hundreds of times, you steer the model toward whatever the metric rewards, which may not
+              be what you want (slides 7–8).</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s5">
+          <div class="slide-frame">
+            <div class="tag">Slide 05 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-05.png"
+              alt="Is loss sufficient? Bullets: Loss measures how well data fits a model. Does not directly measure how well a model performs a task.">
+            <div class="slide-caption">slide 05 · is the loss enough?</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Loss tells you how well the model fits the data. It does not directly tell you how well the model
+              does a task.</p>
+            <h4>Why not</h4>
+            <p>A language model's loss is the average cross-entropy of the next token: how surprised the model is
+              by each actual token. Low loss means the model assigns high probability to real text. But:</p>
+            <ul>
+              <li>Most tokens in a sentence are easy ("the", punctuation). A model can get a low average loss
+                while getting the one token that matters (the answer, the number, the name) wrong.</li>
+              <li>The task often depends on decoding choices (greedy, sampling, temperature) that the loss never
+                sees.</li>
+              <li>Loss is tied to the tokenizer, so you cannot compare losses across models with different
+                vocabularies.</li>
+            </ul>
+            <p>The exponentiated form of the loss, perplexity, does appear later as a metric (slide 68), and the
+              same caveat applies there.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s6">
+          <div class="slide-frame">
+            <div class="tag">Slide 06 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-06.png"
+              alt="What we want. Measure how good is our model for particular task(s). Accurate measurement of performance allows us to undertake controlled experiments to attribute changes to every step of the model.">
+            <div class="slide-caption">slide 06 · what we want from evaluation</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The goal: measure task performance accurately enough that we can run controlled experiments and
+              say which change caused which improvement.</p>
+            <h4>What "controlled experiment" means here</h4>
+            <p>Change one thing (a new dataset, a different positional encoding, more steps), keep everything else
+              fixed, and compare scores. That only works if the measurement noise is smaller than the effect you
+              are looking for. A +0.5 point gain means nothing if the score moves by ±1 point when you reshuffle
+              the test set. §2 is about quantifying that noise.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s7">
+          <div class="slide-frame">
+            <div class="tag">Slide 07 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-07.png"
+              alt="What we want. Stick-figure comic. One figure points at a glowing multicoloured flower and says: This is a thing I care deeply about. We must optimize it! The other figure points at a plain brown dot and says: That thing is immeasurable, and possibly ineffable. But look, this thing near it is easy to measure. What if we optimize that instead? The first figure replies: Great idea! Source: sohl-dickstein.github.io/2022/11/06/strong-Goodhart.html">
+            <div class="slide-caption">slide 07 · the proxy you can measure</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A comic from Jascha Sohl-Dickstein's blog post on Goodhart's law. The thing we care about (the
+              colourful flower) cannot be measured directly. A nearby, easy-to-measure thing (the brown dot) gets
+              optimised instead.</p>
+            <h4>The NLP version</h4>
+            <p>We care about "good translation" or "helpful answer". Neither can be computed. So we measure a
+              proxy: n-gram overlap with a reference (BLEU), a learned score (COMET), or a vote by annotators.
+              Every metric in this lecture is a brown dot. The question is how close it sits to the flower.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s8">
+          <div class="slide-frame">
+            <div class="tag">Slide 08 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-08.png"
+              alt="What we dont want. Plot titled Strong version of Goodhart's law. Y-axis Loss, from Better at the bottom to Worse at top; x-axis Time. A brown curve labelled Proxy objective we know how to measure and optimize decreases steadily. A rainbow curve labelled Peace, love, and puppies objective we care about first decreases, flattens, then shoots up off the chart. A stick figure says: Oh no!! The thing I care about is getting much, much worse!">
+            <div class="slide-caption">slide 08 · the strong version of Goodhart's law</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two curves over training time. The proxy (brown) keeps improving. The real objective (rainbow)
+              improves at first, flattens, and then gets much worse while the proxy is still going down.</p>
+            <h4>Goodhart's law</h4>
+            <p>The usual statement: "when a measure becomes a target, it ceases to be a good measure". The
+              <em>strong</em> version in the plot says more: pushing hard on the proxy does not just stop helping
+              the real goal, it actively harms it. Early on, improving the proxy and improving the goal go
+              together. Later, the cheapest way to improve the proxy is to exploit where it differs from the
+              goal.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Concrete NLP cases: a summarizer tuned for ROUGE learns to copy long stretches of the source
+                because copying maximises n-gram overlap; a model tuned with RL against a reward model learns to
+                write long, confident answers that the reward model likes. Slide 57 says lexical metrics are "easy
+                to game for rewards", and slide 83 ends on the same point.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="stats">
+        <h2><span class="num">§2</span>Statistics of a score</h2>
+        <p class="section-intro">
+          A test set is a sample, so a score computed on it is an estimate
+          with noise. Slides 9–16 set up that view and justify using the
+          average, then point at the central limit theorem as the tool for
+          deciding how many test examples you need.
+        </p>
+
+        <div class="slide" id="s9">
+          <div class="slide-frame">
+            <div class="tag">Slide 09 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-09.png"
+              alt="Section divider: Background.">
+            <div class="slide-caption">slide 09 · section: background</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section divider. The background part is statistics: how to think of a score as an estimate.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s10">
+          <div class="slide-frame">
+            <div class="tag">Slide 10 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-10.png"
+              alt="Statistics for Evaluation. Bullets: Would an experimental gain hold if we scaled our model? What part of our pipeline resulted in better improvements? Can we improve our model by training on a new dataset? Are our results statistically significant?">
+            <div class="slide-caption">slide 10 · questions statistics should answer</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four questions researchers actually ask: does a gain survive scaling, which pipeline step caused
+              it, does new data help, and is the result statistically significant?</p>
+            <h4>Why statistics</h4>
+            <p>All four are comparisons between two noisy numbers. "Model B scores 71.2, model A scores 70.8" is
+              only interesting if the gap is larger than what you would see by chance from the choice of test
+              examples (and, for sampled outputs, the random seed). Statistics gives you the tools to say how
+              large a gap has to be.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s11">
+          <div class="slide-frame">
+            <div class="tag">Slide 11 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-11.png"
+              alt="Using statistics for NLP Evaluation. Treat language models as stochastic models. Therefore, the outputs of language models can be treated as a random variable X.">
+            <div class="slide-caption">slide 11 · outputs as a random variable</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A language model is stochastic, so its outputs, and the score of each output, can be treated as a
+              random variable <em>X</em>.</p>
+            <h4>Two sources of randomness</h4>
+            <ul>
+              <li><strong>Which inputs you test on.</strong> The test set is a random draw from all the inputs
+                you could have used. This is there even with greedy decoding.</li>
+              <li><strong>What the model outputs.</strong> With sampling (temperature &gt; 0), the same prompt can
+                give different answers on different runs.</li>
+            </ul>
+            <p>So "the model's score" is really a random variable: for example <em>X</em> = 1 if a randomly drawn
+              question is answered correctly, 0 otherwise. What we want is its expected value.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s12">
+          <div class="slide-frame">
+            <div class="tag">Slide 12 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-12.png"
+              alt="Population and Samples. While evaluating models, we want to understand its performance on a potentially infinite set of tasks T. However, we only have access to a finite set of samples S, consisting on n datapoints x1, x2 ... xn. We want to estimate the performance on this set S as accurately as possible. Note that this is not the same as maximising the performance on this set (which will be training), rather, we want to ensure that on all tasks that look like S, we are able to quantify what our model can do.">
+            <div class="slide-caption">slide 12 · population vs sample</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The population is the (possibly infinite) set of tasks <em>T</em> we care about. We only have a
+              finite sample <em>S</em> of <em>n</em> datapoints. The aim is to estimate performance on everything
+              that "looks like" <em>S</em>, not to maximise the score on <em>S</em> itself.</p>
+            <h4>Why the last sentence matters</h4>
+            <p>If you tune your model (or your prompt, or your hyperparameters) until it scores well on <em>S</em>,
+              then <em>S</em> has become training data, and the score no longer estimates performance on new inputs.
+              This is why benchmarks keep a hidden test set, and why test-set contamination (benchmark questions
+              leaking into pre-training data) is such a problem for LLMs: the sample is no longer independent of
+              the model.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s13">
+          <div class="slide-frame">
+            <div class="tag">Slide 13 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-13.png"
+              alt="Modelling evaluations. We can model evaluations as Z = Y + epsilon. Y is the true underlying measure of capability of a particular sample for our language model. Z is the observed score after running our evaluations. Epsilon is the noise in the process (poor sampling, improper evaluation set, etc.). We want to know how to minimize noise and estimate the true capability of the model Y.">
+            <div class="slide-caption">slide 13 · observed score = true capability + noise</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mi>Z</mi><mo>=</mo><mi>Y</mi><mo>+</mo><mi>ϵ</mi>
+              </math>
+            </div>
+            <ul>
+              <li><em>Y</em>: the model's true capability.</li>
+              <li><em>Z</em>: the score you actually observe.</li>
+              <li><em>ϵ</em>: noise from poor sampling, a badly built test set, and so on.</li>
+            </ul>
+            <h4>Two kinds of noise</h4>
+            <p>It helps to split <em>ϵ</em> into two parts. <strong>Random error</strong> averages out: a different
+              random test set would push the score up or down by chance, and more test examples shrink it. That is
+              what slides 14–16 deal with. <strong>Systematic error</strong> (bias) does not average out: if the
+              test set is all easy questions, or the metric rewards copying, every run is off in the same
+              direction, and no amount of extra data fixes it. Most of the rest of the lecture is about the second
+              kind: metrics that measure the wrong thing.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s14">
+          <div class="slide-frame">
+            <div class="tag">Slide 14 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-14.png"
+              alt="Estimating values. Let us consider n outputs for LLM(x_i), i in [1,n] (such that all inputs are i.i.d.). What is the best measure of the ability of a model? Taking only the first item? Averaging the first/last k items? Randomly picking k items, and then averaging? Weighing each sample by, say, its variance, and then picking it? The statistically best approach is simply taking the mean of all samples, i.e. E[x_i] = (1/n) sum_{i=1}^{n} x_i.">
+            <div class="slide-caption">slide 14 · use the mean of all samples</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Given <em>n</em> i.i.d. scores, how should you summarise them? Not the first one, not the first or
+              last <em>k</em>, not a random subset. Use the mean of all of them:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mover accent="true"><mi>x</mi><mo>¯</mo></mover><mo>=</mo>
+                <mfrac><mn>1</mn><mi>n</mi></mfrac>
+                <munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover>
+                <msub><mi>x</mi><mi>i</mi></msub>
+              </math>
+            </div>
+            <h4>Why the full mean</h4>
+            <p>Every option on the list is an unbiased estimate of the true mean if the samples are i.i.d. They
+              differ in variance. Using one item has variance <em>σ²</em>; using <em>k</em> items has
+              <em>σ²/k</em>; using all <em>n</em> has <em>σ²/n</em>, the smallest. Throwing away data can only make
+              the estimate noisier. (Weighting by variance can help when samples have different, known noise
+              levels, but with i.i.d. samples every weight should be equal.)</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation slip on the slide</div>
+              <p>The slide writes <em>E[x<sub>i</sub>] = (1/n) Σ x<sub>i</sub></em>. That mixes up two different
+                things. <em>E[x<sub>i</sub>]</em> is the true expected value, a fixed unknown number. The right-hand
+                side is the <em>sample mean</em> <em>x̄</em>, a random quantity computed from data. The correct
+                statement is that <em>x̄</em> is an <em>estimator</em> of <em>E[x]</em>: E[x̄] = E[x]. Writing an
+                equals sign between them is what slide 15 then has to prove holds only in the limit.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s15">
+          <div class="slide-frame">
+            <div class="tag">Slide 15 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-15.png"
+              alt="The law of large numbers. Given a collection of independent and identically distributed (iid) samples from a random variable with finite mean, the sample mean converges in probability to the expected value.">
+            <div class="slide-caption">slide 15 · law of large numbers</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The (weak) law of large numbers: with i.i.d. samples from a distribution with a finite mean, the
+              sample mean converges in probability to the expected value.</p>
+            <h4>What "converges in probability" means</h4>
+            <p>Pick any tolerance, say 0.01. The probability that <em>x̄</em> is more than 0.01 away from the true
+              mean goes to 0 as <em>n</em> grows. So with enough test examples, the average score is almost
+              certainly close to the true capability. The law says nothing about <em>how many</em> is enough. That
+              is the job of the next slide.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s16">
+          <div class="slide-frame">
+            <div class="tag">Slide 16 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-16.png"
+              alt="Central Limit Theorem. Informally, using a large enough number of samples n, the distribution given by $x_i ~ X approaches $N(mu, sigma^2). We can use this information to identify how many samples we need by 95% sure of our true value!">
+            <div class="slide-caption">slide 16 · central limit theorem and sample size</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The central limit theorem (CLT), informally, and the promise that it tells you how many samples you
+              need to be 95% sure of the true value.</p>
+            <h4>The correct statement</h4>
+            <p>For i.i.d. samples with mean <em>μ</em> and variance <em>σ²</em>, the <em>sample mean</em> is
+              approximately normal for large <em>n</em>:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mover accent="true"><mi>x</mi><mo>¯</mo></mover>
+                <mo>≈</mo>
+                <mi mathvariant="script">N</mi><mo>(</mo><mi>μ</mi><mo>,</mo>
+                <mfrac><msup><mi>σ</mi><mn>2</mn></msup><mi>n</mi></mfrac><mo>)</mo>
+              </math>
+            </div>
+            <p>The spread of <em>x̄</em> is the <em>standard error</em> <em>σ/√n</em>. About 95% of a normal
+              distribution lies within 1.96 standard deviations of its mean, so the 95% confidence interval is
+              <em>x̄ ± 1.96·σ/√n</em>.</p>
+            <h4>Worked example: how big a test set?</h4>
+            <p>Your model gets 70% accuracy. Each example scores 0 or 1, so <em>σ = √(0.7 × 0.3) ≈ 0.458</em>.</p>
+            <ul>
+              <li>With <em>n = 1,000</em>: standard error = 0.458 / √1000 ≈ 0.0145. The 95% interval is
+                70% ± 2.8 points.</li>
+              <li>To get ±1 point: solve 1.96 × 0.458 / √n = 0.01, giving <em>n ≈ 8,070</em> examples.</li>
+            </ul>
+            <p>So on a 1,000-question benchmark, a 1-point gap between two models is well inside the noise. Halving
+              the interval needs four times as many examples, because of the √n.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out: two errors on the slide</div>
+              <p>(1) The slide says "the distribution given by <em>x<sub>i</sub> ∼ X</em> approaches
+                <em>N(μ, σ²)</em>". Individual samples do not change their distribution as <em>n</em> grows: a 0/1
+                accuracy score stays 0/1. It is the <em>sample mean</em> that becomes normal, and its variance is
+                <em>σ²/n</em>, not <em>σ²</em>. (2) The stray "$" signs before <em>x<sub>i</sub></em> and
+                <em>N</em> are leftover LaTeX delimiters, not part of the maths.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="tasks">
+        <h2><span class="num">§3</span>Closed-ended vs open-ended tasks</h2>
+        <p class="section-intro">
+          How hard evaluation is depends on how many right answers there
+          are. Slides 17–28 split tasks into closed-ended (few correct
+          answers, easy to score) and open-ended (many correct answers, hard
+          to score), then walk through QA, summarization and MT.
+        </p>
+
+        <div class="slide" id="s17">
+          <div class="slide-frame">
+            <div class="tag">Slide 17 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-17.png"
+              alt="Section divider: NLP Evaluation.">
+            <div class="slide-caption">slide 17 · section: NLP evaluation</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section divider. From general statistics to the specifics of evaluating language tasks.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s18">
+          <div class="slide-frame">
+            <div class="tag">Slide 18 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-18.png"
+              alt="Types of Evaluations in NLP. Bullets: Close Ended Evaluation. Open Ended Evaluation.">
+            <div class="slide-caption">slide 18 · two types of evaluation</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two types: close-ended and open-ended evaluation.</p>
+            <h4>The dividing question</h4>
+            <p>Can you write down every correct answer? If yes, scoring is a lookup. If no, you need a way to judge
+              an answer you have never seen, and that is where all the difficulty comes from.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s19">
+          <div class="slide-frame">
+            <div class="tag">Slide 19 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-19.png"
+              alt="Close Ended Evaluation. Limited number of potential answers. Often only one or just a few correct answers. Tasks: Sentiment Classification, Extractive QA.">
+            <div class="slide-caption">slide 19 · closed-ended tasks</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Closed-ended tasks have a small set of possible answers and usually only one or a few correct ones.
+              Examples: sentiment classification and extractive QA.</p>
+            <h4>The examples</h4>
+            <ul>
+              <li><strong>Sentiment classification</strong>: the answer is one of a fixed set of labels, such as
+                positive / negative / neutral.</li>
+              <li><strong>Extractive QA</strong>: the answer is a span copied from a given passage. "When was the
+                Eiffel Tower finished?" has the answer "1889" somewhere in the text. The model only chooses a
+                start and end position.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide" id="s20">
+          <div class="slide-frame">
+            <div class="tag">Slide 20 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-20.png"
+              alt="Close Ended Evaluation. Enables simple automatic evaluation. Similar to standard machine learning evaluation. Example Metrics: Accuracy, Precision, Recall, F1. Example Benchmarks: SQuAD, SNLI, MMLU.">
+            <div class="slide-caption">slide 20 · closed-ended metrics and benchmarks</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Closed-ended tasks allow simple automatic evaluation, like standard ML classification. Metrics:
+              accuracy, precision, recall, F1. Benchmarks: SQuAD, SNLI, MMLU.</p>
+            <h4>The four metrics</h4>
+            <p>For one class, count true positives (TP), false positives (FP) and false negatives (FN):</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mi>P</mi><mo>=</mo><mfrac><mtext>TP</mtext><mrow><mtext>TP</mtext><mo>+</mo><mtext>FP</mtext></mrow></mfrac>
+                <mo>,</mo><mspace width="1em"/>
+                <mi>R</mi><mo>=</mo><mfrac><mtext>TP</mtext><mrow><mtext>TP</mtext><mo>+</mo><mtext>FN</mtext></mrow></mfrac>
+                <mo>,</mo><mspace width="1em"/>
+                <msub><mi>F</mi><mn>1</mn></msub><mo>=</mo><mfrac><mrow><mn>2</mn><mi>P</mi><mi>R</mi></mrow><mrow><mi>P</mi><mo>+</mo><mi>R</mi></mrow></mfrac>
+              </math>
+            </div>
+            <p>Precision: of what you said, how much was right. Recall: of what was right, how much you said. F1 is
+              their harmonic mean, which is pulled toward the smaller of the two, so you cannot get a high F1 by
+              maxing out only one.</p>
+            <h4>Worked example: SQuAD-style token F1</h4>
+            <p>SQuAD scores an extracted answer two ways. <strong>Exact match</strong> (EM) is 1 if the normalised
+              strings are identical. <strong>Token F1</strong> treats the answer as a bag of words. Gold:
+              "Eiffel Tower". Prediction: "the Eiffel Tower in Paris". After normalisation (lowercase, drop
+              articles and punctuation) the prediction is {eiffel, tower, in, paris} and the gold is
+              {eiffel, tower}. Overlap = 2. <em>P = 2/4 = 0.5</em>, <em>R = 2/2 = 1</em>,
+              <em>F1 = 2·0.5·1 / 1.5 ≈ 0.67</em>. EM = 0. F1 gives partial credit; EM gives none.</p>
+            <h4>The benchmarks</h4>
+            <ul>
+              <li><strong>SQuAD</strong>: extractive QA over Wikipedia paragraphs (EM and F1).</li>
+              <li><strong>SNLI</strong>: natural language inference. Given two sentences, label the pair as
+                entailment, contradiction or neutral (accuracy).</li>
+              <li><strong>MMLU</strong>: multiple-choice questions across 57 subjects (accuracy over A/B/C/D).</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide" id="s21">
+          <div class="slide-frame">
+            <div class="tag">Slide 21 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-21.png"
+              alt="Open Ended Evaluation. Very large set of correct answers. Answers can be on a scale from worse to better. Manual enumeration of right answers is near impossible. Tasks: Summarization, Question Answering, Machine Translation.">
+            <div class="slide-caption">slide 21 · open-ended tasks</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Open-ended tasks have very many correct answers, graded from worse to better rather than right or
+              wrong, and you cannot list them all. Examples: summarization, question answering, machine
+              translation.</p>
+            <h4>An example of "many right answers"</h4>
+            <p>Translate the French "Il pleut des cordes". "It's raining heavily", "It's pouring", "It's raining
+              cats and dogs", "The rain is coming down hard" are all good. A word-by-word "It rains ropes" is
+              understandable but bad. No reference can hold every good version, which is why reference-based
+              metrics (§5–§6) struggle.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ QA appears on both sides</div>
+              <p>Slide 19 lists extractive QA as closed-ended; this slide lists question answering as open-ended;
+                slide 22 puts QA and MT under "defined output candidates" rather than "open-ended". These fit
+                together if you read them as different kinds of QA: extractive QA (copy a span) is closed;
+                free-form generative QA (write an answer) is open. MT sits in between: many valid outputs, but all
+                constrained by the source sentence.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s22">
+          <div class="slide-frame">
+            <div class="tag">Slide 22 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-22.png"
+              alt="Types of Generation Tasks. Mind map centred on NLP Generation Tasks. Left branch: Defined Output Candidates, with Machine Translation and Question Answering. Right branch: Open-Ended Tasks, with Chatbot Development and Creative Writing.">
+            <div class="slide-caption">slide 22 · constrained vs open generation</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Generation tasks split into those with <em>defined output candidates</em> (MT, QA) and truly
+              <em>open-ended</em> tasks (chatbots, creative writing).</p>
+            <h4>A spectrum, not two boxes</h4>
+            <p>Order the tasks by how much the input pins down the output: classification, then extractive QA,
+              then MT (meaning fixed, wording free), then summarization (which facts to keep is also free), then
+              dialogue, then story writing (almost nothing fixed). Slide 58 uses exactly this ordering to say that
+              lexical metrics get worse the further right you go.</p>
+          </div>
+        </div>
+
+        <div class="slide-strip" id="s23s24">
+          <div class="slide" id="s23">
+            <div class="slide-frame">
+              <div class="tag">Slide 23 / 83</div>
+              <img src="../assets/slides/L12-evaluation/slide-23.png"
+                alt="Example: How do you evaluate QA? Question Answering (QA) is an NLP task where a model generates or extracts an answer to a question, often using provided context or its learned knowledge. Three thought bubbles around a thinking face: Factuality Check, ensures the model's answers are accurate and not hallucinatory by cross-referencing with reliable sources. Efficiency Metrics, evaluates the model's inference speed and computational cost for real-world deployment. Robustness Testing, assesses the model's ability to handle challenging or adversarial inputs.">
+              <div class="slide-caption">slide 23 · QA: what to check</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Three things to check for a QA system: factuality (is the answer true, not hallucinated),
+                efficiency (speed and compute cost) and robustness (does it survive tricky or adversarial
+                questions).</p>
+              <h4>Beyond accuracy</h4>
+              <p>A QA model that is correct but takes 30 seconds per answer may not be shippable (slide 3's
+                "ship or not"). One that is correct on clean questions but fails when you add an irrelevant
+                sentence to the passage is not reliable. Evaluation has more than one axis.</p>
+            </div>
+          </div>
+          <div class="slide" id="s24">
+            <div class="slide-frame">
+              <div class="tag">Slide 24 / 83</div>
+              <img src="../assets/slides/L12-evaluation/slide-24.png"
+                alt="Example: How do you evaluate QA? A double-headed arrow from Strict on the left to Lenient on the right, with seven coloured segments: Exact Match (requires perfect, verbatim answer match), BLEU (measures similarity based on n-gram overlap), ROUGE (focuses on capturing reference answer content), F1-score (harmonic mean of precision and recall), Context Precision/Recall (identifies correct supporting evidence), Fuzzy Matching (accounts for synonyms and paraphrases), Human Evaluation (assesses quality, relevance, and fluency).">
+              <div class="slide-caption">slide 24 · QA metrics from strict to lenient</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>QA metrics laid out on a scale from strict to lenient: exact match, BLEU, ROUGE, F1, context
+                precision/recall, fuzzy matching, human evaluation.</p>
+              <h4>Reading the scale</h4>
+              <p>Strict metrics give no credit for "1889." when the gold is "1889"; lenient ones accept
+                "in the year 1889" or "late 19th century" if a judge thinks it answers the question. Strictness is
+                a trade-off: strict metrics are cheap and reproducible but wrongly mark good answers as wrong;
+                lenient ones are fairer but cost more and vary between judges. "Context precision/recall" is used
+                for retrieval-augmented QA: did the system retrieve the passages that actually support the
+                answer?</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-strip" id="s25s26">
+          <div class="slide" id="s25">
+            <div class="slide-frame">
+              <div class="tag">Slide 25 / 83</div>
+              <img src="../assets/slides/L12-evaluation/slide-25.png"
+                alt="Example: How do you evaluate Summarization? Summarization is an NLP task where a model condenses a longer piece of text into a shorter version while preserving its key information and main ideas. Three bubbles: Human Evaluation, provides a gold standard by assessing factuality, fluency, coherence, informativeness, and relevance. User-Centric Evaluation, involves real users to measure time on task and question answering ability. Task-Specific Metrics, tailors evaluation to the specific summarization task, ensuring key elements are present.">
+              <div class="slide-caption">slide 25 · summarization: three approaches</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>Three ways to evaluate a summary: human judges rating factuality, fluency, coherence,
+                informativeness and relevance; user studies (can a reader answer questions about the document
+                using only the summary, and how fast?); and task-specific checks that the key elements are
+                present.</p>
+              <h4>The user-centric idea</h4>
+              <p>A summary is good if it lets someone do something. So measure that directly: give readers the
+                summary, ask them questions about the original document, and count how many they get right. This
+                is close to the "flower" of slide 7, but it is very expensive.</p>
+            </div>
+          </div>
+          <div class="slide" id="s26">
+            <div class="slide-frame">
+              <div class="tag">Slide 26 / 83</div>
+              <img src="../assets/slides/L12-evaluation/slide-26.png"
+                alt="Example: How do you evaluate Summarization? Three boxes around a thinking-face emoji: ROUGE (n-gram overlap), BERTScore (semantic similarity), Other Metrics (METEOR, CHRF).">
+              <div class="slide-caption">slide 26 · summarization: automatic metrics</div>
+            </div>
+            <div class="explain">
+              <h4>On the slide</h4>
+              <p>The automatic metrics used for summarization: ROUGE (n-gram overlap), BERTScore (semantic
+                similarity) and others such as METEOR and chrF. Each gets its own slides in §5 and §6.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s27">
+          <div class="slide-frame">
+            <div class="tag">Slide 27 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-27.png"
+              alt="Example: How do you evaluate MT? Machine Translation (MT) is an NLP task where a model translates text from one language into another while preserving its meaning and producing fluent, natural output. Three panels. 1: Must capture similarity in all dimensions: lexical, morphological, syntactic, semantic and context; a concentric-rings diagram of linguistic levels from phonetics in the centre through phonology, morphology, syntax, semantics to pragmatics on the outside, captioned Major levels of linguistic structure. 2: Must exhibit high correlation with human judgements; a scatter plot of human judgements against metric score lying on a straight line; For Eg: if a sentence is awarded a higher score by humans, then the metric should correspondingly produce high score. 3: Fast and easy to use; an hourglass image; an ideal metric must be agile, easy to run and understand with minimum or no training effort, minimal resource requirement. Courtesy: Ananya Mukherjee.">
+            <div class="slide-caption">slide 27 · what an ideal MT metric needs</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three requirements for an ideal MT metric: it captures similarity at every linguistic level
+              (lexical, morphological, syntactic, semantic, contextual); it correlates highly with human
+              judgements; and it is fast and easy to run.</p>
+            <h4>How metrics are judged: correlation with humans</h4>
+            <p>The middle panel is how the field decides whether a metric is any good. Collect human scores for
+              many translations, compute the metric on the same translations, and measure the correlation (Pearson
+              for linear agreement, Kendall's τ or Spearman for agreement on ranking). The annual WMT metrics shared
+              task does exactly this. A metric with correlation 0.9 orders translations almost the way humans do;
+              one with 0.3 barely does.</p>
+            <h4>The tension</h4>
+            <p>Requirements 1 and 2 push toward big learned models that understand meaning. Requirement 3 pushes
+              toward simple counting. The lecture's metrics move along this trade-off: BLEU is fast and shallow,
+              COMET is slow and deep.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s28">
+          <div class="slide-frame">
+            <div class="tag">Slide 28 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-28.png"
+              alt="How do you evaluate LLMs? Pick a task: Question Answering, Summarization, Machine Translation. Pick a type of metric: Human (Ranking, Task-specific scoring, etc.); Automatic (BLEU, ROUGE, BERTScore, etc.).">
+            <div class="slide-caption">slide 28 · pick a task, then a metric</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The recipe: pick a task, then pick a type of metric, either human (ranking, task-specific scoring)
+              or automatic (BLEU, ROUGE, BERTScore).</p>
+            <h4>Why the order matters</h4>
+            <p>A general-purpose LLM has no single task, so there is no single score. You evaluate it task by task,
+              and the metric must suit the task: BLEU for a chatbot, for instance, makes little sense. Benchmark
+              suites (slide 83) bundle many task/metric pairs together.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="human">
+        <h2><span class="num">§4</span>Human evaluation</h2>
+        <p class="section-intro">
+          Humans are the reference point every automatic metric is measured
+          against. Slides 29–39 map out the whole family of metrics and then
+          cover three ways of asking people: score one output, compare
+          several, or mark every error.
+        </p>
+
+        <div class="slide" id="s29">
+          <div class="slide-frame">
+            <div class="tag">Slide 29 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-29.png"
+              alt="Section divider: Metrics.">
+            <div class="slide-caption">slide 29 · section: metrics</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Section divider. The rest of the deck is about specific metrics.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s30">
+          <div class="slide-frame">
+            <div class="tag">Slide 30 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-30.png"
+              alt="Automatic vs Human Evaluations. A balance scale. Left pan, Automatic Evaluation: Faster Evaluation Speed, Lower Evaluation Cost, Consistent Evaluation Results. Right pan, Human Evaluation: Deeper Contextual Understanding, Higher Evaluation Cost, Subjective Evaluation Results.">
+            <div class="slide-caption">slide 30 · automatic vs human</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Automatic evaluation is faster, cheaper and consistent. Human evaluation has deeper contextual
+              understanding but is more expensive and subjective.</p>
+            <h4>Consistent is not the same as correct</h4>
+            <p>"Consistent" means an automatic metric gives the same number every time you run it on the same
+              output. That is useful for comparing runs. It does not mean the number is right: BLEU will
+              consistently give a correct paraphrase a low score. Humans are noisier but closer to what we actually
+              care about. In practice you use automatic metrics for day-to-day iteration and humans for final or
+              high-stakes decisions.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s31">
+          <div class="slide-frame">
+            <div class="tag">Slide 31 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-31.png"
+              alt="Evaluation Metrics in Natural Language Processing: a tree. Evaluation Metrics splits into Human Evaluation and Automatic Evaluation. Human Evaluation: Direct Assessment, Ranking, Multidimensional Quality Metrics (MQM). Automatic Evaluation: Reference-Based Metrics, Reference-Less Metrics, LLM-Based Metrics. Reference-Based Metrics splits into Lexical-Based Metrics and Embedding-Based Metrics.">
+            <div class="slide-caption">slide 31 · the map of metrics</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The taxonomy that organises the rest of the lecture:</p>
+            <ul>
+              <li><strong>Human</strong>: direct assessment, ranking, MQM (this section).</li>
+              <li><strong>Automatic, reference-based</strong>: lexical (§5) and embedding-based (§6).</li>
+              <li><strong>Automatic, reference-less</strong> (§7).</li>
+              <li><strong>Automatic, LLM-based</strong>.</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ One branch is not covered</div>
+              <p>The tree includes "LLM-Based Metrics" (using a strong LLM as a judge), but no slide in the deck
+                covers them. They only reappear as leaves of the decision tree on slide 80 (GEMBA-MQM, GEMBA-DA,
+                Auto-MQM). The idea: prompt an LLM with the source and output and ask it for a score or a list of
+                errors. This is now very common for evaluating chat models, with its own biases (preferring longer
+                answers, preferring its own outputs).</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s32">
+          <div class="slide-frame">
+            <div class="tag">Slide 32 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-32.png"
+              alt="Direct Assessment (DA), Human Evaluation. Raters score a single output on its own merit. Absolute Judgement. Evaluation is based on specific criteria such as: Correctness / Factual Accuracy; Fluency / Grammaticality; Coherence / Readability; Relevance / Helpfulness.">
+            <div class="slide-caption">slide 32 · direct assessment</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Direct assessment: a rater looks at one output alone and gives it an absolute score on criteria such
+              as correctness, fluency, coherence and relevance.</p>
+            <h4>How it looks in practice</h4>
+            <p>Typically a Likert scale (1–5) or a slider (0–100) per criterion. For example: "Rate the fluency of
+              this translation from 1 (incomprehensible) to 5 (native-like)". WMT has used 0–100 slider DA scores
+              for years. Because raters use the scale differently (one rater's 70 is another's 85), scores are
+              often standardised per rater (converted to z-scores) before averaging.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s33">
+          <div class="slide-frame">
+            <div class="tag">Slide 33 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-33.png"
+              alt="Direct Assessment (DA) Pros and Cons. Pro: Measures the absolute quality of a model, not just its relative performance. Cons: Slow. Expensive. Subjective.">
+            <div class="slide-caption">slide 33 · DA pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pro: gives an absolute measure of quality. Cons: slow, expensive, subjective.</p>
+            <h4>Why absolute matters</h4>
+            <p>DA is the only one of the three human methods that answers slide 3's "ship or not" question. If
+              your two candidate models both average 2/5, DA tells you neither is ready. A ranking would just tell
+              you which one is less bad.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s34">
+          <div class="slide-frame">
+            <div class="tag">Slide 34 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-34.png"
+              alt="Ranking, Human Evaluation. Human raters compare and rank two or more model outputs. Measures relative quality (A is better than B), not absolute quality.">
+            <div class="slide-caption">slide 34 · ranking</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Ranking: raters see two or more outputs for the same input and order them. It measures relative
+              quality only.</p>
+            <h4>The pairwise version</h4>
+            <p>The most common form is pairwise: show outputs A and B side by side, ask "which is better?" (often
+              with a "tie" option). Many such votes can be turned into a ranking of models. Chatbot Arena does this
+              at scale with an Elo-style rating, and RLHF preference data is collected the same way.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s35">
+          <div class="slide-frame">
+            <div class="tag">Slide 35 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-35.png"
+              alt="Ranking Pros and Cons. Pros: Higher inter-rater agreement, as comparisons are easier than absolute judgments. Excellent for detecting subtle improvements between models. Cons: Does not tell you if a model is actually good. Can be impractical for comparing many models at once.">
+            <div class="slide-caption">slide 35 · ranking pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: raters agree more often, and small differences are easier to detect. Cons: no absolute
+              quality, and comparing many models is impractical.</p>
+            <h4>Why comparisons are easier</h4>
+            <p>Ask ten people "is this translation a 3 or a 4?" and you get a spread. Ask "is A or B better?" and
+              most agree, because they only have to notice a difference, not calibrate a scale. That is why ranking
+              is good at spotting subtle improvements.</p>
+            <h4>Why many models are a problem</h4>
+            <p>With <em>m</em> models there are <em>m(m − 1)/2</em> pairs. Five models: 10 pairs. Twenty models:
+              190 pairs, each needing many votes. Methods like Elo or Bradley–Terry help by inferring a full ranking
+              from a subset of pairs.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s36">
+          <div class="slide-frame">
+            <div class="tag">Slide 36 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-36.png"
+              alt="MQM (Multidimensional Quality Metrics), Human Evaluation. MQM is a human evaluation framework for machine translation that identifies translation errors, categorizes their type, and rates their severity. How it works: Type: errors are categorized hierarchically (e.g., Accuracy, Fluency, Terminology). Severity: each error is weighted (Minor, Major, Critical).">
+            <div class="slide-caption">slide 36 · MQM: mark every error</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>MQM is an error-annotation framework for MT. Trained annotators mark each error span, give it a
+              type from a hierarchy (accuracy, fluency, terminology, ...) and a severity (minor, major,
+              critical).</p>
+            <h4>From errors to a score</h4>
+            <p>Each severity has a weight, and the score is the weighted sum of errors (lower is better), often
+              normalised by length. The weights vary between setups; one common scheme is minor = 1, major = 5,
+              with critical errors weighted higher still. Example: a 20-word translation with one mistranslation
+              (major) and two punctuation slips (minor) gets a penalty of 5 + 1 + 1 = 7. Another with a single
+              minor spelling error gets 1. The first is clearly worse, and you know why.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s37">
+          <div class="slide-frame">
+            <div class="tag">Slide 37 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-37.png"
+              alt="MQM issue types mind map, centred on Issue Types. Accuracy: Terminology*, Mistranslation, Omission*, Addition*, Untranslated*. Verity: Completeness, Legal requirements, Locale applicability. Fluency, split into (Content): Register*, Style*, Inconsistency; (Mechanical): Spelling*, Typography*, Grammar*, Locale violation*; and Unintelligible.">
+            <div class="slide-caption">slide 37 · the MQM error hierarchy</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The MQM issue hierarchy. Three top branches:</p>
+            <ul>
+              <li><strong>Accuracy</strong>: does the target say what the source says? Terminology,
+                mistranslation, omission (something dropped), addition (something invented), untranslated
+                text.</li>
+              <li><strong>Fluency</strong>: is the target good text on its own? Content issues (register, style,
+                inconsistency), mechanical issues (spelling, typography, grammar, locale conventions such as date
+                formats), and unintelligible text.</li>
+              <li><strong>Verity</strong>: is it right for the target audience and setting? Completeness, legal
+                requirements, locale applicability.</li>
+            </ul>
+            <p>The asterisks mark a subset of categories; the slide does not explain them, and they most likely
+              mark the core categories used in a common reduced version of the framework.</p>
+            <h4>Accuracy vs fluency</h4>
+            <p>This split recurs throughout MT evaluation. A fluent translation can be inaccurate ("The cat sat on
+              the mat" for a source about a dog) and an accurate one can be disfluent ("Weapons of Iraq given to
+              army in two weeks"). Modern neural MT is very fluent, so accuracy errors are now the main
+              concern, and they are exactly the ones surface metrics have trouble seeing.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s38">
+          <div class="slide-frame">
+            <div class="tag">Slide 38 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-38.png"
+              alt="MQM Pros and Cons. Pros: Provides detailed, actionable feedback. Tells you why a model is performing poorly, not just that it is. Cons: Time-consuming and very expensive. Requires highly trained human raters.">
+            <div class="slide-caption">slide 38 · MQM pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: detailed, actionable feedback that explains <em>why</em> a model is poor. Cons: slow, very
+              expensive, needs highly trained raters (typically professional translators).</p>
+            <h4>Where it fits</h4>
+            <p>MQM is the most informative of the three human methods and the most expensive. It is now the
+              preferred gold standard at WMT, and several learned metrics (xCOMET on slide 76, the GEMBA-MQM
+              prompts on slide 80) are trained or prompted to imitate it automatically.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s39">
+          <div class="slide-frame">
+            <div class="tag">Slide 39 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-39.png"
+              alt="Human Evaluation Issues. Time-consuming. Expensive. Subjective. Requires highly trained humans. Language and domain knowledge.">
+            <div class="slide-caption">slide 39 · the problems with human evaluation</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The general problems: time, cost, subjectivity, the need for trained raters, and the need for
+              language and domain knowledge.</p>
+            <h4>The last point</h4>
+            <p>To judge an English-to-Telugu medical translation you need someone fluent in both languages who also
+              understands medical terms. Such people are rare and expensive, and for low-resource languages they
+              may be nearly impossible to find. This is the main reason automatic metrics exist at all.</p>
+            <div class="callout link">
+              <div class="callout-label">→ Measuring subjectivity</div>
+              <p>Subjectivity is usually quantified as <em>inter-annotator agreement</em>, for example Cohen's
+                κ, which compares observed agreement with the agreement you would expect by chance. κ = 1 is
+                perfect agreement and κ = 0 is chance level. If your annotators barely agree with each other, no
+                metric can be expected to agree with them either.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="lexical">
+        <h2><span class="num">§5</span>Lexical metrics</h2>
+        <p class="section-intro">
+          Lexical metrics compare the surface form of the output with a
+          human reference: which words or characters match. They split into
+          error rates (how many edits to fix the output) and n-gram overlap
+          (how many short word sequences are shared). They are fast,
+          cheap and blind to meaning.
+        </p>
+
+        <div class="slide" id="s40">
+          <div class="slide-frame">
+            <div class="tag">Slide 40 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-40.png"
+              alt="Automatic Evaluation. Reference Based Metrics: compare human written reference to model outputs; standard evaluation for most tasks; examples BLEU, ROUGE, BERTScore. Reference Free Metrics: model gives a score; no gold/human reference; becoming more popular.">
+            <div class="slide-caption">slide 40 · reference-based vs reference-free</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Automatic metrics come in two kinds. Reference-based metrics compare the output with a
+              human-written reference (BLEU, ROUGE, BERTScore) and are the standard. Reference-free metrics have a
+              model score the output with no reference, and are becoming more popular.</p>
+            <h4>The cost of a reference</h4>
+            <p>A reference has to be written by a human for every test input, once. After that, any number of
+              systems can be scored for free. The weakness is that one reference is one of many valid answers
+              (slide 21), so a good output that differs from it gets penalised. Reference-free metrics avoid this
+              but need a model that can judge quality on its own (§7).</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s41">
+          <div class="slide-frame">
+            <div class="tag">Slide 41 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-41.png"
+              alt="Reference Based Metrics, Automatic Evaluation. Lexical Metrics. Embedding Based Metrics.">
+            <div class="slide-caption">slide 41 · lexical and embedding-based</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Reference-based metrics split into lexical (match words or characters) and embedding-based (match
+              vector representations, §6).</p>
+            <h4>The difference in one example</h4>
+            <p>Reference "The car is very fast", output "The automobile is extremely rapid". Lexically only "The"
+              and "is" match. In embedding space "car" is close to "automobile" and "very fast" close to
+              "extremely rapid", so an embedding metric sees a near match.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s42">
+          <div class="slide-frame">
+            <div class="tag">Slide 42 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-42.png"
+              alt="Lexical Metrics, Reference Based Metrics. Error Rate. n-gram overlap.">
+            <div class="slide-caption">slide 42 · error rates and n-gram overlap</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two families of lexical metrics: error rates (WER, TER) and n-gram overlap (BLEU, ROUGE, chrF,
+              METEOR).</p>
+            <h4>The difference</h4>
+            <p>Error rates align the two sentences word by word in order and count edits; lower is better. N-gram
+              metrics ignore global order and count shared short sequences; higher is better.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s43">
+          <div class="slide-frame">
+            <div class="tag">Slide 43 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-43.png"
+              alt="Word Error Rate, Lexical Metrics. Measures the number of errors to transform a model's output into a reference text. Lower = better. Edit includes: Substitutions, Deletions, and Insertions.">
+            <div class="slide-caption">slide 43 · word error rate</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>WER counts the word edits (substitutions, deletions, insertions) needed to turn the output into the
+              reference. Lower is better.</p>
+            <h4>The formula</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtext>WER</mtext><mo>=</mo>
+                <mfrac><mrow><mi>S</mi><mo>+</mo><mi>D</mi><mo>+</mo><mi>I</mi></mrow><mi>N</mi></mfrac>
+              </math>
+            </div>
+            <p><em>S</em>, <em>D</em>, <em>I</em> are the counts of substitutions, deletions and insertions in the
+              cheapest alignment (the word-level Levenshtein edit distance), and <em>N</em> is the number of words
+              in the reference.</p>
+            <h4>Worked example</h4>
+            <p>Reference: "the cat sat on the mat" (<em>N</em> = 6). Output: "the cat sit on mat".</p>
+            <ul>
+              <li>"sat" → "sit": 1 substitution.</li>
+              <li>the second "the" is missing: 1 deletion.</li>
+            </ul>
+            <p>WER = (1 + 0 + 1) / 6 ≈ 33%. WER is the standard metric for speech recognition, where there is
+              essentially one correct transcript, so the "one reference" problem is small.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>WER can exceed 100%, because insertions are not capped. An output that babbles 20 extra words
+                against a 6-word reference has WER above 3. Also note that the denominator is the reference length,
+                so WER is not symmetric.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s44">
+          <div class="slide-frame">
+            <div class="tag">Slide 44 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-44.png"
+              alt="Word Error Rate Pros and Cons. Pro: It's intuitive: directly measures the effort needed to fix an output. Cons: No Semantic Understanding: penalizes synonyms and paraphrasing as errors. Treats all errors equally, regardless of importance. Doesn't account for fluency or grammar.">
+            <div class="slide-caption">slide 44 · WER pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pro: intuitive, it measures the effort to fix the output. Cons: no semantics, all errors weigh the
+              same, no notion of fluency or grammar.</p>
+            <h4>"All errors weigh the same"</h4>
+            <p>"I did <em>not</em> sign the contract" vs "I did sign the contract" is one deletion: WER = 1/6, the
+              same as dropping "the". One reverses the meaning; the other is harmless. MQM (slide 36) exists
+              because of exactly this.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s45">
+          <div class="slide-frame">
+            <div class="tag">Slide 45 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-45.png"
+              alt="Translation Edit Rate, Lexical Metrics. Measures the minimum number of edits needed to transform a model's output to match a human reference. Commonly used in MT. Lower = better. Edit includes: Substitutions, Deletions, Insertions, and shifts.">
+            <div class="slide-caption">slide 45 · translation edit rate</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>TER is WER plus one more edit type: <em>shifts</em>, moving a contiguous block of words to another
+              position at the cost of one edit. Lower is better. Used in MT.</p>
+            <h4>Worked example: what shifts buy you</h4>
+            <p>Reference: "the cat sat on the mat". Output: "on the mat the cat sat". Same words, two halves
+              swapped.</p>
+            <ul>
+              <li><strong>WER</strong>: the cheapest alignment without moves needs 6 edits, so WER = 6/6 = 100%.
+                The output is scored as badly as an empty string would be.</li>
+              <li><strong>TER</strong>: shift the block "on the mat" to the end in one move. TER = 1/6 ≈ 17%.</li>
+            </ul>
+            <p>Languages reorder whole phrases (English "in two weeks" can go at the start or end of a sentence),
+              so shifts matter for translation in a way they do not for speech transcripts.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s46">
+          <div class="slide-frame">
+            <div class="tag">Slide 46 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-46.png"
+              alt="Translation Error Rate Pros and Cons. Pro: Accounts for fluent translations that have a different word order. Cons: Synonymy and Paraphrasing: The car is very fast v/s The automobile is extremely rapid. Single-Reference Bias. Limited Diagnostic Capability: how many edits but what does that tell.">
+            <div class="slide-caption">slide 46 · TER pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pro: handles valid reordering. Cons: synonyms and paraphrases are still errors, it depends on a
+              single reference, and an edit count does not tell you what is wrong.</p>
+            <h4>The example</h4>
+            <p>"The car is very fast" vs "The automobile is extremely rapid": three substitutions out of five words,
+              TER = 60%, for a perfect paraphrase.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Name mismatch</div>
+              <p>Slide 45 calls TER "Translation <em>Edit</em> Rate"; this slide calls it "Translation
+                <em>Error</em> Rate". Both names are used in the literature for the same metric. The original
+                paper (Snover et al., 2006) uses "Translation Edit Rate".</p>
+            </div>
+            <div class="callout link">
+              <div class="callout-label">→ Where TER is still used</div>
+              <p>Its "pro" from slide 44 still holds: TER approximates post-editing effort. A variant called HTER
+                computes TER against a human post-edit of the system's own output, which removes much of the
+                single-reference bias. Slide 80 sends you to TER when "post-editing effort" is what you care
+                about.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s47">
+          <div class="slide-frame">
+            <div class="tag">Slide 47 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-47.png"
+              alt="BLEU (Bilingual Evaluation Understudy), Lexical Metrics - ngram. It measures the overlap of n-grams (sequences of words) between a machine's output and human reference translations. Used in MT, Summarization, QA, etc. Higher is better. Citation: Papineni, Roukos, Ward and Zhu, 2002, BLEU: a Method for Automatic Evaluation of Machine Translation, ACL.">
+            <div class="slide-caption">slide 47 · BLEU</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>BLEU measures n-gram overlap between the output and one or more reference translations. Higher is
+              better. From Papineni et al. (ACL 2002).</p>
+            <h4>The full formula</h4>
+            <p>The slide does not give it, so here it is. For <em>n</em> = 1 to 4, compute a <em>clipped n-gram
+              precision</em> <em>p<sub>n</sub></em>: the fraction of the output's n-grams that also appear in the
+              reference, where each n-gram is counted at most as many times as it appears in the reference. Then
+              combine:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtext>BLEU</mtext><mo>=</mo><mtext>BP</mtext><mo>·</mo>
+                <mi>exp</mi><mrow><mo>(</mo>
+                  <munderover><mo>∑</mo><mrow><mi>n</mi><mo>=</mo><mn>1</mn></mrow><mn>4</mn></munderover>
+                  <mfrac><mn>1</mn><mn>4</mn></mfrac><mi>log</mi><msub><mi>p</mi><mi>n</mi></msub>
+                <mo>)</mo></mrow>
+                <mo>,</mo><mspace width="1em"/>
+                <mtext>BP</mtext><mo>=</mo>
+                <mrow><mo>{</mo><mtable columnalign="left">
+                  <mtr><mtd><mn>1</mn></mtd><mtd><mtext>if </mtext><mi>c</mi><mo>&gt;</mo><mi>r</mi></mtd></mtr>
+                  <mtr><mtd><msup><mi>e</mi><mrow><mn>1</mn><mo>−</mo><mi>r</mi><mo>/</mo><mi>c</mi></mrow></msup></mtd><mtd><mtext>if </mtext><mi>c</mi><mo>≤</mo><mi>r</mi></mtd></mtr>
+                </mtable></mrow>
+              </math>
+            </div>
+            <ul>
+              <li>The exp of the average log is the <em>geometric mean</em> of <em>p<sub>1</sub></em> to
+                <em>p<sub>4</sub></em>.</li>
+              <li><em>c</em> is the output length, <em>r</em> the reference length. The <em>brevity penalty</em> BP
+                punishes outputs shorter than the reference. Without it, a one-word output that happens to be
+                correct would have perfect precision.</li>
+              <li><strong>Clipping</strong>: the output "the the the the" against reference "the cat is on the mat"
+                would have unigram precision 4/4 without clipping. "the" appears twice in the reference, so the
+                clipped precision is 2/4.</li>
+            </ul>
+            <h4>Worked example with a non-zero score</h4>
+            <p>Reference: "the cat is on the mat". Output: "the cat is on a mat" (one word changed).</p>
+            <ul>
+              <li><em>p<sub>1</sub></em>: the, cat, is, on, mat match; "a" does not. 5/6.</li>
+              <li><em>p<sub>2</sub></em>: "the cat", "cat is", "is on" match; "on a", "a mat" do not. 3/5.</li>
+              <li><em>p<sub>3</sub></em>: "the cat is", "cat is on" match. 2/4.</li>
+              <li><em>p<sub>4</sub></em>: "the cat is on" matches. 1/3.</li>
+              <li>Geometric mean = (5/6 × 3/5 × 2/4 × 1/3)<sup>1/4</sup> = (1/12)<sup>1/4</sup> ≈ 0.537. Same
+                length, so BP = 1.</li>
+            </ul>
+            <p>BLEU ≈ 0.54, often reported as 53.7. One wrong word costs almost half the score, because it breaks
+              every n-gram that passes through it.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s48">
+          <div class="slide-frame">
+            <div class="tag">Slide 48 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-48.png"
+              alt="BLEU (Bilingual Evaluation Understudy) Example. Reference: the Iraqi weapons are to be handed over to the army within two weeks. MT output: in two weeks Iraq's weapons will give army. Matching words weapons, army, two weeks highlighted. BLUE metric: 1-gram precision 4/8; 2-gram precision 1/7; 3-gram precision 0/6; 4-gram precision 0/5; BLEU score = 0 (weighted geometric average). Source: AMTA 2010 MT Evaluation Tutorial.">
+            <div class="slide-caption">slide 48 · a BLEU example that scores zero</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Reference: "the Iraqi weapons are to be handed over to the army within two weeks" (14 words).
+              Output: "in two weeks Iraq's weapons will give army" (8 words). Precisions 4/8, 1/7, 0/6, 0/5, so
+              BLEU = 0.</p>
+            <h4>Checking the counts</h4>
+            <ul>
+              <li><strong>Unigrams</strong>: "two", "weeks", "weapons", "army" match. "in" does not (the reference
+                has "within"), and "Iraq's" does not match "Iraqi". 4/8.</li>
+              <li><strong>Bigrams</strong>: only "two weeks" matches. 1/7.</li>
+              <li><strong>Trigrams and 4-grams</strong>: none. 0/6 and 0/5.</li>
+            </ul>
+            <p>One zero in the geometric mean makes the whole product zero. The slide leaves out the brevity
+              penalty: <em>c</em> = 8 &lt; <em>r</em> = 14, so BP = e<sup>1 − 14/8</sup> ≈ 0.47. It would not
+              matter here, since 0 × 0.47 is still 0.</p>
+            <h4>What the example shows</h4>
+            <p>The output is bad English but a human can see it is roughly about the right thing. BLEU gives it
+              exactly the same score as random words. At the sentence level, BLEU is very coarse. Libraries such
+              as sacreBLEU offer <em>smoothing</em> (adding a small count to zero precisions) so that sentence-level
+              scores are not stuck at zero, but the standard use of BLEU is at the corpus level: sum the n-gram
+              matches and totals over the whole test set first, then compute one score.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Typo on the slide</div>
+              <p>The slide says "BLUE metric". It means BLEU.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s49">
+          <div class="slide-frame">
+            <div class="tag">Slide 49 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-49.png"
+              alt="BLEU Pros and Cons. Pros: Fast, cheap, and correlates with human judgment at the corpus level. It rewards precision. Multiple references possible. Cons: Poor correlation with human judgment at the sentence level. No semantic understanding; penalizes paraphrasing and synonyms. Biased towards shorter sentences.">
+            <div class="slide-caption">slide 49 · BLEU pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: fast, cheap, correlates with humans at the corpus level, rewards precision, supports multiple
+              references. Cons: poor sentence-level correlation, no semantics, biased towards shorter
+              sentences.</p>
+            <h4>Multiple references</h4>
+            <p>With several references, an output n-gram counts as matched if it appears in any of them (clipped
+              by the maximum count in any single reference). More references cover more valid wordings and reduce
+              the paraphrase penalty. This was part of the original design, but most test sets today have only one
+              reference.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ "Biased towards shorter sentences" needs care</div>
+              <p>Precision on its own does favour short outputs: say less and you make fewer mistakes. The brevity
+                penalty was added specifically to counter this. For example, the output "the cat is on" against
+                "the cat is on the mat" has all four precisions equal to 1, and BLEU = BP = e<sup>1 − 6/4</sup> ≈
+                0.61. So BLEU does penalise short outputs. What remains is that BLEU has no recall term, so an output
+                of the right <em>length</em> that leaves out important content is not penalised for the omission
+                itself.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s50">
+          <div class="slide-frame">
+            <div class="tag">Slide 50 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-50.png"
+              alt="ROUGE (Recall-Oriented Understudy for Gisting Evaluation), Lexical Metrics - ngram. An automatic metric that measures the overlap of n-grams (words/sequences) between a model's output and human reference summaries. It is primarily used for summarization. Higher is better. Citation: Chin-Yew Lin, 2004, ROUGE: A Package for Automatic Evaluation of Summaries.">
+            <div class="slide-caption">slide 50 · ROUGE</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>ROUGE also counts n-gram overlap with a reference, but it is recall-oriented and built for
+              summarization. Higher is better. From Lin (2004).</p>
+            <h4>Precision vs recall, and why summarization wants recall</h4>
+            <p>BLEU divides matches by the number of n-grams in the <em>output</em> (precision). ROUGE-N divides by
+              the number in the <em>reference</em> (recall):</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtext>ROUGE-N</mtext><mo>=</mo>
+                <mfrac>
+                  <mrow><mo>#</mo><mtext> n-grams shared by output and reference</mtext></mrow>
+                  <mrow><mo>#</mo><mtext> n-grams in reference</mtext></mrow>
+                </mfrac>
+              </math>
+            </div>
+            <p>A summary's main job is to keep the important content, and the reference summary is a list of what
+              was important. Recall asks how much of it the output kept. Modern toolkits usually report precision,
+              recall and F1 for each ROUGE variant, and papers most often quote the F1.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s51">
+          <div class="slide-frame">
+            <div class="tag">Slide 51 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-51.png"
+              alt="ROUGE Types. ROUGE-N: measures overlap of n grams (word sequences) between candidate and reference text. ROUGE-L: uses the longest common subsequence (LCS) to evaluate sentence level similarity. ROUGE-S: measures skip bigram overlap, allowing gaps between paired words.">
+            <div class="slide-caption">slide 51 · ROUGE-N, ROUGE-L, ROUGE-S</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three variants: ROUGE-N (n-gram overlap), ROUGE-L (longest common subsequence) and ROUGE-S
+              (skip-bigrams: ordered word pairs with any gap between them).</p>
+            <h4>Worked example</h4>
+            <p>Reference (7 words): "police arrested the suspect near the station". Output (6 words): "the suspect
+              was arrested by police".</p>
+            <ul>
+              <li><strong>ROUGE-1</strong>: shared unigrams are police, arrested, the, suspect (4). Recall =
+                4/7 ≈ 0.57, precision = 4/6 ≈ 0.67, F1 ≈ 0.62.</li>
+              <li><strong>ROUGE-2</strong>: the only shared bigram is "the suspect". Recall = 1/6 ≈ 0.17 (the
+                reference has 6 bigrams).</li>
+              <li><strong>ROUGE-L</strong>: the longest sequence of words appearing in the same order in both,
+                not necessarily adjacent. Here it has length 2 ("the suspect"). Recall = 2/7 ≈ 0.29.</li>
+            </ul>
+            <p>The output means the same thing as the reference, in passive voice. ROUGE-1 gives it credit for the
+              right words. ROUGE-2 and ROUGE-L punish the reordering. That is the general pattern: higher-order
+              variants care more about word order.</p>
+            <h4>Why LCS</h4>
+            <p>A subsequence allows gaps, so ROUGE-L rewards outputs that keep the reference's order even with
+              extra words in between, without having to choose an <em>n</em>.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s52">
+          <div class="slide-frame">
+            <div class="tag">Slide 52 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-52.png"
+              alt="ROUGE Pros and Cons. Pros: It is a recall-based metric, which is a good fit for summarization, as it rewards a model for capturing the most important information. It is fast, cheap, and correlates well with human judgment. Cons: No semantic understanding; it penalizes paraphrasing and synonyms. It does not check for fluency or grammatical correctness. It can give a high score to a summary that is factually incorrect but uses the right keywords. How many references? Only 1!">
+            <div class="slide-caption">slide 52 · ROUGE pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: recall suits summarization; fast and cheap. Cons: no semantics, no fluency check, can reward
+              a factually wrong summary with the right keywords, and only one reference.</p>
+            <h4>The factual-error problem</h4>
+            <p>Reference: "The company's profits rose 10% in 2023." Output: "The company's profits fell 10% in
+              2023." Six of the reference's seven words match, so ROUGE-1 recall = 6/7 ≈ 0.86. The meaning is reversed. Swapping a number, a name or a negation keeps
+              almost every n-gram.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ "Only 1!" is about datasets, not ROUGE</div>
+              <p>The original ROUGE package supports scoring against several references. The point is more likely
+                that most summarization datasets (for example CNN/DailyMail) provide just one reference summary
+                per document, so in practice ROUGE is computed against one.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s53">
+          <div class="slide-frame">
+            <div class="tag">Slide 53 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-53.png"
+              alt="chrF (Character-level F-score), Lexical Metrics - ngram. Measures the overlap of character n-grams between a model's output and a reference translation. Higher is better. Citation: Maja Popović, 2015, chrF: character n-gram F-score for automatic MT evaluation.">
+            <div class="slide-caption">slide 53 · chrF</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>chrF is the same overlap idea applied to <em>character</em> n-grams instead of word n-grams. Higher
+              is better. From Popović (2015).</p>
+            <h4>The formula</h4>
+            <p>Compute character n-gram precision <em>chrP</em> and recall <em>chrR</em> (averaged over n = 1 to 6
+              in the standard setting), then combine them with an F-score that weights recall more:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtext>chrF</mtext><mi>β</mi><mo>=</mo>
+                <mo>(</mo><mn>1</mn><mo>+</mo><msup><mi>β</mi><mn>2</mn></msup><mo>)</mo>
+                <mfrac>
+                  <mrow><mtext>chrP</mtext><mo>·</mo><mtext>chrR</mtext></mrow>
+                  <mrow><msup><mi>β</mi><mn>2</mn></msup><mo>·</mo><mtext>chrP</mtext><mo>+</mo><mtext>chrR</mtext></mrow>
+                </mfrac>
+              </math>
+            </div>
+            <p>The common default is <em>β</em> = 2 (chrF2), which treats recall as twice as important as
+              precision.</p>
+            <h4>Worked example (character bigrams only)</h4>
+            <p>Reference word "playing", output word "play". As whole words, they do not match at all. As character
+              bigrams: the output has {pl, la, ay}; the reference has {pl, la, ay, yi, in, ng}. All 3 output
+              bigrams match, so <em>P</em> = 3/3 = 1 and <em>R</em> = 3/6 = 0.5.
+              chrF2 = 5 × 1 × 0.5 / (4 × 1 + 0.5) = 2.5 / 4.5 ≈ 0.56. The metric gives partial credit for getting
+              the stem right.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s54">
+          <div class="slide-frame">
+            <div class="tag">Slide 54 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-54.png"
+              alt="chrF Pros and Cons. Pros: It is a good choice for languages with rich morphology (e.g., Telugu, German). It is more robust to spelling errors and handles out-of-vocabulary words well. Cons: Like BLEU and ROUGE, it has no semantic understanding; it penalizes paraphrasing and synonyms.">
+            <div class="slide-caption">slide 54 · chrF pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: suits morphologically rich languages such as Telugu and German, and is robust to spelling
+              errors and unseen words. Con: still no semantics.</p>
+            <h4>Why morphology matters</h4>
+            <p>In Telugu or German, one root word takes many forms through suffixes and compounding. A translation
+              with the right root and the wrong suffix is nearly right, but word-level BLEU scores it as a complete
+              miss. Character n-grams see the shared root. Likewise a typo like "recieve" shares most of its
+              character n-grams with "receive". chrF is now a standard companion to BLEU in MT papers, and slide 80
+              recommends it for quick benchmarking.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s55">
+          <div class="slide-frame">
+            <div class="tag">Slide 55 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-55.png"
+              alt="METEOR (Metric for Evaluation of Translation with Explicit ORdering), Lexical Metrics - ngram. Calculates a score based on the harmonic mean of precision and recall using flexible matching. Higher is better. Citation: Banerjee and Lavie, 2005.">
+            <div class="slide-caption">slide 55 · METEOR</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>METEOR scores a translation by a harmonic mean of precision and recall, computed with flexible word
+              matching. Higher is better. From Banerjee and Lavie (2005).</p>
+            <h4>How it works</h4>
+            <ol>
+              <li><strong>Align</strong> output words to reference words in stages: exact match first, then
+                matching stems ("running" ~ "ran" via a stemmer), then synonyms (via WordNet).</li>
+              <li>From the aligned unigrams, compute precision <em>P</em> and recall <em>R</em>, and combine them
+                into a recall-weighted harmonic mean. In the original paper this is
+                <em>F<sub>mean</sub> = 10PR / (R + 9P)</em>.</li>
+              <li><strong>Penalise fragmentation</strong>: group the matched words into <em>chunks</em> (runs that
+                are adjacent and in the same order in both sentences). Fewer, longer chunks means better word
+                order. The penalty grows with chunks/matches, and the final score is
+                <em>F<sub>mean</sub> × (1 − penalty)</em>.</li>
+            </ol>
+            <p>So the "explicit ordering" in the name is the chunk penalty: METEOR checks order without needing
+              higher-order n-grams.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s56">
+          <div class="slide-frame">
+            <div class="tag">Slide 56 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-56.png"
+              alt="METEOR Pros and Cons. Pros: More robust than BLEU. Accounts for synonyms and paraphrasing and is better at capturing human judgments. Cons: Slower and more computationally complex than metrics like BLEU. Requires additional linguistic resources (like a WordNet) which may not be available for all languages.">
+            <div class="slide-caption">slide 56 · METEOR pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: handles synonyms and paraphrases, correlates better with humans than BLEU. Cons: slower, and
+              needs language resources like WordNet.</p>
+            <h4>The resource problem</h4>
+            <p>Stemmers and synonym lists exist for English and a handful of high-resource languages. For Telugu or
+              Odia, METEOR falls back to exact matching and loses its advantage. This is a recurring theme:
+              anything smarter than counting needs a resource, whether that is WordNet here or a pre-trained model
+              in §6.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Classification</div>
+              <p>The slide files METEOR under "Lexical Metrics - ngram", but METEOR matches unigrams only. It is
+                lexical, and its order sensitivity comes from the chunk penalty rather than from higher-order
+                n-grams.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s57">
+          <div class="slide-frame">
+            <div class="tag">Slide 57 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-57.png"
+              alt="Lexical Methods Issue. These metrics focus on word/character overlap and lack semantic understanding. Easy to game for rewards.">
+            <div class="slide-caption">slide 57 · lexical metrics are blind and gameable</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Lexical metrics only see surface overlap, and they are easy to game when used as rewards.</p>
+            <h4>Gaming in practice</h4>
+            <p>If you train with reinforcement learning using ROUGE as the reward, the model learns whatever raises
+              ROUGE: repeating salient source words, padding summaries to recall more n-grams, copying sentences
+              verbatim. The score goes up and readability goes down. That is slide 8's curve with a concrete metric
+              on the y-axis.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s58">
+          <div class="slide-frame">
+            <div class="tag">Slide 58 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-58.png"
+              alt="Lexical Methods Issue. Not ideal for machine translation. Get progressively much worse for tasks that are more open-ended than machine translation: worse for summarization, as longer output texts are harder to measure; much worse for dialogue, which is more open-ended than summarization; much, much worse story generation, which is also open-ended, but whose sequence length can make it seem you're getting decent scores!">
+            <div class="slide-caption">slide 58 · worse as tasks get more open</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Lexical metrics are not ideal even for MT, and get progressively worse for more open-ended tasks:
+              worse for summarization, much worse for dialogue, and much, much worse for story generation.</p>
+            <h4>Why story generation looks deceptively good</h4>
+            <p>The last bullet is subtle. Any two long English stories share many unigrams and common bigrams
+              ("of the", "in a", "she said") just because English has frequent words. So two completely unrelated
+              stories can get a non-trivial ROUGE or BLEU. The number looks "decent" but measures nothing about
+              the story. The more open the task, the closer the metric's score is to the score of random fluent
+              text.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="embedding">
+        <h2><span class="num">§6</span>Embedding-based metrics</h2>
+        <p class="section-intro">
+          The fix for "no semantic understanding" is to compare meanings
+          instead of strings. Represent words or sentences as vectors from a
+          pre-trained model, and measure how close the output's vectors are
+          to the reference's. Slides 59–68 cover four such metrics and end
+          with a summary table.
+        </p>
+
+        <div class="slide" id="s59">
+          <div class="slide-frame">
+            <div class="tag">Slide 59 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-59.png"
+              alt="Embedding Metrics, Reference Based Metrics. BERTScore. MoverScore. Comet.">
+            <div class="slide-caption">slide 59 · three embedding metrics</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three embedding-based, reference-based metrics: BERTScore, MoverScore and COMET. (MEE4 follows on
+              slides 66–67.)</p>
+            <h4>The common idea</h4>
+            <p>All of them use a pre-trained encoder, so "car" and "automobile" end up close together in vector
+              space. They differ in how they compare the vectors: greedy token matching (BERTScore), optimal
+              transport (MoverScore), or a regression model trained on human scores (COMET).</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s60">
+          <div class="slide-frame">
+            <div class="tag">Slide 60 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-60.png"
+              alt="BERTScore, Embedding Based Metrics. Matches sentences after finding cosine similarity of each hypothesis token with each token in reference using contextual word embedding. Higher is better. Citation: Zhang, Kishore, Wu, Weinberger and Artzi, 2019, BERTScore: Evaluating text generation with BERT.">
+            <div class="slide-caption">slide 60 · BERTScore</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>BERTScore embeds every token of the output (hypothesis) and the reference with a contextual model
+              like BERT, computes the cosine similarity of every pair, and matches tokens by similarity. Higher is
+              better. From Zhang et al. (2019).</p>
+            <h4>The formula</h4>
+            <p>With reference tokens <em>x<sub>i</sub></em> and candidate tokens <em>ŷ<sub>j</sub></em> (embeddings
+              normalised, so a dot product is a cosine similarity), each token is matched to its most similar token
+              on the other side:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <msub><mi>R</mi><mtext>BERT</mtext></msub><mo>=</mo>
+                <mfrac><mn>1</mn><mrow><mo>|</mo><mi>x</mi><mo>|</mo></mrow></mfrac>
+                <munder><mo>∑</mo><mrow><msub><mi>x</mi><mi>i</mi></msub><mo>∈</mo><mi>x</mi></mrow></munder>
+                <munder><mi>max</mi><mrow><msub><mover accent="true"><mi>y</mi><mo>^</mo></mover><mi>j</mi></msub><mo>∈</mo><mover accent="true"><mi>y</mi><mo>^</mo></mover></mrow></munder>
+                <msubsup><mi>x</mi><mi>i</mi><mo>⊤</mo></msubsup><msub><mover accent="true"><mi>y</mi><mo>^</mo></mover><mi>j</mi></msub>
+                <mo>,</mo><mspace width="1em"/>
+                <msub><mi>P</mi><mtext>BERT</mtext></msub><mo>=</mo>
+                <mfrac><mn>1</mn><mrow><mo>|</mo><mover accent="true"><mi>y</mi><mo>^</mo></mover><mo>|</mo></mrow></mfrac>
+                <munder><mo>∑</mo><mrow><msub><mover accent="true"><mi>y</mi><mo>^</mo></mover><mi>j</mi></msub><mo>∈</mo><mover accent="true"><mi>y</mi><mo>^</mo></mover></mrow></munder>
+                <munder><mi>max</mi><mrow><msub><mi>x</mi><mi>i</mi></msub><mo>∈</mo><mi>x</mi></mrow></munder>
+                <msubsup><mi>x</mi><mi>i</mi><mo>⊤</mo></msubsup><msub><mover accent="true"><mi>y</mi><mo>^</mo></mover><mi>j</mi></msub>
+              </math>
+            </div>
+            <p><em>F</em><sub>BERT</sub> is the harmonic mean of the two. This is the soft version of n-gram
+              precision and recall: instead of "is this word in the reference? 0 or 1", it is "how similar is the
+              closest reference word? a number near 0 to 1".</p>
+            <h4>Worked toy example</h4>
+            <p>Reference "the car is fast", candidate "the automobile is quick". Suppose the cosine similarities of
+              the best matches are: the–the 1.0, car–automobile 0.85, is–is 1.0, fast–quick 0.80. Recall = (1.0 +
+              0.85 + 1.0 + 0.80) / 4 ≈ 0.91. Exact-match unigram recall would be 2/4 = 0.5. (The numbers are
+              illustrative; real cosine values from BERT tend to sit in a narrow high range, which is why the
+              authors offer an optional rescaling against a baseline.)</p>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
+              <p>"Contextual" matters. The vector for "bank" in "river bank" differs from "bank" in "bank
+                account", so BERTScore does not reward a match on the same word used in a different sense. The
+                paper also offers IDF weighting, so that rare, content-bearing words count more than "the".</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s61">
+          <div class="slide-frame">
+            <div class="tag">Slide 61 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-61.png"
+              alt="BERTScore Pros and Cons. Pros: Measures semantic similarity, so it correctly scores paraphrasing and synonyms. Correlates much better with human judgments than metrics like BLEU or ROUGE. Cons: Slower and more computationally expensive than older metrics. Requires a large pre-trained language model, making it less accessible.">
+            <div class="slide-caption">slide 61 · BERTScore pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: handles paraphrases and synonyms; correlates better with humans than BLEU and ROUGE. Cons:
+              slower, and needs a large pre-trained model.</p>
+            <h4>What it still misses</h4>
+            <p>"profits rose" and "profits fell" have very similar contextual embeddings: both are about profits
+              changing. So BERTScore, like ROUGE, can give a high score to a factually reversed output. Semantic
+              <em>similarity</em> is not the same as semantic <em>equivalence</em>. Slide 68 calls BERTScore
+              "better with paraphrases; still imperfect", which is fair.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s62">
+          <div class="slide-frame">
+            <div class="tag">Slide 62 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-62.png"
+              alt="Mover Score, Embedding Based Metrics. Measures the cost of transforming one document into another based on word embeddings. It is based on the Word Mover's Distance. Finds Euclidean distance between n-grams. Each n-gram is weighted sum of its words embedding. And weight depends on (Inverse Document Frequency) IDF of word respect to corpus. Citation: Zhao et al., 2019, MoverScore, EMNLP-IJCNLP.">
+            <div class="slide-caption">slide 62 · MoverScore</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>MoverScore measures the cost of turning one text into another in embedding space, based on Word
+              Mover's Distance. N-grams are represented as IDF-weighted sums of their word embeddings, and the
+              distance between n-grams is Euclidean.</p>
+            <h4>The "earth mover" picture</h4>
+            <p>Imagine each output word as a pile of dirt sitting at its embedding's position, and each reference
+              word as a hole. Each pile's size is its IDF weight, so rare words carry more dirt. The Word Mover's
+              Distance is the minimum total work (amount × distance moved) to fill the holes with the dirt. If the
+              output's words sit right on top of the reference's words, the work is near zero. MoverScore turns
+              that distance into a similarity score.</p>
+            <p>Unlike BERTScore, which matches each token independently to its single best partner, this solves one
+              global problem, and a word's weight can be split across several words on the other side.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s63">
+          <div class="slide-frame">
+            <div class="tag">Slide 63 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-63.png"
+              alt="Mover Score Pros and Cons. Pro: Can do many-to-many mapping. (BertScorer: word to word). Con: It is computationally very expensive and slow.">
+            <div class="slide-caption">slide 63 · MoverScore pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pro: many-to-many mapping, where BERTScore only matches word to word. Con: very expensive and
+              slow.</p>
+            <h4>Many-to-many, by example</h4>
+            <p>Reference "passed away", output "died". BERTScore's recall matches "passed" to "died" and "away" to
+              "died" separately, each with an imperfect score. MoverScore can move the weight of both reference
+              words onto the single output word, which fits how the meaning is actually split. The cost is solving
+              an optimal transport problem per sentence pair, which is much slower than taking a max over a
+              similarity matrix. ("BertScorer" on the slide refers to BERTScore.)</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s64">
+          <div class="slide-frame">
+            <div class="tag">Slide 64 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-64.png"
+              alt="COMET (Cross-lingual Optimized Metric for Evaluation of Translation), Embedding Based Metrics. Trained to predict human judgments of translation quality. It assesses quality by considering the source text, the machine translation, and sometimes a human reference. Citation: Rei, Stewart, Farinha and Lavie, 2020, COMET: A Neural Framework for MT Evaluation, EMNLP.">
+            <div class="slide-caption">slide 64 · COMET</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>COMET is trained to predict human judgements of translation quality. It reads the source, the
+              translation and (in its reference-based form) a human reference. From Rei et al. (2020).</p>
+            <h4>What is different about COMET</h4>
+            <p>BLEU, chrF, BERTScore and MoverScore are hand-designed formulas. COMET is a <em>learned</em>
+              metric: a multilingual encoder (XLM-R in the original) embeds the source, translation and reference,
+              and a small regression network on top is trained to output the score that human annotators (DA or
+              MQM, §4) gave. So it is directly optimised for slide 27's "correlate with humans" requirement.</p>
+            <p>Including the <em>source</em> is important. A reference-only metric cannot tell a valid alternative
+              translation from a wrong one if both differ from the reference. With the source, COMET can check
+              meaning against the original.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Classification</div>
+              <p>COMET sits under "Embedding Based Metrics" here because it uses embeddings, but it is better
+                thought of as a trained (learned) metric: its score comes from a network fitted to human labels,
+                not from a fixed similarity formula. That is also why its pros and cons on the next slide differ
+                from BERTScore's.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s65">
+          <div class="slide-frame">
+            <div class="tag">Slide 65 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-65.png"
+              alt="COMET Pros and Cons. Pros: It has the highest correlation with human judgments for translation quality, making it a very reliable automatic metric. Cons: It is slower and more computationally expensive than other automatic metrics. It is also limited by the quality of the human data it was trained on.">
+            <div class="slide-caption">slide 65 · COMET pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pro: highest correlation with human judgement for MT, among the metrics on this slide set. Cons:
+              slow, and only as good as its training data.</p>
+            <h4>The training-data limit</h4>
+            <p>COMET learns what WMT annotators rewarded, on WMT-style news text in WMT language pairs. On a new
+              domain (legal, medical) or a language pair it saw little of, its scores are less trustworthy, and it
+              can inherit annotator biases. A learned metric can also be gamed like any model: an MT system tuned
+              directly against COMET can find outputs COMET scores highly that humans do not. Goodhart again.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s66">
+          <div class="slide-frame">
+            <div class="tag">Slide 66 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-66.png"
+              alt="MEE4, Embedding Based Metrics. Evaluates translations by combining three aspects: Syntactic similarity (fluency, using modified BLEU): evaluating a hypothesis, the order of n-gram is based on the corresponding reference sentence length. Lexical, morphological and semantic similarity (surface forms, roots, meanings) from MEE. Contextual similarity (sentence-level meaning via embedding distance) using LaBSE. Citation: Mukherjee and Shrivastava, 2023, MEE4 and XLsim: IIIT HYD's submissions for WMT23 metrics shared task.">
+            <div class="slide-caption">slide 66 · MEE4</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>MEE4, a metric from IIIT Hyderabad (Mukherjee and Shrivastava, WMT23), combines three signals:</p>
+            <ul>
+              <li><strong>Syntactic similarity</strong>, using a modified BLEU in which the maximum n-gram order
+                depends on the reference sentence length, rather than always being 4.</li>
+              <li><strong>Lexical, morphological and semantic similarity</strong> from the earlier MEE metric:
+                matching surface forms, roots and meanings.</li>
+              <li><strong>Contextual similarity</strong> of whole sentences, from the distance between LaBSE
+                sentence embeddings. LaBSE is a multilingual sentence encoder.</li>
+            </ul>
+            <h4>Why vary the n-gram order</h4>
+            <p>On a 3-word sentence there is no 4-gram that can match, so standard BLEU's <em>p<sub>4</sub></em>
+              is undefined or zero and the score collapses (as on slide 48). Choosing the maximum order from the
+              reference length avoids that collapse on short sentences.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s67">
+          <div class="slide-frame">
+            <div class="tag">Slide 67 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-67.png"
+              alt="MEE4 Pros and Cons. Pros: Captures broad range of linguistic features. Like other embeddings handle paraphrases. Cons: Reliance on embedding. Computationally intensive.">
+            <div class="slide-caption">slide 67 · MEE4 pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: covers surface, morphological and semantic levels at once, and handles paraphrases. Cons:
+              depends on embedding quality and is computationally heavy.</p>
+            <h4>Where it fits</h4>
+            <p>MEE4 is an attempt to meet slide 27's first requirement directly: measure similarity at several
+              linguistic levels by combining one component per level, instead of trusting one model to capture
+              everything. It needs no training on human scores, unlike COMET.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s68">
+          <div class="slide-frame">
+            <div class="tag">Slide 68 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-68.png"
+              alt="Metrics Summary table with columns Metric, Task, Formula (intuition), Key Limitation. Perplexity: language modeling; 2 to the power of minus 1/N sum of log2 p(w_i); rewards fluency, ignores factuality. BLEU: translation, summarization; n-gram precision vs reference; ignores semantics, penalizes valid paraphrases. ROUGE-L: summarization; longest common subsequence; rewards surface overlap, misses abstraction. BERTScore: open-ended generation; embedding similarity; better with paraphrases, still imperfect. Human Judgment: any; Likert scales, pairwise comparison; expensive, slow, annotator disagreement.">
+            <div class="slide-caption">slide 68 · summary table</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A summary of five metrics: what task each is for, its formula in one line, and its main weakness.
+              The one new entry is perplexity.</p>
+            <h4>Perplexity</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtext>PPL</mtext><mo>=</mo>
+                <msup><mn>2</mn><mrow><mo>−</mo><mfrac><mn>1</mn><mi>N</mi></mfrac>
+                  <msubsup><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup>
+                  <msub><mi>log</mi><mn>2</mn></msub><mi>p</mi><mo>(</mo><msub><mi>w</mi><mi>i</mi></msub><mo>∣</mo><msub><mi>w</mi><mrow><mo>&lt;</mo><mi>i</mi></mrow></msub><mo>)</mo>
+                </mrow></msup>
+              </math>
+            </div>
+            <p>The exponent is the average number of bits per token, which is the cross-entropy loss from slide 5
+              measured in base 2. Exponentiating turns it into an "effective number of choices": a perplexity of
+              10 means the model is, on average, as uncertain as if it were picking uniformly among 10 tokens.</p>
+            <p><strong>Worked example.</strong> A model assigns probabilities 1/2, 1/4 and 1/8 to the three
+              tokens of a test sentence. log<sub>2</sub> values: −1, −2, −3. Average: −2. PPL = 2<sup>2</sup> = 4.
+              (Using natural logs and <em>e</em> instead of 2 gives the same answer.)</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation and scope</div>
+              <p>(1) The table writes <em>p(w<sub>i</sub>)</em>. For a language model this must be the
+                <em>conditional</em> probability <em>p(w<sub>i</sub> | w<sub>&lt;i</sub>)</em> given the preceding
+                tokens; with unconditional probabilities you would be measuring a unigram model. (2) Perplexity
+                scores a model on fixed text; it does not score generated outputs, so it is not a generation metric
+                like the others in the table. It also depends on the tokenizer, so perplexities of models with
+                different vocabularies are not directly comparable.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="reffree">
+        <h2><span class="num">§7</span>Reference-free metrics</h2>
+        <p class="section-intro">
+          If references are expensive and only capture one of many good
+          answers, drop them. Reference-free metrics score an output using
+          only the input (or a population of human text). Slides 69–79 cover
+          five: two for summarization, two for translation quality
+          estimation, and one that compares whole distributions.
+        </p>
+
+        <div class="slide" id="s69">
+          <div class="slide-frame">
+            <div class="tag">Slide 69 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-69.png"
+              alt="Reference Free Metrics, Automatic Evaluation. SUPERT. ROUGE-C. COMET-KIWI. X COMET XL. MAUVE.">
+            <div class="slide-caption">slide 69 · five reference-free metrics</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The list: SUPERT, ROUGE-C, COMET-Kiwi, xCOMET-XL and MAUVE.</p>
+            <h4>What replaces the reference</h4>
+            <ul>
+              <li><strong>SUPERT, ROUGE-C</strong>: the source document itself (or a pseudo-reference built from
+                it).</li>
+              <li><strong>COMET-Kiwi, xCOMET</strong>: a model trained to judge quality from the source and output
+                alone. In MT this is called <em>quality estimation</em> (QE).</li>
+              <li><strong>MAUVE</strong>: a large sample of human-written text, compared as a distribution.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide" id="s70">
+          <div class="slide-frame">
+            <div class="tag">Slide 70 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-70.png"
+              alt="SUPERT, Reference Free Metrics. A pseudo reference is created by identifying salient information in the source documents. The semantic overlap between the summary to be evaluated and the pseudo reference is measured. The metric uses contextualized embeddings like BERT with soft token alignment. Citation: Gao, Zhao and Eger, 2020, SUPERT, ACL.">
+            <div class="slide-caption">slide 70 · SUPERT</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>SUPERT builds a <em>pseudo-reference</em> by picking the salient sentences from the source documents,
+              then measures semantic overlap between the summary and that pseudo-reference using contextual
+              embeddings with soft token alignment. From Gao, Zhao and Eger (2020).</p>
+            <h4>In other words</h4>
+            <p>It replaces "human-written reference" with "automatically extracted key sentences", and replaces
+              n-gram overlap with a BERTScore/MoverScore-style soft matching. It was designed for multi-document
+              summarization, where writing references is especially costly. How the salient sentences are chosen
+              is a design choice; a simple option is to take the leading sentences of each document.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s71">
+          <div class="slide-frame">
+            <div class="tag">Slide 71 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-71.png"
+              alt="SUPERT Pros and Cons. Pros: Captures semantic similarity between a generated text and a reference. Flexibility. Cons: Computational Cost (soft token alignment). Language Support.">
+            <div class="slide-caption">slide 71 · SUPERT pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: semantic matching, flexibility. Cons: cost of the soft alignment, and limited language support
+              (it needs a good contextual encoder for the language).</p>
+            <h4>The built-in weakness</h4>
+            <p>The pseudo-reference is only as good as the salience heuristic. If the important fact is in the
+              middle of a document and the heuristic picks the opening sentences, a summary that correctly includes
+              that fact gets no credit for it.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s72">
+          <div class="slide-frame">
+            <div class="tag">Slide 72 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-72.png"
+              alt="ROUGE-C, Reference Free Metrics. For summarization. Use input as reference because you know it has all info. Citation: T. He et al., ROUGE-C: A fully automated evaluation method for multi-document summarization, 2008 IEEE International Conference on Granular Computing.">
+            <div class="slide-caption">slide 72 · ROUGE-C</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>ROUGE-C: compute ROUGE against the <em>source document</em> instead of a reference summary, because
+              the source contains all the information. From He et al. (2008).</p>
+            <h4>The simplest possible reference-free metric</h4>
+            <p>No model, no human reference. The logic: a good summary should contain content from the source, so
+              overlap with the source is evidence of good content selection.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s73">
+          <div class="slide-frame">
+            <div class="tag">Slide 73 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-73.png"
+              alt="ROUGE-C Pros and Cons. Pro: No reference required. Cons: Extractive vs abstractive summarizer. Depends on length of dataset size (input is reference).">
+            <div class="slide-caption">slide 73 · ROUGE-C pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pro: no reference needed. Cons: it treats extractive and abstractive summarizers differently, and it
+              depends on the length of the input.</p>
+            <h4>Unpacking both cons</h4>
+            <ul>
+              <li><strong>Extractive vs abstractive.</strong> An extractive summarizer copies sentences from the
+                source, so every n-gram it outputs is in the "reference": high precision for free. An abstractive
+                summarizer rewrites in its own words and is penalised for exactly what makes it good.</li>
+              <li><strong>Length.</strong> The "reference" is now the whole input, which can be thousands of words.
+                ROUGE <em>recall</em> against it is tiny for any short summary and grows with summary length, so the
+                score mostly reflects how long the summary is relative to the input, not how well it chose
+                content.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide" id="s74">
+          <div class="slide-frame">
+            <div class="tag">Slide 74 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-74.png"
+              alt="COMET KIWI, Reference Free Metrics. Trained to predict human ratings for accuracy and fluency, making it a reference-free metric. Citation: Rei et al., 2022, CometKiwi: IST-Unbabel 2022 Submission for the Quality Estimation Shared Task, WMT.">
+            <div class="slide-caption">slide 74 · COMET-Kiwi</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>COMET-Kiwi is trained to predict human ratings of accuracy and fluency from the source and the
+              translation only, with no reference. From Rei et al. (WMT 2022).</p>
+            <h4>Same family as COMET</h4>
+            <p>Take COMET (slide 64) and remove the reference from its input. The model now has to judge "is this a
+              good translation of this source?" by itself, which is a harder problem, but one that a strong
+              multilingual encoder trained on enough human scores can learn. The practical use: score translations
+              at deployment time, where no reference exists, for example to flag low-quality outputs for a human
+              to check.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s75">
+          <div class="slide-frame">
+            <div class="tag">Slide 75 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-75.png"
+              alt="COMET KIWI Pros and Cons. Pros: It can provide a reliable quality score for machine translations even when no human reference is available. Cons: As a learned model, its performance is dependent on the data it was trained on and may not generalize well to out-of-domain texts. It does not provide diagnostic information (e.g., whether the error is in grammar or terminology), unlike a detailed framework like MQM.">
+            <div class="slide-caption">slide 75 · COMET-Kiwi pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pro: works with no reference. Cons: domain-dependent like any learned model, and gives one number
+              with no explanation of what is wrong.</p>
+            <h4>The second con sets up the next slide</h4>
+            <p>A score of 0.62 tells you the translation is mediocre, not whether the problem is a wrong term, a
+              missing clause or bad grammar. xCOMET is the answer to that.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s76">
+          <div class="slide-frame">
+            <div class="tag">Slide 76 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-76.png"
+              alt="X COMET XL, Reference Free Metrics. XCOMET-XL asks: How good is the translation, and specifically where/what are the errors? An extension of the COMET framework that provides a detailed, diagnostic breakdown of translation quality. Evaluates a translation across multiple fine-grained dimensions, not just with a single score. Citation: Guerreiro et al., 2024, xCOMET: Transparent Machine Translation Evaluation through Fine-grained Error Detection, TACL.">
+            <div class="slide-caption">slide 76 · xCOMET-XL</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>xCOMET-XL extends COMET to say not only how good a translation is but where the errors are and
+              what kind they are. From Guerreiro et al. (TACL 2024).</p>
+            <h4>How it does that</h4>
+            <p>Besides the sentence score, xCOMET tags error spans in the translation and assigns each a
+              severity, in the style of MQM (§4). In effect it is an automatic MQM annotator. "XL" is the model
+              size (there is also an XXL variant).</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Not strictly reference-free</div>
+              <p>xCOMET can be run with or without a reference. With a reference it is a reference-based metric;
+                without one it works in quality-estimation mode. Slide 80's decision tree reflects this: it lists
+                XCOMET under "reference available" and XCOMET-QE under "no reference".</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s77">
+          <div class="slide-frame">
+            <div class="tag">Slide 77 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-77.png"
+              alt="X COMET XL Pros and Cons. Pros: Provides specific types of errors, such as fluency, accuracy, or style issues. More human-like by assessing nuances like style and discourse coherence. Cons: Domain dependent: as a learned metric, capabilities are limited by the data it was trained on and may not generalize perfectly to new domains. High computational cost.">
+            <div class="slide-caption">slide 77 · xCOMET-XL pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: names the type of each error and is more human-like. Cons: domain-dependent and expensive
+              (it is a multi-billion-parameter model).</p>
+            <h4>The trade so far</h4>
+            <p>Going from BLEU to COMET to xCOMET, each metric correlates better with humans and explains more, and
+              each costs more to run and depends more on its training data. There is no free lunch along this
+              line.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s78">
+          <div class="slide-frame">
+            <div class="tag">Slide 78 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-78.png"
+              alt="MAUVE, Reference Free Metrics. It compares the distribution of model-generated text with the distribution of human-written text. Texts are represented in an embedding space, and the two distributions are compared there. High = generated text is more similar to human text in terms of overall quality and diversity. Unlike BLEU or ROUGE, MAUVE evaluates sets of outputs at the distribution level, rather than comparing one generated sentence directly with one reference. Citation: Pillutla et al., NeurIPS 2021.">
+            <div class="slide-caption">slide 78 · MAUVE</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>MAUVE compares the <em>distribution</em> of model-generated texts with the distribution of
+              human-written texts, in an embedding space. High means the generated texts look like human text in
+              both quality and diversity. It scores a set of outputs, not one output. From Pillutla et al.
+              (NeurIPS 2021).</p>
+            <h4>How it works, roughly</h4>
+            <ol>
+              <li>Generate many texts from the model, and collect many human texts for the same kind of
+                prompts.</li>
+              <li>Embed every text with a large language model.</li>
+              <li>Cluster all the embeddings together (e.g. with k-means), and turn each set into a histogram over
+                clusters. Now you have two discrete distributions, <em>P</em> (human) and <em>Q</em> (model).</li>
+              <li>Measure how far apart they are using KL divergences between each of them and mixtures of the two,
+                and summarise the resulting curve as a number between 0 and 1.</li>
+            </ol>
+            <h4>Why distributions</h4>
+            <p>There are two ways to fail. A model that generates the same safe, fluent paragraph every time scores
+              well on per-sample quality but covers a tiny part of the human distribution (a recall-like failure).
+              A model that generates wildly diverse nonsense covers a lot but puts mass where no human text is (a
+              precision-like failure). Comparing distributions catches both. This connects to decoding (Lecture
+              10): greedy decoding tends toward the first failure, high-temperature sampling toward the second.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s79">
+          <div class="slide-frame">
+            <div class="tag">Slide 79 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-79.png"
+              alt="MAUVE Pros and Cons. Pros: Compares whole corpora, so it can detect repetitiveness and lack of diversity that per-sample scoring misses. Correlates well with human judgments. Cons: Needs many samples. High computational cost.">
+            <div class="slide-caption">slide 79 · MAUVE pros and cons</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Pros: catches repetition and low diversity, correlates well with humans. Cons: needs many samples,
+              expensive.</p>
+            <h4>The sample-size con, linked to §2</h4>
+            <p>Estimating a distribution needs far more data than estimating a mean. With too few texts, the
+              cluster histograms are noisy and MAUVE varies from run to run. MAUVE is also a system-level number:
+              it cannot tell you which individual output was bad.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="hard">
+        <h2><span class="num">§8</span>Choosing a metric, and why evaluation is still hard</h2>
+        <p class="section-intro">
+          The last four slides give a decision tree for picking an MT metric
+          and then explain why no metric solves the problem.
+        </p>
+
+        <div class="slide" id="s80">
+          <div class="slide-frame">
+            <div class="tag">Slide 80 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-80.png"
+              alt="Chose a metric: a decision-tree flowchart. Root: Assessment Type? Score with Explanations leads to Fine-grained Assessment? Yes: GEMBA-MQM, Auto-MQM, INSTRUCTSCORE; No: GEMBA-DA, LTRC LLM metric. Score leads to Reference available? No leads to Paraphrases or semantic roles? No: REUSE, CometKiwi, XCOMET-QE; Yes: YiSi-2, Prism-src. Yes leads to Quick Benchmarking? Yes leads to Post-Editing Effort? Yes: TER; No: BLEU, NIST, spBLEU, YiSi-0, ChrF, ChrF++. Quick Benchmarking No leads to Source-aware Semantics? No leads to Complex Creative Translations? Yes: BARTScore, Prism; No leads to Domain Text? Yes: STD, METEOR, MEE, MEE2, MEE4, ChrF-S; No: BERTScore, XLsim, BLEURT, embed_llama. Source-aware Semantics Yes leads to Knowledge Graph Integration? Yes: KG-BERTScore; No leads to Semantic Roles? Yes: YiSi-1, MEANT; No: COMET, XCOMET, UniTE. Courtesy: Ananya Mukherjee. Citation: Mukherjee and Shrivastava, 2025, Lost in Translation? Found in Evaluation: A Comprehensive Survey on Sentence-Level Translation Evaluation, ACM Computing Surveys 58(1).">
+            <div class="slide-caption">slide 80 · a decision tree for MT metrics</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A flowchart from Mukherjee and Shrivastava's 2025 survey of sentence-level MT evaluation. Answer a
+              series of questions and land on a family of metrics.</p>
+            <h4>The main branches</h4>
+            <ul>
+              <li><strong>Do you want explanations, not just a score?</strong> Use LLM-based metrics: GEMBA-MQM,
+                Auto-MQM or INSTRUCTSCORE for fine-grained error lists, GEMBA-DA for a direct-assessment style
+                score. (These are the "LLM-based metrics" from slide 31.)</li>
+              <li><strong>No reference?</strong> Quality-estimation metrics: CometKiwi, XCOMET-QE, REUSE; or YiSi-2
+                / Prism-src if you care about semantic roles and paraphrase.</li>
+              <li><strong>Reference available and you want quick benchmarking?</strong> TER if you care about
+                post-editing effort, otherwise BLEU / chrF / chrF++ and relatives.</li>
+              <li><strong>Reference available and you want depth?</strong> If the metric should use the source,
+                COMET / XCOMET / UniTE (or YiSi-1 / MEANT for semantic roles, KG-BERTScore for knowledge graphs).
+                If not, BERTScore / BLEURT for general text, METEOR / MEE4 for domain text, BARTScore / Prism for
+                creative translation.</li>
+            </ul>
+            <h4>The lesson of the tree</h4>
+            <p>There is no single best metric. The right one depends on what you have (a reference or not), what
+              you need (a quick number, a post-editing estimate, an explanation) and what kind of text you are
+              evaluating. The green-highlighted names appear to be the authors' recommended picks within each
+              leaf.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Typo</div>
+              <p>The title reads "Chose a metric"; it means "Choose".</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s81">
+          <div class="slide-frame">
+            <div class="tag">Slide 81 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-81.png"
+              alt="So have we solved evaluation? No!">
+            <div class="slide-caption">slide 81 · have we solved evaluation? No.</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Have we solved evaluation? No.</p>
+            <h4>Why not, in one line</h4>
+            <p>Every metric in the lecture is a proxy (slide 7), and each one has a known way to be fooled:
+              n-gram metrics by paraphrase and by swapped facts, embedding metrics by swapped facts, learned
+              metrics by domain shift and by optimisation pressure.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s82">
+          <div class="slide-frame">
+            <div class="tag">Slide 82 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-82.png"
+              alt="Why is evaluation hard. Semantic and factual evaluation requires understanding, not just surface matching, and that's fundamentally hard to automate.">
+            <div class="slide-caption">slide 82 · understanding is hard to automate</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Judging meaning and facts needs understanding, not surface matching, and that is fundamentally hard
+              to automate.</p>
+            <h4>The circularity</h4>
+            <p>To check whether a summary is factually faithful, the evaluator has to read the source, understand
+              it, and compare claims. That is at least as hard as the summarization task itself. So a fully
+              reliable automatic evaluator would need to be a model at least as capable as the one being evaluated,
+              and it could still share that model's blind spots. This is the underlying reason LLM-as-judge methods
+              work as well as they do, and also why they should not be trusted blindly.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s83">
+          <div class="slide-frame">
+            <div class="tag">Slide 83 / 83</div>
+            <img src="../assets/slides/L12-evaluation/slide-83.png"
+              alt="Why is evaluation hard. Single metrics are gameable - BLEU rewards factually wrong answers. Combining metrics helps but requires principled selection - which metrics, on which tasks, with what weighting? Benchmark suites - standardized, multi-metric, multi-task evaluation.">
+            <div class="slide-caption">slide 83 · single metrics are gameable; use suites</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three closing points. Single metrics can be gamed (BLEU rewards factually wrong answers). Combining
+              metrics helps, but you need a principled way to choose which ones, for which tasks, with what
+              weights. Benchmark suites provide standardised, multi-metric, multi-task evaluation.</p>
+            <h4>Why combining is not trivial</h4>
+            <p>Suppose you average BLEU (0–100), COMET (roughly 0–1) and a human score (1–5). The result is
+              dominated by whichever has the largest scale. Even after normalising, the weights encode a judgement
+              about what matters. Benchmark suites (GLUE and SuperGLUE for understanding tasks, and larger suites
+              such as HELM or BIG-bench for LLMs) fix those choices once so that results are at least comparable
+              across papers. They inherit every limitation of their component metrics, and a fixed public suite is
+              itself a target that models can be over-tuned to.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>Report more than one metric, choose them for the task, report confidence intervals (§2), and look
+                at actual outputs. When a metric moves a lot and the outputs do not look better, trust the outputs.</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="section-intro" style="margin-top:1.5rem">
+          Zoom out. The lecture moves from a principle to a catalogue. The
+          principle: a score is a noisy estimate of a proxy for what you care
+          about, so you need enough test examples to beat the noise (§2) and
+          a proxy close enough to the real goal that optimising it does not
+          backfire (§1). The catalogue is a sequence of better proxies.
+          Humans are the gold standard but slow (§4). Edit rates and n-gram
+          overlap are cheap and blind to meaning (§5). Embedding metrics see
+          paraphrase but not factual reversal (§6). Learned and
+          reference-free metrics match humans best but inherit their training
+          data's limits (§7). For an exam, be able to compute WER, TER, BLEU,
+          ROUGE-N/L, chrF and perplexity on a short example, state what each
+          metric divides by, and name one way each can be fooled.
+        </p>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="11-speculative-decoding.html">
+          <span class="dir">← back</span>
+          <span class="lbl">11 · Speculative Decoding</span>
+        </a>
+        <a class="next" href="13-quantization.html">
+          <span class="dir">next →</span>
+          <span class="lbl">13 · Quantization</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Lecture 12 · Evaluation · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#deck">at a glance</a>
+        <a href="#why">§1 why evaluate</a>
+        <a href="#stats">§2 statistics</a>
+        <a href="#tasks">§3 task types</a>
+        <a href="#human">§4 human evaluation</a>
+        <a href="#lexical">§5 lexical metrics</a>
+        <a href="#embedding">§6 embedding metrics</a>
+        <a href="#reffree">§7 reference-free</a>
+        <a href="#hard">§8 choosing a metric</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>

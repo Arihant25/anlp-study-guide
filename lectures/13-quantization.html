@@ -1,0 +1,1580 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Lecture 13 · Quantization — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Lecture 13 of Advanced NLP, Monsoon 2026 IIIT-H: quantization of LLMs, from floating-point formats and uniform quantization through outliers, LLM.int8(), SmoothQuant, GPTQ and AWQ, to quantization-aware training and EfficientQAT.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/13-quantization.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Quantization: fewer bits per weight | ANLP">
+  <meta property="og:description"
+    content="A first-principles tour of LLM quantization: FP32 and FP16, absmax scaling, outliers, LLM.int8(), SmoothQuant, OBQ and GPTQ, AWQ, and quantization-aware training.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/13-quantization.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L13-quantization/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP Quantization lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Quantization: fewer bits per weight | ANLP">
+  <meta name="twitter:description"
+    content="How to store an LLM in 8, 4 or even 2 bits per weight and keep it working: every method in the lecture, worked through with numbers.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L13-quantization/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 13: Quantization","url":"https://arihant25.github.io/anlp-study-guide/lectures/13-quantization.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#deck">The deck at a glance</a>
+        <a href="#why">§1 · Why make LLMs smaller</a>
+        <a href="#fp">§2 · Floating-point formats</a>
+        <a href="#what">§3 · What quantization is</a>
+        <a href="#uniform">§4 · Uniform quantization</a>
+        <a href="#outliers">§5 · Outliers &amp; granularity</a>
+        <a href="#int8">§6 · LLM.int8()</a>
+        <a href="#smoothquant">§7 · SmoothQuant</a>
+        <a href="#gptq">§8 · OBQ &amp; GPTQ</a>
+        <a href="#awq">§9 · AWQ</a>
+        <a href="#qat">§10 · Quantization-aware training</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="12-evaluation.html">← Lecture 12: Evaluation</a>
+        <a href="../seminars/vishal-rao-data-creation.html">Next: Seminar · Data Creation →</a>
+        <a href="../seminars/shruthi-m-efficient-deployment.html">Seminar · Efficient Deployment</a>
+        <a href="../index.html">Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Lecture 13 · 33 slides</div>
+        <h1>Quantization: <em>fewer bits per weight, nearly the same model.</em></h1>
+        <p class="lead">
+          A 7B-parameter model stored in 16-bit floats needs 14 GB just
+          for its weights. Quantization stores those weights (and
+          sometimes the activations) as 8-bit, 4-bit or even 2-bit
+          integers plus a few scale factors. This lecture starts with
+          how floats are laid out in memory, builds the basic
+          scale-and-round recipe, shows why outliers break it in large
+          LLMs, and then walks through the methods that fix it:
+          LLM.int8(), SmoothQuant, GPTQ, AWQ and quantization-aware
+          training.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Lecture 13</span>
+          <span class="pill">33 slides</span>
+          <span class="pill">Manish Shrivastava · Aparajitha</span>
+        </div>
+      </section>
+
+      <section id="deck">
+        <h2><span class="num">§0</span>The deck at a glance</h2>
+        <p class="section-intro">
+          The deck has three numbered parts plus a closing part on
+          training. Slides 1–3 set up the problem: LLMs are too big and
+          too slow for ordinary hardware, and quantization is one of
+          three ways to approximate them more cheaply. Part 1 (slides
+          4–9) covers how FP32 and FP16 store numbers and defines
+          quantization. Part 2 (slides 10–14) gives the basic recipe,
+          uniform symmetric quantization with a scale factor, shows it
+          in llama.cpp's 4-bit format, and explains why a few huge
+          values (outliers) ruin it. Part 3 (slides 15–30) covers
+          post-training quantization (PTQ) methods for LLMs: LLM.int8()
+          and SmoothQuant deal with outliers in activations, OBQ and
+          GPTQ use second-order information to correct rounding errors,
+          and AWQ protects the weights that meet large activations.
+          Slides 31–33 cover quantization-aware training (QAT), where
+          the model learns to live with rounding, and EfficientQAT,
+          which makes that affordable for LLMs.
+        </p>
+        <p>
+          Two ideas run through the whole lecture. First, every
+          method still uses the same scale-round-rescale step from slide
+          11; they differ in how they choose the scale, which numbers
+          share a scale, and what they do about the error that rounding
+          leaves behind. Second, what matters is the error in the layer's
+          <em>output</em> <em>WX</em>, not the error in the weights
+          themselves. That is why so many methods look at the
+          activations <em>X</em> even when they only quantize
+          <em>W</em>.
+        </p>
+      </section>
+
+      <hr class="soft">
+
+      <section id="why">
+        <h2><span class="num">§1</span>Why make LLMs smaller</h2>
+        <p class="section-intro">
+          Running a large model is limited by memory and by memory
+          bandwidth. Approximating the weight matrices more cheaply
+          attacks both.
+        </p>
+
+        <div class="slide" id="s1">
+          <div class="slide-frame">
+            <div class="tag">Slide 01 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-01.png"
+              alt="Title slide: Quantization, Advanced NLP M26. Manish Shrivastava + Aparajitha, IIIT Hyderabad logo, October 19, 2026.">
+            <div class="slide-caption">slide 01 · title</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Lecture 13 of Advanced NLP Monsoon 2026, given on 19 October 2026. The topic is quantization:
+              storing and computing with a model's numbers at lower precision.</p>
+            <h4>Where this fits</h4>
+            <p>Most of the course so far has been about building and training models. This lecture is about
+              <em>running</em> a trained model. Training happens once on a big cluster; inference happens
+              millions of times, often on much smaller hardware. Quantization is the most widely used trick for
+              making inference cheaper. If you have downloaded a "Q4_K_M GGUF" or a "GPTQ 4-bit" model to run on
+              a laptop, you have already used it.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s2">
+          <div class="slide-frame">
+            <div class="tag">Slide 02 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-02.png"
+              alt="Challenges with accessible use of LLMs. Three bullets: Keep low memory footprint. Maintain generation quality. Generation speed.">
+            <div class="slide-caption">slide 02 · the three constraints</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>To make LLMs usable on ordinary hardware you want three things at once: low memory use, good output
+              quality, and fast generation.</p>
+            <h4>Putting numbers on "memory footprint"</h4>
+            <p>A model's weight memory is just (number of parameters) × (bytes per parameter). For a 7B model,
+              using 1 GB = 10<sup>9</sup> bytes:</p>
+            <table>
+              <thead>
+                <tr><th>Format</th><th>Bits per weight</th><th>Weight memory, 7B model</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>FP32</td><td>32</td><td>7 × 10<sup>9</sup> × 4 B = 28 GB</td></tr>
+                <tr><td>FP16 / BF16</td><td>16</td><td>14 GB</td></tr>
+                <tr><td>INT8</td><td>8</td><td>7 GB</td></tr>
+                <tr><td>INT4</td><td>4</td><td>3.5 GB (about 3.9 GB once per-group scales are added, see slide 12)</td></tr>
+              </tbody>
+            </table>
+            <p>A consumer GPU with 8 GB of memory cannot hold the FP16 model at all, but holds the INT4 one with
+              room left for the KV cache.</p>
+            <h4>Why memory also means speed</h4>
+            <p>When an LLM generates one token at a time, every generated token needs every weight to be read
+              from GPU memory once. For a single request the arithmetic is small and the reading dominates, so
+              decoding is <em>memory-bandwidth bound</em>. As a rough lower bound, a GPU with 1 TB/s of bandwidth
+              needs about 14 ms to read 14 GB of FP16 weights, so it cannot exceed about 70 tokens per second. At
+              INT4 it reads a quarter as many bytes, so the same bound is about four times higher. Smaller weights
+              are faster weights.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>The three goals pull against each other. Fewer bits help memory and speed and hurt quality. Every
+                method in this lecture is an attempt to push the bits down while keeping quality close to the
+                original.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s3">
+          <div class="slide-frame">
+            <div class="tag">Slide 03 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-03.png"
+              alt="Options to make LLMs accessible. Matrix multiplications are hardware and software optimal. Find good approximations to gain efficiency: Low rank approximation; Matrix sparsification; Quantization (in bold).">
+            <div class="slide-caption">slide 03 · three ways to approximate a weight matrix</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Matrix multiplication is already about as fast as hardware and software can make it. So to go faster,
+              approximate the matrices. Three ways are listed, and the lecture picks the third.</p>
+            <h4>The three options, side by side</h4>
+            <p>Take a weight matrix <em>W</em> of size <em>d × d</em>.</p>
+            <ul>
+              <li><strong>Low-rank approximation.</strong> Replace <em>W</em> with a product <em>AB</em>, where
+                <em>A</em> is <em>d × r</em> and <em>B</em> is <em>r × d</em> with <em>r</em> much smaller than
+                <em>d</em>. Storage drops from <em>d²</em> to <em>2dr</em> numbers. This is the idea behind LoRA,
+                though LoRA uses it for fine-tuning updates rather than to compress the base weights.</li>
+              <li><strong>Sparsification (pruning).</strong> Set most entries of <em>W</em> to zero and store only
+                the rest. Speed-ups need hardware that can skip zeros, which in practice usually means structured
+                patterns such as 2:4 sparsity.</li>
+              <li><strong>Quantization.</strong> Keep every entry and the full shape, but store each entry with fewer
+                bits. Nothing about the model's structure changes, so it works with any architecture.</li>
+            </ul>
+            <p>Quantization is the most popular of the three for LLM inference because it gives a predictable
+              compression ratio (16 → 4 bits is 4×) and can usually be applied to a trained model without any
+              retraining.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="fp">
+        <h2><span class="num">§2</span>Floating-point formats</h2>
+        <p class="section-intro">
+          Before shrinking numbers, you need to know how they are stored.
+          Part 1 of the deck opens with the bit layouts of FP32 and FP16
+          and what is lost when you drop bits.
+        </p>
+
+        <div class="slide" id="s4">
+          <div class="slide-frame">
+            <div class="tag">Slide 04 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-04.png"
+              alt="1. Introduction and FP Representation. Floating Point Representation: FP32 (Single Precision), FP16 (Half Precision). Introduction to Quantization: Definition and Motivation.">
+            <div class="slide-caption">slide 04 · part 1 roadmap</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The plan for Part 1: how FP32 and FP16 represent numbers (slides 5–7), then what quantization is
+              and why you would want it (slides 8–9).</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s5">
+          <div class="slide-frame">
+            <div class="tag">Slide 05 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-05.png"
+              alt="Basic sensitivity study by Truncation. Diagram of FP32 as a row of 32 boxes: 1 blue Sign bit, 8 green Exponent bits, 23 orange Fractional bits. Arrows from the first three fractional bits point to 2^-1 = 0.5, 2^-2 = 0.25, 2^-3 = 0.125. Below, FP16 as a row of 16 boxes: 1 Sign bit, 5 Exponent bits, 10 Fractional bits.">
+            <div class="slide-caption">slide 05 · FP32 vs FP16 bit layout</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>FP32 has 1 sign bit, 8 exponent bits and 23 fraction bits. FP16 has 1 sign bit, 5 exponent bits and
+              10 fraction bits. The arrows show that the fraction bits are worth 2<sup>−1</sup>,
+              2<sup>−2</sup>, 2<sup>−3</sup>, … from left to right.</p>
+            <h4>What each field does</h4>
+            <ul>
+              <li><strong>Sign</strong>: 0 for positive, 1 for negative.</li>
+              <li><strong>Exponent</strong>: sets the <em>range</em>, i.e. which power of two the number sits
+                near. More exponent bits mean you can represent much larger and much smaller numbers.</li>
+              <li><strong>Fraction</strong> (mantissa): sets the <em>precision</em>, i.e. how finely you can
+                place a number between one power of two and the next. Each extra fraction bit halves the gap
+                between neighbouring representable numbers.</li>
+            </ul>
+            <h4>"Sensitivity study by truncation"</h4>
+            <p>The title refers to a simple experiment: drop the low-order fraction bits and see how much the
+              number (and the model) changes. Because bit <em>k</em> of the fraction is worth only
+              2<sup>−k</sup> of the leading part, the bits at the right end matter very little. Dropping from 23
+              fraction bits to 10 changes any number by at most about 2<sup>−11</sup> ≈ 0.05% of its size (with
+              rounding). Neural networks are very tolerant of noise that small, which is why FP16 inference
+              is routine.</p>
+            <p>For example, 1/3 in FP16 is stored as 1365/4096 = 0.333251953…, an error of about 8 × 10<sup>−5</sup>,
+              or 0.024% of the value.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s6">
+          <div class="slide-frame">
+            <div class="tag">Slide 06 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-06.png"
+              alt="Basic sensitivity study by Truncation. Identical to slide 5: FP32 layout with 1 sign, 8 exponent and 23 fractional bits, with the first three fractional bits labelled 0.5, 0.25 and 0.125, and the FP16 layout with 1 sign, 5 exponent and 10 fractional bits.">
+            <div class="slide-caption">slide 06 · the same diagram again</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The same picture as slide 5. In the exported PDF the two slides are identical; in the live lecture
+              this was probably an animation step.</p>
+            <h4>The part the picture leaves out: range</h4>
+            <p>Truncating the fraction costs precision, which is mostly harmless. Cutting the exponent from 8 bits
+              to 5 costs <em>range</em>, which can be harmful. FP32 can hold numbers up to about
+              3.4 × 10<sup>38</sup>; FP16 tops out at 65,504, and its smallest normal positive number is about
+              6 × 10<sup>−5</sup>. Large activations can overflow to infinity and tiny gradients can underflow to
+              zero. This is why <strong>BF16</strong> (bfloat16) exists: it keeps FP32's 8 exponent bits and cuts the
+              fraction to 7 bits. Same range as FP32, less precision than FP16. Most LLM training now uses BF16.</p>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
+              <p>Range versus precision is the same trade-off that integer quantization faces, just handled
+                differently. A float spends bits on an exponent so that every number gets its own scale. An
+                integer format has no exponent, so it needs an external scale factor shared by a group of numbers.
+                Most of this lecture is about choosing that shared scale well.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s7">
+          <div class="slide-frame">
+            <div class="tag">Slide 07 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-07.png"
+              alt="Floating Point Representation. Red box: -4.40625 with arrows labelling the Integral Part (4) and the Fractional Part (.40625). Formula (−1)^S × F × 2^E. Worked example: 4 in base 10 = 100 in base 2; Bias = 2^(k−1) − 1; exponent = 2 + 2^(8−1) − 1 = 2 + 127 = 129 = 10000001 in binary. Bit table: 1 bit = 1, 8 bits = 10000001, 23 bits = 00011010000000000000000, with bit positions labelled 32 on the left and 0 on the right. Left bullets: FP32 (Single Precision) uses 32 bits total: 1 bit for sign, 8 bits for Exponent, 23 bits for Fractional/Mantissa. Right bullets: FP16 (Half Precision) uses 16 bits total: 1 bit for Sign, 5 bits for Exponent, 10 bits for Fractional.">
+            <div class="slide-caption">slide 07 · encoding −4.40625 in FP32</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A worked encoding of −4.40625 into FP32, using the formula</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mi>x</mi><mo>=</mo>
+                <msup><mrow><mo>(</mo><mo>−</mo><mn>1</mn><mo>)</mo></mrow><mi>S</mi></msup>
+                <mo>×</mo><mi>F</mi><mo>×</mo><msup><mn>2</mn><mi>E</mi></msup>
+              </math>
+            </div>
+            <h4>The encoding, step by step</h4>
+            <ol>
+              <li><strong>Sign.</strong> The number is negative, so <em>S</em> = 1.</li>
+              <li><strong>Binary.</strong> 4 = 100<sub>2</sub>. For the fraction, 0.40625 = 0.25 + 0.125 + 0.03125
+                = 2<sup>−2</sup> + 2<sup>−3</sup> + 2<sup>−5</sup> = 0.01101<sub>2</sub>. So 4.40625 =
+                100.01101<sub>2</sub>.</li>
+              <li><strong>Normalise.</strong> Move the binary point so there is a single 1 in front:
+                100.01101<sub>2</sub> = 1.0001101<sub>2</sub> × 2<sup>2</sup>. The true exponent is 2.</li>
+              <li><strong>Bias the exponent.</strong> The stored exponent is the true exponent plus a bias of
+                2<sup>k−1</sup> − 1, where <em>k</em> = 8 is the number of exponent bits. Bias = 127, so the stored
+                value is 2 + 127 = 129 = 10000001<sub>2</sub>. The bias lets the exponent field be an unsigned
+                integer while still representing negative true exponents.</li>
+              <li><strong>Fraction.</strong> The leading 1 of 1.0001101 is always there for normal numbers, so it is
+                not stored (the "hidden bit"). The 23 fraction bits are what follows the point, padded with zeros:
+                0001101 0000000000000000.</li>
+            </ol>
+            <p>That gives the bit pattern on the slide: <code>1 | 10000001 | 00011010000000000000000</code>.</p>
+            <p>In FP16 the same number fits exactly too: bias = 2<sup>4</sup> − 1 = 15, stored exponent 2 + 15 = 17 =
+              10001<sub>2</sub>, fraction 0001101000. So −4.40625 loses nothing in FP16. Numbers whose binary
+              fraction needs more than 10 bits get rounded.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The formula on the slide is shorthand. Read <em>F</em> as 1.fraction (1 plus the stored fraction
+                bits, here 1.0001101<sub>2</sub> = 1.1015625), and <em>E</em> as the stored exponent minus the bias
+                (129 − 127 = 2). Check: −1 × 1.1015625 × 2<sup>2</sup> = −4.40625. If you plug the raw stored bits
+                in directly you get nonsense. Also, the bit positions under the table are labelled 32 and 0, but a
+                32-bit word has positions 31 down to 0.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="what">
+        <h2><span class="num">§3</span>What quantization is</h2>
+        <p class="section-intro">
+          The definition, and the reason to bother.
+        </p>
+
+        <div class="slide" id="s8">
+          <div class="slide-frame">
+            <div class="tag">Slide 08 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-08.png"
+              alt="What is Quantization? Reducing the numerical precision of a model's weights and/or activations (e.g., from 32-bit floating point to 8-bit integer). Right: on a black background a large white circle labelled FP32 487MB, with a red arrow to a smaller colourful globe labelled INT8 168MB.">
+            <div class="slide-caption">slide 08 · the definition</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Quantization reduces the numerical precision of a model's weights, its activations, or both, for
+              example from FP32 to INT8. The picture shows a 487 MB FP32 model shrinking to 168 MB at INT8.</p>
+            <h4>Weights versus activations</h4>
+            <p>The phrase "weights and/or activations" hides an important split that comes back all lecture:</p>
+            <ul>
+              <li><strong>Weight-only quantization</strong> (written W4A16, W8A16, …: 4- or 8-bit weights, 16-bit
+                activations). Weights are stored in low precision and converted back to FP16 just before the matrix
+                multiply. This saves memory and bandwidth, which is what matters for one-request-at-a-time
+                decoding. GPTQ and AWQ are in this family.</li>
+              <li><strong>Weight-and-activation quantization</strong> (W8A8). Both inputs to the matrix multiply are
+                integers, so the multiply itself runs on fast integer hardware. This also speeds up compute-bound
+                work such as large batches and long prompts. LLM.int8() and SmoothQuant are in this family.</li>
+            </ul>
+            <p>Weights are fixed after training, so you can study them offline and take your time. Activations
+              change with every input, so their scale has to be guessed from sample data or computed on the
+              fly. That makes them harder, as §6–§7 show.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s9">
+          <div class="slide-frame">
+            <div class="tag">Slide 09 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-09.png"
+              alt="Quantization - Motivation. Significant memory and bandwidth savings, leading to faster inference and the ability to run larger models on consumer hardware. Example: Converting a 487MB FP32 model to 168MB INT8. Same FP32 487MB to INT8 168MB picture as the previous slide.">
+            <div class="slide-caption">slide 09 · the motivation</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Fewer bits means less memory and less bandwidth, so inference gets faster and bigger models fit on
+              consumer hardware. Example: 487 MB at FP32 becomes 168 MB at INT8.</p>
+            <h4>Checking the example</h4>
+            <p>Going from 32 bits to 8 bits should divide the size by 4: 487 / 4 ≈ 122 MB. The slide says 168 MB,
+              a ratio of about 2.9.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The 487 → 168 MB figure is smaller than the 4× you would expect from 32 → 8 bits. The slide does
+                not say where it comes from. Real conversions rarely hit the ideal ratio because some tensors (often
+                embeddings, normalisation layers or the output head) are left in higher precision, and the scale
+                factors and file metadata take space too. Use "bits per weight × parameters" for the ideal and
+                expect real files to be somewhat larger.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="uniform">
+        <h2><span class="num">§4</span>Uniform quantization</h2>
+        <p class="section-intro">
+          The basic recipe: pick a scale, divide, round to an integer.
+          To get a real number back, multiply by the scale. Every
+          later method is a refinement of this.
+        </p>
+
+        <div class="slide" id="s10">
+          <div class="slide-frame">
+            <div class="tag">Slide 10 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-10.png"
+              alt="2. Quantization for Inference. Uniform Quantization: Scaling factor and formulas; INT4 example in llama.cpp. Outlier Problem: Simple fixes: Clipping; Granularity Reduction (Per-tensor vs. Per-row/column).">
+            <div class="slide-caption">slide 10 · part 2 roadmap</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Part 2 covers the basic quantization formula and a real 4-bit implementation (slides 11–12), then
+              the outlier problem and two simple fixes, clipping and finer granularity (slides 13–14).</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s11">
+          <div class="slide-frame">
+            <div class="tag">Slide 11 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-11.png"
+              alt="Uniform Quantization. A simple, symmetric mapping of real numbers (r) within a Clipping Range (alpha to beta) to a set of discrete integer values (Q) using a fixed interval. Scaling Factor (S): The size of the interval, calculated based on the clipping range and the number of bits (b): S = max(|alpha|, |beta|) / (2^(b−1) − 1). To quantize from a real number r to quantized integer: Q_r = Int(r / S). To de-quantize: r = S(q).">
+            <div class="slide-caption">slide 11 · scale, quantize, dequantize</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <mi>S</mi><mo>=</mo>
+                    <mfrac>
+                      <mrow><mo>max</mo><mo>(</mo><mo>|</mo><mi>α</mi><mo>|</mo><mo>,</mo><mo>|</mo><mi>β</mi><mo>|</mo><mo>)</mo></mrow>
+                      <mrow><msup><mn>2</mn><mrow><mi>b</mi><mo>−</mo><mn>1</mn></mrow></msup><mo>−</mo><mn>1</mn></mrow>
+                    </mfrac>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi>Q</mi><mi>r</mi></msub><mo>=</mo><mtext>Int</mtext>
+                    <mrow><mo>(</mo><mfrac><mi>r</mi><mi>S</mi></mfrac><mo>)</mo></mrow>
+                    <mo>,</mo><mspace width="2em"/>
+                    <mover accent="true"><mi>r</mi><mo>^</mo></mover><mo>=</mo><mi>S</mi><mo>·</mo><msub><mi>Q</mi><mi>r</mi></msub>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <h4>Reading the symbols</h4>
+            <ul>
+              <li><em>r</em> is a real number (a weight or activation). <em>[α, β]</em> is the <em>clipping
+                range</em>: the interval of real values you promise to represent. The simplest choice is
+                <em>α</em> = min and <em>β</em> = max of the tensor.</li>
+              <li><em>b</em> is the number of bits. A signed <em>b</em>-bit integer, used symmetrically, covers
+                −(2<sup>b−1</sup> − 1) … +(2<sup>b−1</sup> − 1): −127…127 for INT8, −7…7 for INT4.</li>
+              <li><em>S</em> is the <em>scale</em>: the real-valued size of one integer step. The largest magnitude
+                in the range maps to the largest integer.</li>
+              <li><em>Int(·)</em> means round to the nearest integer.</li>
+              <li>Dequantizing multiplies back by <em>S</em>. You do not get <em>r</em> back exactly; you get the
+                nearest grid point <em>r̂</em>. The difference is the <em>quantization error</em>, at most
+                <em>S</em>/2 for any value inside the range.</li>
+            </ul>
+            <p>This scheme is called <strong>symmetric</strong> or <strong>absmax</strong> quantization: the grid is
+              centred on 0 and the scale comes from the largest absolute value.</p>
+            <h4>Worked example: absmax at INT8 and INT4</h4>
+            <p>Quantize <em>x</em> = [0.7, −1.3, 0.05, 2.1]. The absolute max is 2.1.</p>
+            <table>
+              <thead>
+                <tr><th></th><th>INT8 (S = 2.1/127 ≈ 0.01654)</th><th>INT4 (S = 2.1/7 = 0.3)</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><em>x / S</em></td><td>42.33, −78.62, 3.02, 127</td><td>2.33, −4.33, 0.17, 7</td></tr>
+                <tr><td>integers <em>q</em></td><td>42, −79, 3, 127</td><td>2, −4, 0, 7</td></tr>
+                <tr><td>dequantized <em>S·q</em></td><td>0.6945, −1.3063, 0.0496, 2.1</td><td>0.6, −1.2, 0.0, 2.1</td></tr>
+                <tr><td>absolute error</td><td>0.0055, 0.0063, 0.0004, 0</td><td>0.1, 0.1, 0.05, 0</td></tr>
+              </tbody>
+            </table>
+            <p>At INT8 the errors are well under 1%. At INT4 the grid has only 15 points, the step is 0.3, and the
+              small value 0.05 is rounded to exactly zero. Every error stays below <em>S</em>/2 (0.0083 and 0.15).
+              The largest value is always exact, since it defines the scale.</p>
+            <h4>The asymmetric (affine) variant</h4>
+            <p>Symmetric quantization wastes codes when the data is lopsided. Take <em>x</em> = [−0.4, 0.25, 1.05,
+              2.6], which is mostly positive. With symmetric INT4, <em>S</em> = 2.6/7 ≈ 0.371, and the codes −7 … −2
+              are never used, because nothing is below −0.4. The <strong>affine</strong> (asymmetric) scheme maps
+              [min, max] onto the full unsigned range 0 … 2<sup>b</sup> − 1 and adds an integer <em>zero point</em>
+              <em>z</em>:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <mi>S</mi><mo>=</mo>
+                    <mfrac>
+                      <mrow><mo>max</mo><mo>−</mo><mo>min</mo></mrow>
+                      <mrow><msup><mn>2</mn><mi>b</mi></msup><mo>−</mo><mn>1</mn></mrow>
+                    </mfrac>
+                    <mo>,</mo><mspace width="1em"/>
+                    <mi>z</mi><mo>=</mo><mtext>round</mtext><mo>(</mo><mo>−</mo><mo>min</mo><mo>/</mo><mi>S</mi><mo>)</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <mi>q</mi><mo>=</mo><mtext>clamp</mtext><mo>(</mo><mtext>round</mtext><mo>(</mo><mi>r</mi><mo>/</mo><mi>S</mi><mo>)</mo><mo>+</mo><mi>z</mi><mo>,</mo>
+                    <mn>0</mn><mo>,</mo><msup><mn>2</mn><mi>b</mi></msup><mo>−</mo><mn>1</mn><mo>)</mo>
+                    <mo>,</mo><mspace width="1em"/>
+                    <mover accent="true"><mi>r</mi><mo>^</mo></mover><mo>=</mo><mi>S</mi><mo>(</mo><mi>q</mi><mo>−</mo><mi>z</mi><mo>)</mo>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <p>For the example at 4 bits: <em>S</em> = (2.6 − (−0.4)) / 15 = 0.2 and <em>z</em> = round(0.4/0.2) = 2.</p>
+            <table>
+              <thead>
+                <tr><th><em>r</em></th><th>round(r/S) + z</th><th><em>q</em></th><th>S(q − z)</th><th>error (affine)</th><th>error (symmetric)</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>−0.4</td><td>−2 + 2</td><td>0</td><td>−0.4</td><td>0</td><td>0.029</td></tr>
+                <tr><td>0.25</td><td>1 + 2</td><td>3</td><td>0.2</td><td>0.05</td><td>0.121</td></tr>
+                <tr><td>1.05</td><td>5 + 2</td><td>7</td><td>1.0</td><td>0.05</td><td>0.064</td></tr>
+                <tr><td>2.6</td><td>13 + 2</td><td>15</td><td>2.6</td><td>0</td><td>0</td></tr>
+              </tbody>
+            </table>
+            <p>The affine grid step is 0.2 instead of 0.371, and the average error roughly halves. The price is one
+              extra stored number (<em>z</em>) per group and a little extra arithmetic. EfficientQAT's formula on
+              slide 32 is exactly this affine scheme.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation</div>
+              <p>The slide mixes names: it quantizes to <em>Q<sub>r</sub></em> but dequantizes from <em>q</em>,
+                and "r = S(q)" means multiplication, <em>S·q</em>, not a function <em>S</em> applied to <em>q</em>.
+                It also says "symmetric" while introducing a range [<em>α</em>, <em>β</em>]: the formula only uses
+                the larger of |<em>α</em>| and |<em>β</em>|, so the range really becomes [−max, max]. Finally, if
+                you clip (slide 14), values outside the range must be clamped to ±(2<sup>b−1</sup> − 1) after
+                rounding, a step the slide omits.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s12">
+          <div class="slide-frame">
+            <div class="tag">Slide 12 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-12.png"
+              alt="INT4 in llama.cpp (Q4_0). Left: C code. float amax = 0.0f; // absolute max. Loop l from 0 to QK4_0: v = x[i*QK4_0 + l]; amax = MAX(amax, fabsf(v)). const float d = amax / ((1 << 3) − 1); const float id = d ? 1.0f/d : 0.0f; y[i].d = d. Loop l from 0 to QK4_0 in steps of 2: v0 = x[i*QK4_0 + l + 0]*id; v1 = x[i*QK4_0 + l + 1]*id; vi0 = (int8_t)roundf(v0) + 8; vi1 = (int8_t)roundf(v1) + 8; assert(vi0 < 16); assert(vi1 < 16); pp[l/2] = vi0 | (vi1 << 4). Right: the formulas S = max(|alpha|, |beta|) / (2^(b−1) − 1) and Q_r = Int(r / S).">
+            <div class="slide-caption">slide 12 · the same formula in llama.cpp's Q4_0</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>C code from llama.cpp (the ggml library) that quantizes one block of weights to 4 bits, next to the
+              formulas from slide 11.</p>
+            <h4>The code, line by line</h4>
+            <ul>
+              <li>The weights are split into blocks of <code>QK4_0</code> values (32 in llama.cpp). Each block gets
+                its own scale.</li>
+              <li>The first loop finds <code>amax</code>, the largest |<em>x</em>| in the block.</li>
+              <li><code>d = amax / ((1 &lt;&lt; 3) - 1)</code> is <em>S</em> = amax / (2<sup>3</sup> − 1) = amax / 7.
+                This is slide 11's formula with <em>b</em> = 4. <code>id</code> is 1/<em>S</em>, so the loop can
+                multiply instead of divide. The scale <code>d</code> is stored with the block.</li>
+              <li>Each value is multiplied by 1/<em>S</em> and rounded, giving an integer in −7 … 7. Adding 8 shifts it
+                to 1 … 15, which fits in an unsigned 4-bit field. The asserts check that it is below 16.</li>
+              <li><code>pp[l/2] = vi0 | (vi1 &lt;&lt; 4)</code> packs two 4-bit values into one byte: the first in the
+                low nibble, the second in the high nibble.</li>
+            </ul>
+            <h4>The real cost per weight</h4>
+            <p>A block stores 32 × 4 bits of integers plus one scale. With a 16-bit scale that is 128 + 16 = 144 bits for
+              32 weights, or 4.5 bits per weight. (With a 32-bit float scale, as <code>const float d</code> suggests
+              for this version of the code, it would be 5 bits per weight.) This is why "4-bit" models are a bit
+              larger than parameters × 0.5 bytes.</p>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
+              <p>Small blocks are the key design choice. One scale per 32 weights means a single large weight can
+                only coarsen the grid for its own 31 neighbours, not the whole matrix. This is the "granularity"
+                fix from slide 14, applied aggressively.</p>
+            </div>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>This is an early version of the Q4_0 code. Dividing by 7 only produces 15 of the 16 possible
+                4-bit codes (code 0 is never used). Later llama.cpp versions changed the details so that all 16 levels
+                are used, and added many other formats (Q4_K, Q5_K, …) with two-level scales. The principle on the
+                slide is unchanged.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="outliers">
+        <h2><span class="num">§5</span>Outliers, clipping and granularity</h2>
+        <p class="section-intro">
+          The scale is set by the largest value. If one value is huge,
+          every other value gets a coarse grid. This single problem
+          motivates most of the rest of the lecture.
+        </p>
+
+        <div class="slide" id="s13">
+          <div class="slide-frame">
+            <div class="tag">Slide 13 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-13.png"
+              alt="The Outlier Problem. Distribution: In LLMs, the distribution of weights matters. The Outlier Problem: Large, sudden outlier values in tensors (weights or activations) dominate the dynamic range. Effect: When the scaling factor (S) is set by the maximum outlier, it results in a very coarse resolution for all non-outlier values, leading to significant quantization error and performance degradation. Right: a bell-shaped distribution between alpha on the left and beta on the right, with evenly spaced red vertical lines marking the quantization levels.">
+            <div class="slide-caption">slide 13 · outliers set the scale for everyone</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The picture shows a bell-shaped distribution with evenly spaced quantization levels (red lines)
+              covering [<em>α</em>, <em>β</em>]. When the range is set by a few extreme values, the levels are
+              spread wide, and the bulk of the distribution near the centre falls between very few of them.</p>
+            <h4>A worked example</h4>
+            <p>Take <em>x</em> = [0.1, −0.2, 0.15, 0.05, 60] and quantize to INT8 with one absmax scale.
+              <em>S</em> = 60/127 ≈ 0.472. Then 0.1/0.472, −0.2/0.472, 0.15/0.472 and 0.05/0.472 all round to
+              <strong>0</strong>. Only the outlier survives. Four of the five values are destroyed, even with 8 bits.
+              If those small values are most of the signal, the layer's output is badly wrong.</p>
+            <h4>Why LLMs have outliers</h4>
+            <p>Weight matrices in trained LLMs are mostly well behaved (roughly bell-shaped around zero). The
+              trouble is mainly in <em>activations</em>: in large transformers, a few hidden dimensions carry values
+              tens of times larger than the rest, and they do so for nearly every token. Slide 16 shows this
+              appearing suddenly at around 6.7B parameters.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s14">
+          <div class="slide-frame">
+            <div class="tag">Slide 14 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-14.png"
+              alt="Simple Fixes and Granularity. Clipping: Use a smaller, more effective clipping range (alpha and beta) instead of the true min/max to create a better scale (S). Granularity Reduction: Instead of quantizing the whole model or a whole tensor with a single scale, reduce the granularity: Quantize per-tensor (one S for the whole matrix). Quantize per-row/column of the tensor (multiple S's). Right: a sharply peaked distribution with long tails from alpha to beta, many evenly spaced dark red vertical lines, and two red scissors cutting near the base of the peak.">
+            <div class="slide-caption">slide 14 · clip the range, or use more scales</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two simple fixes. <strong>Clipping</strong>: choose a range narrower than the true min and max, so
+              the grid is finer where most values are. <strong>Finer granularity</strong>: instead of one scale for a
+              whole tensor, use one per row or per column.</p>
+            <h4>Clipping: trading two kinds of error</h4>
+            <p>Clipping creates <em>clipping error</em> (values outside the range are clamped to its edge) to reduce
+              <em>rounding error</em> (everything inside gets a finer grid). In the example from slide 13, clipping
+              at ±0.25 gives <em>S</em> = 0.25/127 ≈ 0.00197, and the four small values now get distinct integers
+              (51, −102, 76, 25). But 60 is clamped to 0.25, an error of almost 60. Whether that is a good trade
+              depends on whether the clipped values matter. For weights with a long thin tail it often is; for LLM
+              activation outliers it is not, because those large values carry important information (slide 16).
+              Practical clipping chooses the range that minimises some error measure, such as mean squared error
+              or the change in output, on sample data.</p>
+            <h4>Granularity: who shares a scale</h4>
+            <ul>
+              <li><strong>Per-tensor</strong>: one <em>S</em> for the whole matrix. Cheapest, but one outlier anywhere
+                hurts everything.</li>
+              <li><strong>Per-row / per-column</strong> (per-channel): one <em>S</em> per row or column. An outlier only
+                coarsens its own row. If the row [0.1, −0.2, 0.15, 0.05] has its own scale 0.2/127, its values
+                become 64, −127, 95, 32: almost no error.</li>
+              <li><strong>Per-group</strong> (per-block): one <em>S</em> per small group of, say, 32 or 128
+                consecutive values. This is what llama.cpp (slide 12), GPTQ, AWQ and EfficientQAT use ("g128" in
+                later tables).</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>Finer granularity is not free, and the direction of the outlier matters. For <em>Y = XW</em>, a
+                scale per <em>row of X</em> (per token) and per <em>column of W</em> (per output) can be pulled out
+                of the integer matrix multiply as an outer product. A scale per <em>column of X</em> (per input
+                channel) cannot, because those columns are summed together inside the multiply. LLM activation
+                outliers sit in particular columns of <em>X</em>, which is exactly the awkward direction. §6 and §7
+                are two different answers to this.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="int8">
+        <h2><span class="num">§6</span>LLM.int8(): split off the outliers</h2>
+        <p class="section-intro">
+          Part 3 is about post-training quantization (PTQ): methods that
+          take an already-trained model and quantize it, using at most a
+          small amount of sample data, with no retraining. LLM.int8()
+          is the first: keep the few outlier dimensions in FP16 and do
+          everything else in INT8.
+        </p>
+
+        <div class="slide" id="s15">
+          <div class="slide-frame">
+            <div class="tag">Slide 15 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-15.png"
+              alt="3. Advanced Post-Training Quantization (PTQ) Techniques. Left column: LLM.int8() – Decomposing Outliers: Issue with LLMs (~6.7B parameters and up); Identifying Outliers and Splitting Matmul. SmoothQuant: Migrating quantization difficulty from activations (X) to weights (W); Channel wise scaling factor. Right column: GPTQ: Pre-requisites; Algorithm; Results. AWQ (Activation Aware Quantization): Methodology; Results.">
+            <div class="slide-caption">slide 15 · part 3 roadmap</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four PTQ methods. LLM.int8() and SmoothQuant quantize weights <em>and</em> activations to INT8 and
+              deal with activation outliers. GPTQ and AWQ quantize only the weights, usually to 4 bits or fewer.
+              The "pre-requisites" for GPTQ are OBQ and the Cholesky decomposition (slides 23–24).</p>
+            <h4>PTQ versus QAT</h4>
+            <p>PTQ does not change the training procedure. It needs, at most, a small <em>calibration set</em>
+              (a few hundred sample sequences) to measure typical activations. That makes it fast: GPTQ quantizes a
+              175B model in a few hours. The alternative, quantization-aware training, comes at the end of the deck
+              (§10).</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s16">
+          <div class="slide-frame">
+            <div class="tag">Slide 16 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-16.png"
+              alt="LLM.int8() – Decomposing Outliers. What is the issue with LLMs? Traditional vector-wise INT8 quantization fails for larger models (~6.7B parameters and up) due to the emergence of outlier features, which become systematic rather than probabilistic. How do we address this issue? Right: plot of mean zero-shot accuracy (0.3 to about 0.77) against parameters (125M, 350M, 1.3B, 2.7B, 6.7B, 13B, 30B, 66B, 175B) for three methods: LLM.int8() (blue), 8-bit baseline (orange), 16-bit baseline (green). LLM.int8() and the 16-bit baseline overlap and rise steadily from about 0.45 to about 0.77. The 8-bit baseline tracks them up to 2.7B, then drops to about 0.45 at 6.7B and about 0.32 from 13B onward. A dashed vertical line at 6.7B is labelled emergence of outlier features. Citation: Dettmers, Lewis, Belkada and Zettlemoyer (2022), LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale, NeurIPS 2022.">
+            <div class="slide-caption">slide 16 · plain INT8 collapses at 6.7B parameters</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Mean zero-shot accuracy of OPT models from 125M to 175B parameters. The FP16 baseline (green) and
+              LLM.int8() (blue) lie on top of each other and rise smoothly with size. Plain 8-bit vector-wise
+              quantization (orange) matches them up to 2.7B, then collapses at 6.7B and stays near 0.32 for every
+              larger model.</p>
+            <h4>What "systematic rather than probabilistic" means</h4>
+            <p>In small models, a large activation value shows up now and then, in random places. In models
+              from about 6.7B up, large values appear in the <em>same few hidden dimensions</em> for almost every
+              token and in most layers. They are a feature of the model, not noise. Their magnitudes can be 20× or
+              more larger than typical values (the paper uses magnitude 6 as its outlier threshold, when most
+              activations are near 1).</p>
+            <p>Plain INT8 quantization of <em>X</em> uses one scale per row (per token). Since almost every token has
+              an outlier in one of these dimensions, almost every row gets a coarse grid, and all the ordinary
+              features in that token are crushed toward zero, as in the slide 13 example. The model breaks.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>You cannot simply clip these outliers either. The paper reports that zeroing out these few outlier
+                dimensions destroys the model's performance, while removing the same number of random dimensions
+                barely matters. The outliers are rare and important at the same time.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s17">
+          <div class="slide-frame">
+            <div class="tag">Slide 17 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-17.png"
+              alt="LLM.int8() – Decomposing Outliers. LLM.int8() addresses this by decomposing the matrix multiplication (XW): 1. Identify Outliers: Values exceeding a certain threshold are classified as outliers. 2. Split Matmul: Matrix Multiplication is split into two parts: an 8-bit vector-wise quantization; a 16-bit decomposition of other values. 3. Combine Results: These results of two matrix multiplications are summed to get the final output. Right: a blue grid X and a green grid W, with the caption We quantize individual vectors, and arrows pointing to a row of X and a column of W.">
+            <div class="slide-caption">slide 17 · the three-step recipe</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Split the matrix multiplication <em>XW</em> into two parts: an INT8 part for the regular values and
+              an FP16 part for the outliers, then add the results.</p>
+            <h4>Why splitting is allowed</h4>
+            <p>Matrix multiplication sums over the shared inner dimension:
+              <em>(XW)<sub>ik</sub></em> = Σ<sub>j</sub> <em>X<sub>ij</sub>W<sub>jk</sub></em>. You can split the
+              index set of <em>j</em> into two groups, <em>O</em> (outlier dimensions) and the rest, and compute each
+              partial sum separately:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mi>X</mi><mi>W</mi><mo>=</mo>
+                <munder><mo>∑</mo><mrow><mi>j</mi><mo>∈</mo><mi>O</mi></mrow></munder>
+                <msub><mi>X</mi><mrow><mo>:</mo><mo>,</mo><mi>j</mi></mrow></msub><msub><mi>W</mi><mrow><mi>j</mi><mo>,</mo><mo>:</mo></mrow></msub>
+                <mo>+</mo>
+                <munder><mo>∑</mo><mrow><mi>j</mi><mo>∉</mo><mi>O</mi></mrow></munder>
+                <msub><mi>X</mi><mrow><mo>:</mo><mo>,</mo><mi>j</mi></mrow></msub><msub><mi>W</mi><mrow><mi>j</mi><mo>,</mo><mo>:</mo></mrow></msub>
+              </math>
+            </div>
+            <p>The first sum uses the outlier columns of <em>X</em> and the matching rows of <em>W</em>, computed in
+              FP16. The second uses everything else, and with the outliers gone the remaining values have a small
+              range and quantize well to INT8. The result is the same product, up to rounding in the INT8 part.</p>
+            <h4>"We quantize individual vectors"</h4>
+            <p>The INT8 part uses <em>vector-wise</em> scales: one per row of <em>X</em> and one per column of
+              <em>W</em>. Each output element <em>(XW)<sub>ik</sub></em> is the dot product of row <em>i</em> of
+              <em>X</em> and column <em>k</em> of <em>W</em>, so both scales can be applied after the integer dot
+              product. That is the direction that works with integer matmul (see the gotcha on slide 14).</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s18">
+          <div class="slide-frame">
+            <div class="tag">Slide 18 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-18.png"
+              alt="LLM.int8() – Decomposing Outliers. Figure from the paper. On the left, input X (FP16) with some yellow outlier columns and W (FP16). Top dashed box, 8-bit Vector-wise Quantization: (1) Find vector-wise constants C_w and C_x: row-wise absmax of X and column-wise absmax of W. (2) Quantize: X_F16 * (127/C_x) = X_I8; W_F16 * (127/C_w) = W_I8. (3) Int8 Matmul: X_I8 W_I8 = Out_I32. (4) Dequantize: Out_I32 * (C_x outer product C_w) / (127*127) = Out_F16. Bottom dashed box, 16-bit Decomposition: (1) Decompose outliers: the yellow outlier columns of X (values like 45, -13, 12, 63, 37, 63) and the matching rows of W. (2) FP16 Matmul: X_F16 W_F16 = Out_F16. The two outputs are added to give Out_F16. Legend: blue regular values, yellow outliers. Citation: Dettmers et al. 2022.">
+            <div class="slide-caption">slide 18 · the full LLM.int8() pipeline</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The paper's diagram. Yellow cells are outliers; they sit in whole columns of <em>X</em>. Those columns,
+              and the matching rows of <em>W</em>, go down to the FP16 path. Everything else goes through the INT8
+              path.</p>
+            <h4>The INT8 path, step by step</h4>
+            <ol>
+              <li><strong>Constants.</strong> <em>C<sub>x</sub></em> is the absmax of each row of <em>X</em>;
+                <em>C<sub>w</sub></em> is the absmax of each column of <em>W</em>.</li>
+              <li><strong>Quantize.</strong> Multiply each row of <em>X</em> by 127/<em>C<sub>x</sub></em> and each
+                column of <em>W</em> by 127/<em>C<sub>w</sub></em>, then round. This is slide 11's formula with
+                <em>S</em> = <em>C</em>/127, written as multiplication by 1/<em>S</em>.</li>
+              <li><strong>Integer matmul.</strong> INT8 × INT8 products are summed into 32-bit integers
+                (<em>Out<sub>I32</sub></em>), so the accumulation does not overflow.</li>
+              <li><strong>Dequantize.</strong> Output element (<em>i</em>, <em>k</em>) was computed from row <em>i</em>
+                scaled by 127/<em>C<sub>x,i</sub></em> and column <em>k</em> scaled by 127/<em>C<sub>w,k</sub></em>.
+                Undo both: multiply by <em>C<sub>x,i</sub>C<sub>w,k</sub></em>/(127·127). The outer product
+                <em>C<sub>x</sub></em> ⊗ <em>C<sub>w</sub></em> does this for every element at once.</li>
+            </ol>
+            <h4>How much is in FP16?</h4>
+            <p>The paper reports that only a small fraction of feature dimensions are outliers (on the order of 0.1%
+              of values), so more than 99.9% of the multiply-adds are in INT8. Weights are stored in INT8, which halves
+              memory compared with FP16, and the zero-shot accuracy matches FP16 at every size on slide 16.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>LLM.int8() is mainly a <em>memory</em> method. Finding outliers at run time, splitting the matmul and
+                running two kernels adds overhead, and the original implementation was not faster than plain FP16
+                matmul for many model sizes. SmoothQuant (next) was designed to get a real speed-up by keeping
+                everything in INT8.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="smoothquant">
+        <h2><span class="num">§7</span>SmoothQuant: move the difficulty into the weights</h2>
+        <p class="section-intro">
+          Activations are hard to quantize, weights are easy. Rescale
+          each input channel so some of the activation's range moves
+          into the weight, and both become moderately easy.
+        </p>
+
+        <div class="slide" id="s19">
+          <div class="slide-frame">
+            <div class="tag">Slide 19 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-19.png"
+              alt="Smooth Quant. In many layers, activations (X) have outliers (making them hard to quantize), but weights (W) are smooth (making them easy to quantize). Figure (a) Original: |X| plotted over channels on a scale up to 10 with one tall outlier spike and annotation low effective bits for the small values, labelled hard to quantize; |W| on a scale up to 0.1, flat, labelled very easy to quantize. Below: |X hat| with the spike reduced to 1, labelled smoothed, easy to quantize; |W hat| now with a small bump, labelled easy to quantize; an arrow between them labelled migrate difficulty.">
+            <div class="slide-caption">slide 19 · activations are spiky, weights are flat</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Top row, original model: |<em>X</em>| has one channel spiking to about 10 while the rest are small,
+              so most channels get very few effective quantization levels. |<em>W</em>| is flat and small,
+              easy to quantize. Bottom row, after smoothing: the activation spike is shrunk to about 1, and the
+              weight row for that channel grows a small bump. Both are now easy.</p>
+            <h4>The idea in one sentence</h4>
+            <p>Quantization error depends on the <em>range</em> of each tensor. If you can transfer some range from
+              the tensor that has too much (<em>X</em>) to the one that has room to spare (<em>W</em>) without
+              changing the product <em>XW</em>, you can quantize both to INT8 with per-tensor or per-token scales and
+              never need LLM.int8()'s FP16 side path.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s20">
+          <div class="slide-frame">
+            <div class="tag">Slide 20 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-20.png"
+              alt="Smooth Quant. Migrates the quantization difficulty from the activation to the weights by introducing a channel-wise scaling factor (s_j). Y = XW ≅ (X diag(s)^−1)(diag(s) W). It scales the activation down (making X easier to quantize) and scales the weights up (making W slightly harder, but still manageable). The scaling factor s_j is determined by: s_j = max(|X_j|)^alpha / max(|W_j|)^(1−alpha). All compute-intensive operations (linear layers, Batched Matrix Multiplications) use INT8 arithmetic for efficiency.">
+            <div class="slide-caption">slide 20 · the smoothing transform</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <mi mathvariant="bold">Y</mi><mo>=</mo><mi mathvariant="bold">X</mi><mi mathvariant="bold">W</mi><mo>=</mo>
+                    <mo>(</mo><mi mathvariant="bold">X</mi><mspace width="0.2em"/><mtext>diag</mtext><msup><mrow><mo>(</mo><mi mathvariant="bold">s</mi><mo>)</mo></mrow><mrow><mo>−</mo><mn>1</mn></mrow></msup><mo>)</mo>
+                    <mo>(</mo><mtext>diag</mtext><mo>(</mo><mi mathvariant="bold">s</mi><mo>)</mo><mi mathvariant="bold">W</mi><mo>)</mo>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi>s</mi><mi>j</mi></msub><mo>=</mo>
+                    <mfrac>
+                      <mrow><mo>max</mo><msup><mrow><mo>(</mo><mo>|</mo><msub><mi mathvariant="bold">X</mi><mi>j</mi></msub><mo>|</mo><mo>)</mo></mrow><mi>α</mi></msup></mrow>
+                      <mrow><mo>max</mo><msup><mrow><mo>(</mo><mo>|</mo><msub><mi mathvariant="bold">W</mi><mi>j</mi></msub><mo>|</mo><mo>)</mo></mrow><mrow><mn>1</mn><mo>−</mo><mi>α</mi></mrow></msup></mrow>
+                    </mfrac>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <h4>Reading the equations</h4>
+            <ul>
+              <li><em>j</em> indexes input channels: column <em>j</em> of <em>X</em> and row <em>j</em> of
+                <em>W</em>, the two things that get multiplied together inside <em>XW</em>.</li>
+              <li>diag(<strong>s</strong>)<sup>−1</sup> divides column <em>j</em> of <em>X</em> by
+                <em>s<sub>j</sub></em>; diag(<strong>s</strong>) multiplies row <em>j</em> of <em>W</em> by
+                <em>s<sub>j</sub></em>. The two cancel, so the product is unchanged before quantization. (The
+                slide writes ≅, but this step is exact; the approximation only enters when you then quantize.)</li>
+              <li>max(|<em>X<sub>j</sub></em>|) is measured on calibration data. <em>α</em> is the <em>migration
+                strength</em>: <em>α</em> = 0 moves nothing, <em>α</em> = 1 moves all the range into the weights,
+                and around 0.5 splits it evenly.</li>
+            </ul>
+            <h4>A worked example</h4>
+            <p>Channel <em>j</em> has max |<em>X<sub>j</sub></em>| = 40 (an outlier channel) and max
+              |<em>W<sub>j</sub></em>| = 0.4. With <em>α</em> = 0.5,
+              <em>s<sub>j</sub></em> = √40 / √0.4 = √100 = 10. After smoothing, the activation channel's max is
+              40/10 = 4 and the weight row's max is 0.4 × 10 = 4. With <em>α</em> = 0.5 the two maxima always end up
+              equal, at √(40 × 0.4). A normal channel with max |<em>X</em>| = 1 and max |<em>W</em>| = 0.4 gets
+              <em>s</em> ≈ 1.58: it barely changes.</p>
+            <h4>Why it costs nothing at run time</h4>
+            <p>The division of <em>X</em> by <strong>s</strong> does not need a separate step. <em>X</em> is the
+              output of a LayerNorm (or a previous linear layer), so you fold 1/<em>s<sub>j</sub></em> into that
+              layer's per-channel gain once, offline. The multiplication by <strong>s</strong> is folded into
+              <em>W</em> before quantizing it. At inference the model just has different weights.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation</div>
+              <p>The <em>α</em> here (migration strength, a number between 0 and 1) is unrelated to the <em>α</em>
+                on slides 11–14 (the lower end of the clipping range). Same letter, different meaning.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s21">
+          <div class="slide-frame">
+            <div class="tag">Slide 21 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-21.png"
+              alt="Smooth Quant. Diagram of a transformer block with a legend: FP16 orange, INT8 green. Attention half: LayerNorm (FP16), then Q, K, V projections (INT8), BMM (INT8), Softmax (FP16), BMM (INT8), Projection (INT8), then a residual add (FP16). FFN half: LayerNorm (FP16), FC1 (INT8), ReLU (INT8), FC2 (INT8), then a residual add (FP16). Orange lines carry the FP16 residual stream around each half.">
+            <div class="slide-caption">slide 21 · which operations run in INT8</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Where SmoothQuant uses INT8 (green) and FP16 (orange) in a transformer block. Every operation with a
+              big matrix multiply is green: the Q, K, V projections, both batched matmuls in attention
+              (<em>QK</em><sup>⊤</sup> and attention × <em>V</em>), the output projection, and both FFN layers.
+              LayerNorm, Softmax and the residual additions stay in FP16.</p>
+            <h4>Why this split</h4>
+            <p>The matmuls are where almost all the compute and weight memory are, so that is where INT8 pays. The
+              orange operations are element-wise or row-wise, cheap, and numerically delicate: Softmax
+              exponentiates its inputs and LayerNorm divides by a standard deviation, so small errors there can be
+              amplified. The residual stream is also kept in FP16 because it accumulates the output of every layer.
+              Compare LLM.int8(), where every matmul also has an FP16 side path. Here there is none.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s22">
+          <div class="slide-frame">
+            <div class="tag">Slide 22 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-22.png"
+              alt="Smooth Quant - Result. Top: four 3D surface plots of absolute value over token and channel. Activation (Original), hard to quantize: tall red spikes in a few channels. Activation (SmoothQuant), easy to quantize: flat blue surface. Weight (Original), very easy to quantize: flat. Weight (SmoothQuant), harder but still easy to quantize: almost flat with small ridges. An arrow across the top reads Migrate the quantization difficulty. Bottom: line chart of accuracy (30% to 75%) against model size (1.3B, 2.7B, 6.7B, 13B, 30B, 66B, 175B) for FP16 / LLM.int8(), W8A8, ZeroQuant and SmoothQuant-O3. SmoothQuant-O3 lies on the FP16 / LLM.int8() curve, rising to about 71% at 175B. W8A8 and ZeroQuant follow it up to 2.7B, fall to about 40% at 6.7B and stay near 33% for larger models.">
+            <div class="slide-caption">slide 22 · smoothing works, and keeps working at 175B</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Top: real activation and weight magnitudes from one layer, before and after smoothing. The tall
+              activation spikes in a few channels are gone; the weights pick up small ridges but stay low.
+              Bottom: accuracy across OPT model sizes. Naive W8A8 and ZeroQuant (another INT8 method) collapse from
+              6.7B up, the same cliff as slide 16. SmoothQuant-O3 matches FP16 and LLM.int8() all the way to
+              175B.</p>
+            <h4>What "O3" means</h4>
+            <p>The paper defines several efficiency levels, O1 to O3, that use progressively coarser and cheaper
+              activation scales. O3, the most aggressive, uses per-tensor scales computed offline from calibration
+              data (static quantization). That it still matches FP16 shows how well smoothing removes the outlier
+              problem.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>LLM.int8() and SmoothQuant both reach FP16 accuracy at 175B with 8-bit weights. The difference is
+                cost: LLM.int8() handles outliers at run time with a mixed-precision split, while SmoothQuant removes
+                them offline with a change of variables, so inference is pure INT8 matmul and actually faster.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="gptq">
+        <h2><span class="num">§8</span>OBQ and GPTQ: fix rounding errors as you go</h2>
+        <p class="section-intro">
+          Rounding each weight to its nearest grid point ("round to
+          nearest", RTN) treats weights independently. But a layer's
+          output depends on weights together. If you round one weight
+          up, you can adjust the others to compensate. OBQ does this
+          optimally and slowly; GPTQ does it almost as well and fast
+          enough for 175B models.
+        </p>
+
+        <div class="slide" id="s23">
+          <div class="slide-frame">
+            <div class="tag">Slide 23 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-23.png"
+              alt="Optimal Brain Quantization (OBQ). Quantizing oneweight at a time; updating all not-yet-quantized weights; compensate for the error incurred by quantizing a single weight. Equations: w_q = argmin over w_q of (quant(w_q) − w_q)^2 / [H_F^−1]_qq; delta_F = − (w_q − quant(w_q)) / [H_F^−1]_qq · (H_F^−1)_{:,q}. Efficiency: by removing q-th row and column (gaussian elimination): H^−1_−q = ( H^−1 − 1/[H^−1]_qq · H^−1_{:,q} H^−1_{q,:} )_−p.">
+            <div class="slide-caption">slide 23 · quantize one weight, correct the rest</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>OBQ quantizes a row of weights one weight at a time. After each one, it updates all the
+              not-yet-quantized weights to cancel the error just introduced.</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <msub><mi>w</mi><mi>q</mi></msub><mo>=</mo>
+                    <munder><mrow><mo>arg</mo><mo>min</mo></mrow><msub><mi>w</mi><mi>q</mi></msub></munder>
+                    <mfrac>
+                      <msup><mrow><mo>(</mo><mtext>quant</mtext><mo>(</mo><msub><mi>w</mi><mi>q</mi></msub><mo>)</mo><mo>−</mo><msub><mi>w</mi><mi>q</mi></msub><mo>)</mo></mrow><mn>2</mn></msup>
+                      <msub><mrow><mo>[</mo><msubsup><mi mathvariant="bold">H</mi><mi>F</mi><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><mo>]</mo></mrow><mrow><mi>q</mi><mi>q</mi></mrow></msub>
+                    </mfrac>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msub><mi mathvariant="bold-italic">δ</mi><mi>F</mi></msub><mo>=</mo><mo>−</mo>
+                    <mfrac>
+                      <mrow><msub><mi>w</mi><mi>q</mi></msub><mo>−</mo><mtext>quant</mtext><mo>(</mo><msub><mi>w</mi><mi>q</mi></msub><mo>)</mo></mrow>
+                      <msub><mrow><mo>[</mo><msubsup><mi mathvariant="bold">H</mi><mi>F</mi><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><mo>]</mo></mrow><mrow><mi>q</mi><mi>q</mi></mrow></msub>
+                    </mfrac>
+                    <mo>·</mo>
+                    <msub><mrow><mo>(</mo><msubsup><mi mathvariant="bold">H</mi><mi>F</mi><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><mo>)</mo></mrow><mrow><mo>:</mo><mo>,</mo><mi>q</mi></mrow></msub>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <msubsup><mi mathvariant="bold">H</mi><mrow><mo>−</mo><mi>q</mi></mrow><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><mo>=</mo>
+                    <msub><mrow><mo>(</mo><msup><mi mathvariant="bold">H</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup><mo>−</mo>
+                    <mfrac><mn>1</mn><msub><mrow><mo>[</mo><msup><mi mathvariant="bold">H</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup><mo>]</mo></mrow><mrow><mi>q</mi><mi>q</mi></mrow></msub></mfrac>
+                    <msubsup><mi mathvariant="bold">H</mi><mrow><mo>:</mo><mo>,</mo><mi>q</mi></mrow><mrow><mo>−</mo><mn>1</mn></mrow></msubsup>
+                    <msubsup><mi mathvariant="bold">H</mi><mrow><mi>q</mi><mo>,</mo><mo>:</mo></mrow><mrow><mo>−</mo><mn>1</mn></mrow></msubsup>
+                    <mo>)</mo></mrow><mrow><mo>−</mo><mi>p</mi></mrow></msub>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <h4>The setup</h4>
+            <p>OBQ works one linear layer at a time. For a row <strong>w</strong> of the weight matrix, and inputs
+              <em>X</em> from calibration data, the error caused by changing the weights by
+              <strong>Δ</strong> is ‖<strong>Δ</strong><em>X</em>‖², which equals
+              <strong>Δ</strong><em>XX</em><sup>⊤</sup><strong>Δ</strong><sup>⊤</sup>. So the matrix
+              <strong>H</strong> = 2<em>XX</em><sup>⊤</sup> (the Hessian of this squared error) tells you how much
+              each weight change, and each pair of changes, costs. Its diagonal says how sensitive each weight is on
+              its own; its off-diagonal entries say which inputs are correlated.</p>
+            <ul>
+              <li><em>F</em> is the set of weights still in full precision. <strong>H</strong><sub>F</sub> is
+                <strong>H</strong> restricted to them.</li>
+              <li><strong>Line 1</strong> chooses <em>which</em> weight to quantize next: the one whose rounding
+                error, weighted by 1/[<strong>H</strong><sub>F</sub><sup>−1</sup>]<sub>qq</sub>, costs least. That
+                weighted error is proportional to how much the output error grows after the best possible
+                compensation.</li>
+              <li><strong>Line 2</strong> is the compensation <strong>δ</strong><sub>F</sub>: how to change all the
+                remaining weights to absorb weight <em>q</em>'s rounding error. Its <em>q</em>-th entry moves
+                <em>w<sub>q</sub></em> exactly onto quant(<em>w<sub>q</sub></em>); the other entries move in
+                proportion to column <em>q</em> of <strong>H</strong><sub>F</sub><sup>−1</sup>.</li>
+              <li><strong>Line 3</strong>: after quantizing <em>q</em>, it leaves <em>F</em>, so you need the inverse
+                Hessian without row and column <em>q</em>. Re-inverting would cost <em>O</em>(<em>d</em>³). This
+                formula, one step of Gaussian elimination, gets it in <em>O</em>(<em>d</em>²).</li>
+            </ul>
+            <h4>A two-weight example</h4>
+            <p>Let <strong>H</strong> = [[2, 1], [1, 2]] (two positively correlated inputs), so
+              <strong>H</strong><sup>−1</sup> = (1/3)[[2, −1], [−1, 2]]. The weights are
+              <strong>w</strong> = [0.6, 0.24] and the grid has step 0.5.</p>
+            <ul>
+              <li><strong>Round to nearest:</strong> [0.5, 0]. The change is <strong>Δ</strong> = [−0.1, −0.24], and
+                the cost <strong>Δ</strong><strong>H</strong><strong>Δ</strong><sup>⊤</sup> = 0.02 + 0.048 + 0.115 =
+                0.183.</li>
+              <li><strong>OBQ:</strong> quantize <em>w</em><sub>1</sub> = 0.6 → 0.5, error 0.1. Then
+                <strong>δ</strong> = −(0.1 / (2/3)) · [2/3, −1/3] = [−0.1, +0.05]. So <em>w</em><sub>1</sub> becomes
+                0.5 and <em>w</em><sub>2</sub> becomes 0.29. Now round <em>w</em><sub>2</sub>: 0.29 → 0.5. Final
+                [0.5, 0.5], <strong>Δ</strong> = [−0.1, 0.26], cost 0.02 − 0.052 + 0.135 = 0.103.</li>
+            </ul>
+            <p>Because the two inputs are positively correlated, lowering <em>w</em><sub>1</sub> can be partly made
+              up for by raising <em>w</em><sub>2</sub>. The compensation pushed <em>w</em><sub>2</sub> over the
+              rounding boundary, and the output error dropped by about 44% compared with RTN.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>Two slips on the slide. "oneweight" is missing a space. More importantly, the removal formula ends
+                with the subscript <em>−p</em>, but it removes row and column <em>q</em>; it should read
+                <em>−q</em>, matching the left-hand side. (The same typo appears in the GPTQ paper, which is likely
+                where the slide copied it from.)</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s24">
+          <div class="slide-frame">
+            <div class="tag">Slide 24 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-24.png"
+              alt="Cholesky Decomposition. A = 3x3 symmetric matrix with entries a11, a21, a31 / a21, a22, a32 / a31, a32, a33 equals a lower triangular matrix L with l11, 0, 0 / l21, l22, 0 / l31, l32, l33 times its transpose, written ≡ L L^T. Multiplied out: l11^2, l21 l11, l31 l11 / l21 l11, l21^2 + l22^2, l31 l21 + l32 l22 / l31 l11, l31 l21 + l32 l22, l31^2 + l32^2 + l33^2.">
+            <div class="slide-caption">slide 24 · Cholesky decomposition</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>A symmetric positive-definite matrix <em>A</em> can be written as <em>A</em> =
+              <em>LL</em><sup>⊤</sup>, where <em>L</em> is lower triangular. The slide multiplies out the 3 × 3
+              case.</p>
+            <h4>How to compute it</h4>
+            <p>Read the multiplied-out matrix column by column and solve for one <em>l</em> at a time:</p>
+            <ul>
+              <li><em>l</em><sub>11</sub> = √<em>a</em><sub>11</sub>; then <em>l</em><sub>21</sub> =
+                <em>a</em><sub>21</sub>/<em>l</em><sub>11</sub> and <em>l</em><sub>31</sub> =
+                <em>a</em><sub>31</sub>/<em>l</em><sub>11</sub>.</li>
+              <li><em>l</em><sub>22</sub> = √(<em>a</em><sub>22</sub> − <em>l</em><sub>21</sub>²); then
+                <em>l</em><sub>32</sub> = (<em>a</em><sub>32</sub> − <em>l</em><sub>31</sub><em>l</em><sub>21</sub>)
+                / <em>l</em><sub>22</sub>.</li>
+              <li><em>l</em><sub>33</sub> = √(<em>a</em><sub>33</sub> − <em>l</em><sub>31</sub>² −
+                <em>l</em><sub>32</sub>²).</li>
+            </ul>
+            <p>Small example: <em>A</em> = [[4, 2], [2, 5]] gives <em>l</em><sub>11</sub> = 2,
+              <em>l</em><sub>21</sub> = 2/2 = 1, <em>l</em><sub>22</sub> = √(5 − 1) = 2. Check: <em>LL</em><sup>⊤</sup>
+              = [[4, 2], [2, 1 + 4]] = <em>A</em>.</p>
+            <h4>Why it is a GPTQ prerequisite</h4>
+            <p>Slide 23's removal formula is applied over and over: remove weight 1, then 2, then 3, and so on.
+              Each step is a step of Gaussian elimination on <strong>H</strong><sup>−1</sup>, and doing many of
+              them in floating point lets rounding errors build up until the matrix stops being positive definite,
+              which breaks the algorithm on large models. The GPTQ paper observes that when weights are removed in a
+              fixed order, the rows you need from all these successive matrices are, up to scaling, just the rows of
+              the Cholesky factor of <strong>H</strong><sup>−1</sup>. So you can compute that factor once, with a
+              numerically stable routine, and read the rows off it instead of updating the matrix again and again.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s25">
+          <div class="slide-frame">
+            <div class="tag">Slide 25 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-25.png"
+              alt="GPTQ (General-purpose Post-Training Quantization). The objective here is to find a quantized weight matrix that minimizes the squared error with respect to the original matrix multiplication output: argmin over W hat of ||W X − W hat X||_2^2. It is based on Optimal Brain Quantization (OBQ), which sequentially quantizes one weight at a time and updates the remaining unquantized weights to compensate for the error. GPTQ significantly improves efficiency by showing that an Arbitrary Order of quantization performs nearly as well as an optimal one and using Lazy Batch-Updates for weight compensation.">
+            <div class="slide-caption">slide 25 · GPTQ's objective and its two speed-ups</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <munder><mrow><mo>arg</mo><mo>min</mo></mrow><mover accent="true"><mi mathvariant="bold">W</mi><mo>^</mo></mover></munder>
+                <msubsup><mrow><mo>‖</mo><mi mathvariant="bold">W</mi><mi mathvariant="bold">X</mi><mo>−</mo>
+                <mover accent="true"><mi mathvariant="bold">W</mi><mo>^</mo></mover><mi mathvariant="bold">X</mi><mo>‖</mo></mrow><mn>2</mn><mn>2</mn></msubsup>
+              </math>
+            </div>
+            <p>Find the quantized matrix <strong>Ŵ</strong> whose <em>outputs</em> on calibration inputs
+              <strong>X</strong> are closest to the original layer's outputs. (Here <strong>W</strong> multiplies
+              from the left, so rows of <strong>W</strong> are output units and <strong>X</strong> has one column
+              per calibration token.)</p>
+            <h4>The two speed-ups</h4>
+            <ul>
+              <li><strong>Arbitrary order.</strong> OBQ picks the cheapest weight next, separately for each row, so
+                every row has its own order and its own shrinking <strong>H</strong><sub>F</sub><sup>−1</sup>. GPTQ
+                found that for large layers, quantizing columns simply left to right is almost as good. Then every
+                row uses the same order. Since <strong>H</strong> = 2<em>XX</em><sup>⊤</sup> depends only on the
+                inputs, it is shared by all rows, so the whole column can be quantized and compensated at once with
+                one shared <strong>H</strong><sup>−1</sup>. Cost drops from <em>O</em>(<em>d</em><sub>row</sub> ·
+                <em>d</em><sub>col</sub>³) to <em>O</em>(max(<em>d</em><sub>row</sub> · <em>d</em><sub>col</sub>²,
+                <em>d</em><sub>col</sub>³)).</li>
+              <li><strong>Lazy batch updates.</strong> Updating the whole remaining matrix after every column does
+                very little arithmetic per memory access, so the GPU waits on memory. GPTQ instead processes a block
+                of <em>B</em> columns (128 by default), updates only within the block as it goes, and applies the
+                accumulated update to the rest of the matrix once per block. The maths is the same; the memory
+                traffic is far lower.</li>
+            </ul>
+            <p>The third ingredient, the Cholesky trick from slide 24, is what keeps this stable at 175B scale.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s26">
+          <div class="slide-frame">
+            <div class="tag">Slide 26 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-26.png"
+              alt="GPTQ - Algorithm. Algorithm 1: Quantize W given inverse Hessian H^−1 = (2 X X^T + lambda I)^−1 and blocksize B. Q ← 0 of size d_row × d_col // quantized output. E ← 0 of size d_row × B // block quantization errors. H^−1 ← Cholesky(H^−1)^T // Hessian inverse information. for i = 0, B, 2B, ... do: for j = i, ..., i + B − 1 do: Q_{:,j} ← quant(W_{:,j}) // quantize column; E_{:,j−i} ← (W_{:,j} − Q_{:,j}) / [H^−1]_jj // quantization error; W_{:,j:(i+B)} ← W_{:,j:(i+B)} − E_{:,j−i} · H^−1_{j,j:(i+B)} // update weights in block. end for. W_{:,(i+B):} ← W_{:,(i+B):} − E · H^−1_{i:(i+B),(i+B):} // update all remaining weights. end for.">
+            <div class="slide-caption">slide 26 · the GPTQ algorithm</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Algorithm 1 from the GPTQ paper. It combines all three ideas: fixed column order, Cholesky rows, and
+              block-wise lazy updates.</p>
+            <h4>Line by line</h4>
+            <ul>
+              <li><strong>Input.</strong> <strong>H</strong><sup>−1</sup> = (2<em>XX</em><sup>⊤</sup> +
+                <em>λI</em>)<sup>−1</sup>. The <em>λI</em> term is <em>dampening</em>: a small value added to the
+                diagonal (the paper uses a small fraction of the mean diagonal entry) so the matrix can be inverted
+                even when some inputs are always zero or perfectly correlated.</li>
+              <li><strong>Cholesky.</strong> Replace <strong>H</strong><sup>−1</sup> by its upper-triangular Cholesky
+                factor. From here on, "<strong>H</strong><sup>−1</sup>" in the algorithm means this factor.</li>
+              <li><strong>Outer loop</strong> over blocks of <em>B</em> columns. <strong>Inner loop</strong> over the
+                columns <em>j</em> of the block:
+                <ul>
+                  <li>quantize column <em>j</em> for all rows at once (RTN onto the grid);</li>
+                  <li>compute the scaled error <strong>E</strong>, which is slide 23's
+                    (<em>w<sub>q</sub></em> − quant(<em>w<sub>q</sub></em>)) / [<strong>H</strong><sup>−1</sup>]<sub>qq</sub>
+                    for every row in parallel;</li>
+                  <li>update the remaining columns <em>inside the block</em> using row <em>j</em> of the Cholesky
+                    factor. This is slide 23's <strong>δ</strong><sub>F</sub>.</li>
+                </ul></li>
+              <li><strong>After the block,</strong> apply all <em>B</em> columns' compensations to the rest of the
+                matrix in one matrix multiply (<strong>E</strong> times a block of the Cholesky factor). This is the
+                lazy batch update, and it is where most of the arithmetic happens, in a GPU-friendly form.</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation</div>
+              <p>The algorithm overwrites <strong>H</strong><sup>−1</sup> with its Cholesky factor and keeps the same
+                name, so [<strong>H</strong><sup>−1</sup>]<sub>jj</sub> in the loop is a diagonal entry of the
+                factor, not of the inverse Hessian itself. The column index also changes from <em>q</em> (slide 23)
+                to <em>j</em>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s27">
+          <div class="slide-frame">
+            <div class="tag">Slide 27 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-27.png"
+              alt="GPTQ - Results. Table 1, comparison with post-training methods for vision models, top-1 accuracy. ResNet18 (69.76% full precision) at 4 bit / 3 bit: AdaRound 69.34 / 68.37, AdaQuant 68.12 / 59.21, BRECQ 69.37 / 68.47, OBQ 69.56 / 68.69, GPTQ 69.37 / 67.88. ResNet50 (76.13%) at 4 bit / 3 bit: AdaRound 75.84 / 75.14, AdaQuant 74.68 / 64.98, BRECQ 75.88 / 75.32, OBQ 75.72 / 75.24, GPTQ 75.71 / 74.87. Table 2, GPTQ runtime for full quantization: OPT 13B 20.9m, 30B 44.9m, 66B 1.6h, 175B 4.2h; BLOOM 1.7B 2.9m, 3B 5.2m, 7.1B 10.0m, 176B 3.8h. Table 3, OPT perplexity on WikiText2 for 125M, 350M, 1.3B, 2.7B, 6.7B, 13B, 30B, 66B, 175B: full 16-bit 27.65, 22.00, 14.63, 12.47, 10.86, 10.13, 9.56, 9.34, 8.34; RTN 4-bit 37.28, 25.94, 48.17, 16.92, 12.10, 11.32, 10.98, 110, 10.54; GPTQ 4-bit 31.12, 24.24, 15.47, 12.87, 11.39, 10.31, 9.63, 9.55, 8.37; RTN 3-bit 1.3e3, 64.57, 1.3e4, 1.6e4, 5.8e3, 3.4e3, 1.6e3, 6.1e3, 7.3e3; GPTQ 3-bit 53.85, 33.79, 20.97, 16.88, 14.86, 11.61, 10.27, 14.16, 8.68. Table 4, BLOOM perplexity on WikiText2 for 560M, 1.1B, 1.7B, 3B, 7.1B, 176B: full 22.42, 17.69, 15.39, 13.48, 11.37, 8.11; RTN 4-bit 25.90, 22.00, 16.97, 14.76, 12.10, 8.37; GPTQ 4-bit 24.03, 19.05, 16.48, 14.20, 11.73, 8.21; RTN 3-bit 57.08, 50.19, 63.59, 39.36, 17.38, 571; GPTQ 3-bit 32.31, 25.08, 21.11, 17.40, 13.47, 8.64.">
+            <div class="slide-caption">slide 27 · GPTQ results: accurate, and fast to run</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Four tables from the GPTQ paper. Table 1 compares against earlier PTQ methods on small vision models.
+              Table 2 is how long GPTQ takes. Tables 3 and 4 give WikiText2 perplexity (lower is better) for OPT and
+              BLOOM models at 16, 4 and 3 bits, comparing GPTQ with round-to-nearest.</p>
+            <h4>How to read it</h4>
+            <ul>
+              <li><strong>Table 1.</strong> On ResNets, GPTQ is about as accurate as OBQ and the other careful
+                methods (within about one point). The point is not that it wins here, but that it matches them while
+                being fast enough to run on models a thousand times larger.</li>
+              <li><strong>Table 2.</strong> The whole of OPT-175B is quantized in 4.2 hours and BLOOM-176B in 3.8
+                hours, on a single GPU according to the paper. OBQ-style methods could not have been run at this
+                scale at all.</li>
+              <li><strong>4-bit.</strong> At 175B, RTN raises perplexity from 8.34 to 10.54; GPTQ gives 8.37, almost
+                no loss. For BLOOM-176B: 8.11 full, 8.37 RTN, 8.21 GPTQ.</li>
+              <li><strong>3-bit.</strong> RTN falls apart completely (perplexity in the thousands for most OPT sizes).
+                GPTQ stays usable, and at 175B it gives 8.68, still close to full precision.</li>
+              <li><strong>Small models suffer more.</strong> OPT-125M at 4 bits goes from 27.65 to 31.12 even with
+                GPTQ. Bigger models have more redundancy and tolerate quantization better.</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>Some RTN entries are erratic, such as OPT-66B at 4 bits (110) or OPT-1.3B (48.17). They are not
+                misprints in the slide; individual models can have unusually bad outliers that RTN cannot handle.
+                Also note that these results use per-row scales; using small groups (for example g128) improves
+                both RTN and GPTQ.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="awq">
+        <h2><span class="num">§9</span>AWQ: protect the weights that meet big activations</h2>
+        <p class="section-intro">
+          AWQ is another weight-only method. Its observation: a weight's
+          importance depends on the size of the activation it
+          multiplies, not on its own size. It protects the important
+          weights by scaling them up before quantizing.
+        </p>
+
+        <div class="slide" id="s28">
+          <div class="slide-frame">
+            <div class="tag">Slide 28 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-28.png"
+              alt="Activation Aware Quantization (AWQ). The quantization error in y = Q(w)x is proportional to the input activation x. Therefore, weights that interact with. Therefore, weights interact with large-magnitude activations are more salient and should be protected. It is a weight-only PTQ method that determines the importance of weights not by their own magnitude, but by their corresponding activation magnitude. Weights are scaled based on the average magnitude of activations to preserve the most important weights (e.g., keeping the top 1% salient weights in FP16), significantly reducing perplexity.">
+            <div class="slide-caption">slide 28 · salience comes from the activations</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The error from quantizing <em>w</em> in <em>y</em> = <em>Q</em>(<em>w</em>)<em>x</em> is multiplied
+              by <em>x</em>. So the weights that multiply large activations matter most ("salient" weights), and
+              should be protected. AWQ ranks weights by their activation magnitude, measured on calibration data,
+              not by their own magnitude.</p>
+            <h4>Why the activation decides</h4>
+            <p>The output error is (<em>Q</em>(<em>w</em>) − <em>w</em>) · <em>x</em>. The rounding error
+              <em>Q</em>(<em>w</em>) − <em>w</em> is about the same size for every weight in a group, up to half a
+              grid step. So a weight that sees <em>x</em> ≈ 20 contributes 20 times as much output error as one that
+              sees <em>x</em> ≈ 1, whatever the weight's own value. This ties back to the outlier channels in §6:
+              the weights in those input channels are the salient ones.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The first bullet is cut off mid-sentence ("weights that interact with") and the second repeats it.
+                Read them as one sentence: weights that interact with large-magnitude activations are more salient.
+                The last bullet also merges two different things. Keeping the top 1% of salient weights in FP16 is
+                the paper's <em>motivating experiment</em> (panel b on the next slide). AWQ itself does not do that,
+                because mixed precision is slow on hardware. It <em>scales</em> the salient channels instead (panel
+                c).</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s29">
+          <div class="slide-frame">
+            <div class="tag">Slide 29 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-29.png"
+              alt="Activation Aware Quantization (AWQ). y = w x, y = Q(w) x. Equation 1: Q(w) = Delta · Round(w / Delta), Delta = max(|w|) / 2^(N−1). Equation 2: Q(w · s) · (x / s) = Delta' · Round(w s / Delta') · x · 1/s. Err(Q(w) x) = Delta · RoundErr(w / Delta) · x. Equation 3: Err(Q(w · s)(x / s)) = Delta' · RoundErr(w s / Delta') · x · 1/s. Figure: (a) RTN quantization: W in FP16 rounded to Q(W) in INT3, perplexity 43.2. (b) Keep 1% salient weights in FP16: the salient weights are determined by activation (a highlighted column of X), Q(W) is mixed precision with one FP16 channel, labelled bad hardware efficiency, perplexity 13.0. (c) Scale the weights before quantization: average activation magnitude gives a per-channel scale alpha applied before quantizing, Q(W) in INT3, perplexity 13.0.">
+            <div class="slide-caption">slide 29 · scaling a channel shrinks its relative error</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtable columnalign="left">
+                  <mtr><mtd>
+                    <mi>Q</mi><mo>(</mo><mi mathvariant="bold">w</mi><mo>)</mo><mo>=</mo><mi>Δ</mi><mo>·</mo>
+                    <mtext>Round</mtext><mrow><mo>(</mo><mfrac><mi mathvariant="bold">w</mi><mi>Δ</mi></mfrac><mo>)</mo></mrow>
+                    <mo>,</mo><mspace width="1em"/>
+                    <mi>Δ</mi><mo>=</mo><mfrac><mrow><mo>max</mo><mo>(</mo><mo>|</mo><mi mathvariant="bold">w</mi><mo>|</mo><mo>)</mo></mrow><msup><mn>2</mn><mrow><mi>N</mi><mo>−</mo><mn>1</mn></mrow></msup></mfrac>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <mtext>Err</mtext><mo>(</mo><mi>Q</mi><mo>(</mo><mi>w</mi><mo>)</mo><mi>x</mi><mo>)</mo><mo>=</mo>
+                    <mi>Δ</mi><mo>·</mo><mtext>RoundErr</mtext><mrow><mo>(</mo><mfrac><mi>w</mi><mi>Δ</mi></mfrac><mo>)</mo></mrow><mo>·</mo><mi>x</mi>
+                  </mtd></mtr>
+                  <mtr><mtd>
+                    <mtext>Err</mtext><mrow><mo>(</mo><mi>Q</mi><mo>(</mo><mi>w</mi><mo>·</mo><mi>s</mi><mo>)</mo><mo>(</mo><mfrac><mi>x</mi><mi>s</mi></mfrac><mo>)</mo><mo>)</mo></mrow><mo>=</mo>
+                    <msup><mi>Δ</mi><mo>′</mo></msup><mo>·</mo><mtext>RoundErr</mtext><mrow><mo>(</mo><mfrac><mrow><mi>w</mi><mi>s</mi></mrow><msup><mi>Δ</mi><mo>′</mo></msup></mfrac><mo>)</mo></mrow>
+                    <mo>·</mo><mi>x</mi><mo>·</mo><mfrac><mn>1</mn><mi>s</mi></mfrac>
+                  </mtd></mtr>
+                </mtable>
+              </math>
+            </div>
+            <h4>The argument</h4>
+            <p>Multiply one weight <em>w</em> by <em>s</em> &gt; 1 and divide its input <em>x</em> by the same
+              <em>s</em>. The product <em>wx</em> is unchanged (the same trick as SmoothQuant, used for a different
+              purpose). Now compare the two error formulas:</p>
+            <ul>
+              <li><strong>RoundErr</strong> is the rounding error measured in grid steps. It is roughly uniform
+                between 0 and 0.5 whatever the value, so on average it is the same in both formulas.</li>
+              <li><strong>Δ′ versus Δ</strong>: Δ is set by the largest weight in the group. Scaling up one weight
+                usually does not change the group's maximum, so Δ′ ≈ Δ.</li>
+              <li>That leaves the factor <strong>1/<em>s</em></strong>. The error on that weight's contribution
+                shrinks by a factor of about <em>s</em>.</li>
+            </ul>
+            <p>Intuitively, scaling a weight up stretches it across more grid steps, so the same half-step rounding
+              error is a smaller fraction of it. The <em>x</em>/<em>s</em> division is folded into the previous
+              operation, as in SmoothQuant, so it is free at inference.</p>
+            <h4>The limit</h4>
+            <p>If <em>s</em> is too large, the scaled weight becomes the group's maximum, Δ′ grows, and every
+              <em>other</em> weight in the group gets a coarser grid. So AWQ searches for the scales on calibration
+              data. It sets <em>s</em> = <em>s<sub>x</sub></em><sup><em>α</em></sup>, where
+              <em>s<sub>x</sub></em> is the average activation magnitude of each input channel, and grid-searches the
+              single exponent <em>α</em> in [0, 1] to minimise the layer's output error. No backpropagation is
+              needed.</p>
+            <h4>The figure</h4>
+            <p>OPT-6.7B quantized to INT3 with group size 128, perplexity (lower is better): (a) plain RTN 43.2;
+              (b) keep 1% of channels in FP16, chosen by activation size, 13.0, but mixed precision is slow on
+              hardware; (c) AWQ's scaling, also 13.0, with every weight still in INT3.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Notation</div>
+              <p>This slide's Δ is slide 11's <em>S</em> under another name, and <em>N</em> is the number of bits
+                (slide 11's <em>b</em>). The denominators also differ: 2<sup>N−1</sup> here, as in the AWQ paper,
+                versus 2<sup>b−1</sup> − 1 on slide 11. With 2<sup>N−1</sup> the largest weight maps to
+                2<sup>N−1</sup>, one past the top of a signed range, so it has to be clamped. It is a convention
+                difference, but mixing the two formulas in one calculation gives off-by-one errors.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s30">
+          <div class="slide-frame">
+            <div class="tag">Slide 30 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-30.png"
+              alt="AWQ - Results. Left, (a) Our method needs a smaller calibration set: perplexity (13 to 14) against number of calibration sequences (×2048 tokens: 8, 16, 32, 64, 128, 192, 256). GPTQ (green dashed) starts near 13.9 at 8 sequences and falls to about 13.1 by 128. Ours (AWQ, orange) starts near 13.3 and is flat near 13.05 from 16 on. Right, (b) Our method is more robust to calibration set distribution: table of perplexity with calibration set in rows and evaluation set in columns. GPTQ: calibrated on PubMed, 32.48 on PubMed and 50.41 on Enron; calibrated on Enron, 34.81 on PubMed and 45.52 on Enron. Ours: calibrated on PubMed, 32.56 and 45.07; calibrated on Enron, 33.16 and 44.57. Red annotations: GPTQ +4.89 and +2.33, Ours +0.50 and +0.60. Caption, Figure 8: AWQ needs a much smaller calibration set to reach a good quantized performance; it can achieve better perplexity using 10x smaller calibration set compared to GPTQ. Using the same calibration and evaluation distribution works the best; using a different calibration distribution, AWQ only increases the perplexity by 0.5-0.6, while GPTQ has 2.3-4.9 worse perplexity. All experiments are done with the OPT-6.7B model under INT3-g128 quantization.">
+            <div class="slide-caption">slide 30 · AWQ needs less, and less specific, calibration data</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two experiments on OPT-6.7B at INT3 with group size 128. Left: perplexity as the calibration set grows.
+              Right: what happens when the calibration data comes from a different domain than the test data
+              (PubMed medical abstracts versus Enron emails).</p>
+            <h4>How to read it</h4>
+            <ul>
+              <li><strong>Calibration size.</strong> AWQ is near its best with only 16 sequences. GPTQ needs about 128
+                to get close, and is still slightly worse at 256.</li>
+              <li><strong>Domain shift.</strong> Read each table along the evaluation column. Evaluated on Enron, GPTQ
+                gets 45.52 when calibrated on Enron and 50.41 when calibrated on PubMed: +4.89. AWQ gets 44.57 and
+                45.07: +0.50. On PubMed, the penalties are +2.33 for GPTQ and +0.60 for AWQ.</li>
+            </ul>
+            <h4>Why AWQ is more robust</h4>
+            <p>GPTQ fits many parameters to the calibration data: every weight is adjusted using the exact Hessian
+              <em>XX</em><sup>⊤</sup> of the calibration inputs, so it can overfit to them. AWQ only measures one
+              average activation magnitude per channel and searches a single exponent per layer. Those statistics
+              are similar across domains, so there is much less to overfit.</p>
+            <div class="callout link">
+              <div class="callout-label">→ In practice</div>
+              <p>GPTQ and AWQ are both widely used for 4-bit weight-only LLM checkpoints, and both are supported by
+                common inference engines. They can also be combined with each other or with other methods; the
+                choice is often decided by which kernels your serving stack supports.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="qat">
+        <h2><span class="num">§10</span>Quantization-aware training</h2>
+        <p class="section-intro">
+          PTQ adjusts a finished model. QAT goes further: it puts
+          rounding into the forward pass during training, so the
+          weights learn values that survive it. The obstacle is that
+          rounding has no useful gradient.
+        </p>
+
+        <div class="slide" id="s31">
+          <div class="slide-frame">
+            <div class="tag">Slide 31 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-31.png"
+              alt="Quantization-Aware Training (QAT). Diagram, Prepared: x passes through FakeQuant and W passes through FakeQuant, both feed Linear, which outputs y. Arrow to Converted: x passes through Quant then Dequant; Wq passes through Dequant; both feed Linear, which outputs y. Bullets: Train with fake quantization (rounded, but still float). Backward: rounding has zero gradient almost everywhere, so training would stall. Straight-through estimator (STE): in the backward pass, treat rounding as the identity function, so the gradient reaches the full-precision weights (Bengio et al., 2013). Convert: real INT weights after training. Citations: Or et al. (2024), QAT for LLMs with PyTorch (Fig. 2), pytorch.org/blog/quantization-aware-training; Bengio, Léonard and Courville (2013), arXiv:1308.3432.">
+            <div class="slide-caption">slide 31 · fake quantization and the straight-through estimator</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Left ("Prepared"): during training, the input <em>x</em> and the weight <em>W</em> each pass through a
+              FakeQuant node before the linear layer. Right ("Converted"): after training, the weights are stored as
+              real integers <em>W<sub>q</sub></em>, dequantized for the matmul; the activations are quantized and
+              dequantized on the fly.</p>
+            <h4>Fake quantization</h4>
+            <p>FakeQuant computes <em>Ŵ</em> = <em>S</em> · round(<em>W</em>/<em>S</em>): quantize and immediately
+              dequantize. The result is still a float tensor, so ordinary training code runs unchanged, but it only
+              takes values on the quantization grid. The forward pass therefore sees exactly the errors the
+              deployed model will have, and the loss reflects them. A full-precision copy of <em>W</em> is kept and
+              is what the optimizer updates.</p>
+            <h4>The gradient problem</h4>
+            <p>round(·) is a staircase. Its derivative is 0 on every flat step and undefined at the jumps. So by the
+              chain rule, ∂<em>L</em>/∂<em>W</em> = ∂<em>L</em>/∂<em>Ŵ</em> × 0 = 0 for every weight, and the
+              weights never change.</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtext>STE:</mtext><mspace width="1em"/>
+                <mfrac><mrow><mo>∂</mo><mi>L</mi></mrow><mrow><mo>∂</mo><mi>W</mi></mrow></mfrac>
+                <mo>≈</mo>
+                <mfrac><mrow><mo>∂</mo><mi>L</mi></mrow><mrow><mo>∂</mo><mover accent="true"><mi>W</mi><mo>^</mo></mover></mrow></mfrac>
+              </math>
+            </div>
+            <p>The <strong>straight-through estimator</strong> pretends rounding is the identity in the backward pass
+              only: whatever gradient arrives at <em>Ŵ</em> is passed straight through to <em>W</em>. Many
+              implementations also set the gradient to zero for values that were clamped outside the range, since
+              nudging them slightly would not change the output.</p>
+            <h4>Why this is reasonable</h4>
+            <p>Over many small steps, the full-precision <em>W</em> drifts. Most steps change nothing in the forward
+              pass, but once <em>W</em> crosses a rounding boundary, <em>Ŵ</em> jumps to the next grid point. The STE
+              gradient says which way to drift, and the loss, which is computed with the rounded weights, says
+              whether the jump helped. The model learns to sit in places where rounding does not hurt.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s32">
+          <div class="slide-frame">
+            <div class="tag">Slide 32 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-32.png"
+              alt="EfficientQAT: Block-wise QAT for LLMs. QAT: simulate quantization inside training so weights adapt to rounding error: W hat = (clamp(round(W / s) + z, 0, 2^N − 1) − z) · s. Problem: training all of W, s, z end to end is too costly for LLMs. EfficientQAT = Block-AP (train block by block) + E2E-QP (train only step sizes s). Figure: left, QAT: W, s and z all trainable (flame icons), W quantized to W_int then dequantized to W hat, end-to-end training of the whole Model. Right, EfficientQAT, two stages: Block-wise Training, where W, s and z are trainable for one block at a time (Block 2 trainable, Block 1 and Block n frozen, snowflake icons); plus End-to-End Training, where W_int and z are frozen and only s is trainable, across the whole Model. Citation: Chen, Shao, Xu, Wang, Gao, Zhang and Luo (2024), EfficientQAT: Efficient Quantization-Aware Training for Large Language Models, arXiv:2407.11062.">
+            <div class="slide-caption">slide 32 · EfficientQAT: block-wise, then scales only</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mover accent="true"><mi>W</mi><mo>^</mo></mover><mo>=</mo>
+                <mrow><mo>(</mo><mtext>clamp</mtext><mrow><mo>(</mo>
+                  <mrow><mo>⌊</mo><mi>W</mi><mo>/</mo><mi>s</mi><mo>⌉</mo></mrow><mo>+</mo><mi>z</mi><mo>,</mo>
+                  <mspace width="0.3em"/><mn>0</mn><mo>,</mo><mspace width="0.3em"/>
+                  <msup><mn>2</mn><mi>N</mi></msup><mo>−</mo><mn>1</mn><mo>)</mo></mrow>
+                  <mo>−</mo><mi>z</mi><mo>)</mo></mrow>
+                <mo>·</mo><mi>s</mi>
+              </math>
+            </div>
+            <p>This is the affine fake-quantization from the slide 11 worked example: scale by <em>s</em>, round
+              (⌊·⌉ means round to nearest), add the zero point <em>z</em>, clamp to the unsigned <em>N</em>-bit range,
+              then undo the shift and scale. The scale <em>s</em> and zero point <em>z</em> are per group of weights.</p>
+            <h4>The problem and the fix</h4>
+            <p>Plain QAT trains <em>W</em>, <em>s</em> and <em>z</em> for the whole model at once. For an LLM that is
+              as expensive as full fine-tuning (a full-precision copy of every weight, its gradients, and optimizer
+              state) on top of the quantization machinery. EfficientQAT splits it into two cheaper stages:</p>
+            <ol>
+              <li><strong>Block-AP</strong> (block-wise training of all parameters). Train one transformer block at
+                a time, with all others frozen. The objective is local: make the quantized block's output match the
+                original block's output on calibration data. Only one block's weights, gradients and optimizer state
+                need to be in memory at a time.</li>
+              <li><strong>E2E-QP</strong> (end-to-end training of quantization parameters). Fix the integer weights
+                <em>W</em><sub>int</sub> (and <em>z</em>), and train only the step sizes <em>s</em> across the whole
+                model with the normal language-model loss. There are very few <em>s</em> values (one per group), so
+                this is cheap, yet it lets the model correct errors that only show up when blocks interact.</li>
+            </ol>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
+              <p>Block-AP is like GPTQ and AWQ in matching a local output, but it uses gradient descent with the
+                STE instead of a closed-form or search-based rule, and it trains the weights and the scales together.
+                E2E-QP is close in spirit to parameter-efficient fine-tuning: a tiny set of trainable numbers on top of
+                a frozen, already-quantized model.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s33">
+          <div class="slide-frame">
+            <div class="tag">Slide 33 / 33</div>
+            <img src="../assets/slides/L13-quantization/slide-33.png"
+              alt="EfficientQAT: Results. Table of average zero-shot accuracy with columns Method, Bits, Group, 2-7, 2-13, 2-70, 3-8, 3-70. FP16, 16 bits: 64.86, 67.81, 72.41, 68.58, 75.33. 3-bit, group 128: RTN 62.06, 65.77, 70.83, 58.72, 65.29; GPTQ 62.48, 66.18, 71.47, 60.58, 71.28; AWQ 62.82, 66.14, 71.41, 64.82, 73.65; OmniQ 62.42, 66.18, 71.07, 64.09, 71.90; AutoRound 63.72, 66.68, 71.24, -, -; QuIP# (group -) 63.52, 66.26, 72.13, -, -; EfficientQAT 64.02, 67.28, 71.76, 67.35, 73.96 (highlighted). 2-bit: OmniQ g128 46.98, 53.56, 54.87, 52.66, 60.06; AutoRound g128 54.50, 60.72, 67.70, -, -; EfficientQAT g128 59.50, 63.88, 68.93, 59.37, 67.57 (highlighted); AQLM 2x8 57.61, 62.22, 69.85, -, -; QuIP# (group -) 60.61, 64.44, 70.91, -, -; DB-LLM g64 56.93, 61.61, 68.01, 51.74, -; EfficientQAT g64 60.14, 64.48, 69.48, 60.76, 67.89 (highlighted). Right: Columns: Bits: weight bit-width. Group: weights sharing one scale and zero-point; dash = result unreachable in public papers. 2-7, 2-13, 2-70: Llama-2 7B, 13B, 70B. 3-8, 3-70: Llama-3 8B, 70B. 5 tasks (averaged): WinoGrande, PIQA, HellaSwag, ARC-Easy, ARC-Challenge. Citation: Chen et al. (2024), EfficientQAT, Table 1, average zero-shot accuracy (higher is better) on 5 common-sense tasks, arXiv:2407.11062.">
+            <div class="slide-caption">slide 33 · EfficientQAT vs PTQ methods at 3 and 2 bits</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Average zero-shot accuracy (higher is better) over five common-sense tasks, for Llama-2 7B/13B/70B and
+              Llama-3 8B/70B, at 3-bit and 2-bit weights. The legend on the right explains the column labels.</p>
+            <h4>How to read it</h4>
+            <ul>
+              <li><strong>3 bits, Llama-2.</strong> All methods are within about 2 points of FP16, and EfficientQAT is
+                closest (64.02 vs 64.86 on 7B). At 70B even RTN loses only about 1.6 points.</li>
+              <li><strong>3 bits, Llama-3 8B.</strong> Much harder. RTN drops from 68.58 to 58.72, almost 10 points;
+                GPTQ gets 60.58, AWQ 64.82, EfficientQAT 67.35. Llama-3 is known to be harder to quantize than
+                Llama-2; one explanation often given is that it was trained on far more tokens, so its weights carry
+                more information per parameter and tolerate rounding less.</li>
+              <li><strong>2 bits.</strong> PTQ methods start to break: OmniQ gets 46.98 on Llama-2 7B (from 64.86).
+                EfficientQAT keeps 59.50 at g128 and 60.14 at g64, and matches or beats the vector-quantization
+                methods AQLM and QuIP# on 7B and 13B. On 70B those two are slightly ahead (69.85 and 70.91 versus
+                69.48).</li>
+            </ul>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The "Group" column does not mean the same thing in every row. For AQLM, "2x8" is a codebook
+                configuration (AQLM stores weights as indices into learned codebooks), not a group size, and QuIP#
+                also uses vector quantization, hence its "-". Smaller groups also cost more bits: g64 stores twice as
+                many scales and zero points as g128, so the two EfficientQAT 2-bit rows are not at exactly the same
+                memory cost.</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="section-intro" style="margin-top:1.5rem">
+          Zoom out. Quantization replaces each number with an integer
+          and a shared scale, and the whole lecture is about choosing
+          that scale and handling the rounding error. FP16 to INT8 is
+          easy for weights. The trouble starts with activations in
+          models above about 6.7B parameters, where a few hidden
+          dimensions carry huge values. LLM.int8() routes those
+          dimensions through FP16. SmoothQuant rescales channels so the
+          outliers move into the weights and everything runs in INT8.
+          For 4 bits and below, weight-only methods take over: GPTQ uses
+          the Hessian <em>XX</em><sup>⊤</sup> to compensate each
+          rounding error with the weights not yet quantized, and AWQ
+          scales up the weights that meet large activations. When PTQ
+          is not enough, at 2–3 bits or on hard models like Llama-3,
+          quantization-aware training uses the straight-through
+          estimator to let the model adapt to rounding, and EfficientQAT
+          makes that affordable by training block by block and then
+          only the scales. For an exam, be able to quantize a vector
+          by hand with absmax and with a zero point, and say what
+          problem each method solves.
+        </p>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="12-evaluation.html">
+          <span class="dir">← back</span>
+          <span class="lbl">12 · Evaluation</span>
+        </a>
+        <a class="next" href="../seminars/vishal-rao-data-creation.html">
+          <span class="dir">next →</span>
+          <span class="lbl">Seminar · Data Creation</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Lecture 13 · Quantization · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#deck">at a glance</a>
+        <a href="#why">§1 why smaller</a>
+        <a href="#fp">§2 floating point</a>
+        <a href="#what">§3 what it is</a>
+        <a href="#uniform">§4 uniform quantization</a>
+        <a href="#outliers">§5 outliers</a>
+        <a href="#int8">§6 LLM.int8()</a>
+        <a href="#smoothquant">§7 SmoothQuant</a>
+        <a href="#gptq">§8 OBQ &amp; GPTQ</a>
+        <a href="#awq">§9 AWQ</a>
+        <a href="#qat">§10 QAT</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>

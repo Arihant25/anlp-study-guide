@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Lecture 10 · Decoding — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Lecture 10 of Advanced NLP, Monsoon 2026 IIIT-H: decoding strategies, from greedy and beam search through random, top-k, top-p, typical and epsilon sampling, temperature and re-ranking.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://arihant25.github.io/anlp-study-guide/lectures/10-decoding.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Decoding: from next-token probabilities to text | ANLP">
+  <meta property="og:description"
+    content="A first-principles tour of how a language model's next-token distribution becomes a sentence: greedy, beam search, sampling, top-k, top-p, temperature and re-ranking.">
+  <meta property="og:url" content="https://arihant25.github.io/anlp-study-guide/lectures/10-decoding.html">
+  <meta property="og:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L10-decoding/slide-01.png">
+  <meta property="og:image:alt" content="Advanced NLP Decoding Strategies lecture title slide">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Decoding: from next-token probabilities to text | ANLP">
+  <meta name="twitter:description"
+    content="Search for the most likely sentence, or sample a good one? Every decoding strategy in the lecture, and why the most likely text is often the worst.">
+  <meta name="twitter:image"
+    content="https://arihant25.github.io/anlp-study-guide/assets/slides/L10-decoding/slide-01.png">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Advanced NLP Lecture 10: Decoding","url":"https://arihant25.github.io/anlp-study-guide/lectures/10-decoding.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"lecture notes","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#deck">The deck at a glance</a>
+        <a href="#background">§1 · From logits to a sentence</a>
+        <a href="#greedy">§2 · Greedy and exhaustive search</a>
+        <a href="#beam">§3 · Beam search</a>
+        <a href="#degeneration">§4 · Why the most likely text fails</a>
+        <a href="#sampling">§5 · Random, top-k and top-p sampling</a>
+        <a href="#truncation">§6 · Typical and epsilon sampling</a>
+        <a href="#temperature">§7 · Task type and temperature</a>
+        <a href="#rerank">§8 · Re-ranking and takeaways</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="9-optimizers.html">← Lecture 9: Optimizers</a>
+        <a href="11-speculative-decoding.html">Next: Lecture 11 · Speculative Decoding →</a>
+        <a href="../assignments/2-moe-optimizers-decoding.html#p3">A2 · Decoding strategies in code</a>
+        <a href="../index.html">Home</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Lecture 10 · 27 slides</div>
+        <h1>Decoding: <em>from a probability distribution to a sentence.</em></h1>
+        <p class="lead">
+          A language model never outputs text. At every step it outputs a
+          probability for each token in the vocabulary, and something else
+          has to pick one. That something is the decoding algorithm. This
+          lecture covers the two families: search methods (greedy, beam
+          search) that hunt for the most probable sequence, and sampling
+          methods (random, top-k, top-p, typical, epsilon, temperature)
+          that draw a sequence at random from a trimmed or reshaped
+          distribution. The central surprise is that the most probable
+          text is often bad text.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Lecture 10</span>
+          <span class="pill">27 slides</span>
+          <span class="pill">Manish Shrivastava · Aparajitha</span>
+        </div>
+      </section>
+
+      <section id="deck">
+        <h2><span class="num">§0</span>The deck at a glance</h2>
+        <p class="section-intro">
+          Slides 1–4 set up the problem: the model gives a distribution
+          over the next token, and a decoding algorithm <em>g</em> turns
+          it into a choice. Slide 5 lists the five strategies the lecture
+          covers. Slides 6–8 cover greedy decoding and why exhaustive
+          search is impossible. Slides 9–10 cover beam search, the
+          compromise between the two. Slides 11–14 show that searching
+          for high probability makes open-ended text repetitive and
+          unlike human writing, and list some fixes. Slides 15–21 switch
+          to sampling: plain random sampling, top-k, top-p, and then
+          typical and epsilon sampling. Slide 22 separates open-ended
+          tasks from closed ones, which decides whether you should search
+          or sample. Slides 23–24 add temperature. Slides 25–26 cover
+          re-ranking several candidates, and slide 27 sums up.
+        </p>
+        <p>
+          The same algorithms appear as code in
+          <a href="../assignments/2-moe-optimizers-decoding.html#p3">Assignment 2, Part 3</a>,
+          where you write greedy decoding, top-k and top-p filters and
+          beam search by hand around a Hugging Face model. Read this page
+          for the reasoning, then that one for the code.
+        </p>
+      </section>
+
+      <hr class="soft">
+
+      <section id="background">
+        <h2><span class="num">§1</span>From logits to a sentence</h2>
+        <p class="section-intro">
+          The model's last layer produces one score per vocabulary token.
+          Softmax turns the scores into probabilities. Decoding is the
+          rule that picks a token from those probabilities, appends it,
+          and repeats.
+        </p>
+
+        <div class="slide" id="s1">
+          <div class="slide-frame">
+            <div class="tag">Slide 01 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-01.png"
+              alt="Title slide: Decoding Strategies, Manish Shrivastava + Aparajitha, Advanced NLP, Monsoon 2026, IIIT Hyderabad. IIIT Hyderabad logo top left and LTRC 25 years logo top right.">
+            <div class="slide-caption">slide 01 · title</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Lecture 10 of Advanced NLP Monsoon 2026: decoding strategies.</p>
+            <h4>Why it gets a lecture</h4>
+            <p>Everything so far has been about building and training the model. Once it is trained, you still
+              have to get text out of it, and the way you do that changes the output a lot. The same trained
+              model can produce fluent prose, the same sentence repeated forever, or nonsense, depending only on
+              the decoding rule. Decoding is also cheap to change: no retraining is needed, so it is one of the
+              first knobs people turn.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s2">
+          <div class="slide-frame">
+            <div class="tag">Slide 02 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-02.png"
+              alt="Background. At each time step t: compute vector of scores over vocabulary; SoftMax over the logits generated for probability distribution of next possible tokens. Diagram: a d-sized vector enters a green trapezoid labelled Linear layer, which outputs |V| tokens' scores (a column of circles); an arrow labelled softmax leads to a horizontal bar chart labelled P(* | I saw a cat on a), with the note: get probability distribution for the next token.">
+            <div class="slide-caption">slide 02 · the output layer: linear, then softmax</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>At each time step the model's final hidden state, a vector of size <em>d</em>, goes through a
+              linear layer that produces |V| numbers, one per vocabulary token. These raw scores are called
+              <em>logits</em>. Softmax turns them into a probability distribution over the next token, here
+              <em>P(· | I saw a cat on a)</em>.</p>
+            <h4>The shapes</h4>
+            <p>The linear layer is a matrix of shape <em>d × |V|</em>. For a model with <em>d = 768</em> and a
+              vocabulary of about 50,000 tokens, every step produces a vector of 50,000 logits. Softmax
+              exponentiates each one and divides by the total, so every probability is positive and they sum
+              to 1. In the picture, tokens like "mat", "sofa" or "table" would get the long bars and most of
+              the other 50,000 tokens would get tiny ones.</p>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
+              <p>The model is <em>autoregressive</em>: whatever token is chosen at step <em>t</em> is appended
+                to the input, and the model runs again to get the distribution for step <em>t + 1</em>. So the
+                choice at each step changes every later distribution. That loop is the reason decoding is a
+                search problem rather than a single argmax.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s3">
+          <div class="slide-frame">
+            <div class="tag">Slide 03 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-03.png"
+              alt="A single italic question: Now, how do we go from probabilities over the vocabulary to an actual sentence?">
+            <div class="slide-caption">slide 03 · the question the lecture answers</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The question for the rest of the lecture: given a distribution over the vocabulary at each step,
+              how do you produce a sentence?</p>
+            <h4>Two broad answers</h4>
+            <p>You can treat it as <em>search</em>: look for the sequence the model thinks is most probable.
+              Or you can treat it as <em>sampling</em>: draw a sequence at random according to the model's
+              probabilities, so that likely sequences come up often and unlikely ones rarely. Slides 6–14 are
+              about search. Slides 15–24 are about sampling.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s4">
+          <div class="slide-frame">
+            <div class="tag">Slide 04 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-04.png"
+              alt="Decoding. It is an algorithm that defines a function to select a token from probability distribution over vocabulary. Equation: y-hat_t = g(P(y_t | {y_<t})), with a callout: g(.) is your decoding algorithm.">
+            <div class="slide-caption">slide 04 · decoding as a function g</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <msub><mover accent="true"><mi>y</mi><mo>^</mo></mover><mi>t</mi></msub>
+                <mo>=</mo>
+                <mi>g</mi><mo>(</mo>
+                <mi>P</mi><mo>(</mo><msub><mi>y</mi><mi>t</mi></msub><mo>|</mo>
+                <mo>{</mo><msub><mi>y</mi><mrow><mo>&lt;</mo><mi>t</mi></mrow></msub><mo>}</mo><mo>)</mo>
+                <mo>)</mo>
+              </math>
+            </div>
+            <h4>Reading the equation</h4>
+            <ul>
+              <li><em>{y<sub>&lt;t</sub>}</em> is everything generated so far (plus the prompt).</li>
+              <li><em>P(y<sub>t</sub> | {y<sub>&lt;t</sub>})</em> is the whole next-token distribution from slide
+                2, a vector of |V| probabilities.</li>
+              <li><em>g</em> is the decoding algorithm. It takes that vector and returns one token,
+                <em>ŷ<sub>t</sub></em>.</li>
+            </ul>
+            <p>Examples: greedy decoding is <em>g = argmax</em>. Random sampling is "draw one token with these
+              probabilities". Top-k is "zero out all but the k largest, renormalise, then draw".</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The equation describes decoders that pick one token at a time from one distribution. Beam
+                search (slide 9) does not fit this form exactly: it keeps several partial sequences alive and
+                chooses among them using their whole history, so its "g" sees more than the current
+                distribution.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s5">
+          <div class="slide-frame">
+            <div class="tag">Slide 05 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-05.png"
+              alt="Decoding Strategies: Greedy Decoding; Beam Search; Random Sampling; Top-k Sampling; Top-p Sampling.">
+            <div class="slide-caption">slide 05 · the five strategies</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The plan: greedy decoding, beam search, random sampling, top-k sampling, top-p sampling. The
+              first two are search methods (deterministic: same prompt, same output). The last three are
+              sampling methods (random: same prompt, different outputs each run). Slides 21–24 add typical
+              sampling, epsilon sampling and temperature.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="greedy">
+        <h2><span class="num">§2</span>Greedy decoding and exhaustive search</h2>
+        <p class="section-intro">
+          Greedy decoding takes the single best token at every step. It
+          is fast but never reconsiders a choice. Exhaustive search would
+          find the truly best sequence but costs more than any computer
+          could ever pay.
+        </p>
+
+        <div class="slide" id="s6">
+          <div class="slide-frame">
+            <div class="tag">Slide 06 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-06.png"
+              alt="Greedy Decoding. Select token with highest probability as next token. Diagram: seven decoder cells in a row connected left to right. Inputs along the bottom: START, he, hit, me, with, a, pie. Each cell has an upward arrow labelled argmax producing the outputs along the top: he, hit, me, with, a, pie, END. Dotted pink arrows show each output being fed back as the next cell's input.">
+            <div class="slide-caption">slide 06 · greedy: argmax at every step</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Greedy decoding picks the most probable token at each step:
+              <em>ŷ<sub>t</sub> = argmax<sub>w</sub> P(y<sub>t</sub> = w | y<sub>&lt;t</sub>)</em>. The figure
+              shows a recurrent decoder (the boxes of circles are hidden states) producing "he hit me with a
+              pie &lt;END&gt;". Each argmax output, shown by the dotted pink arrows, becomes the next input.
+              Decoding stops when the model outputs the end token.</p>
+            <h4>Why people use it</h4>
+            <p>It is the cheapest decoder there is: one forward pass and one argmax per token. It is also
+              deterministic, which helps in testing and in tasks with one right answer, such as short factual
+              questions or code completion where a mistake costs more than dullness.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s7">
+          <div class="slide-frame">
+            <div class="tag">Slide 07 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-07.png"
+              alt="Greedy Decoding. Drawback: Can't undo the decisions taken. The same diagram as the previous slide: START, he, hit, me, with, a, pie fed in; argmax outputs he, hit, me, with, a, pie, END.">
+            <div class="slide-caption">slide 07 · greedy can't take anything back</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Same figure, with the drawback: once a token is chosen, greedy cannot undo it.</p>
+            <h4>A worked example</h4>
+            <p>Say that at step 1 the model gives <em>P(a) = 0.5</em>, <em>P(b) = 0.4</em>,
+              <em>P(c) = 0.1</em>. After "a" the next distribution is flat, and the best continuation has
+              probability 0.3. After "b" the model is confident, and the best continuation has probability
+              0.9.</p>
+            <ul>
+              <li>Greedy picks "a" (0.5), then the best follow-up (0.3). Sequence probability
+                <em>0.5 × 0.3 = 0.15</em>.</li>
+              <li>Starting with "b" would have given <em>0.4 × 0.9 = 0.36</em>, more than twice as
+                probable.</li>
+            </ul>
+            <p>Greedy never sees the second option, because it only compares tokens one step at a time. A
+              locally best choice can lead into a region where every continuation is weak. In translation this
+              shows up as a sentence that starts well and then has to be finished awkwardly, because the first
+              words committed to a structure that does not fit.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s8">
+          <div class="slide-frame">
+            <div class="tag">Slide 08 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-08.png"
+              alt="Exhaustive Search? Ideally, need to find a T-length translation y that minimizes P(y|x) = P(y1|x) P(y2|y1,x) P(y3|y1,y2,x) ... P(yT|y1,...,yT-1,x) = product over t from 1 to T of P(yt | y1,...,yt-1, x). Compute all possible sequences y? At each step of decoding, V^T possible partial translations should be tracked, where V = size of vocab. But this complexity is far too expensive (in bold).">
+            <div class="slide-caption">slide 08 · the exact search is exponential</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>The ideal decoder would find the whole sequence <em>y</em> with the highest probability given the
+              input <em>x</em>. By the chain rule of probability, that probability factors into the per-step
+              probabilities the model gives:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mi>P</mi><mo>(</mo><mi>y</mi><mo>|</mo><mi>x</mi><mo>)</mo>
+                <mo>=</mo>
+                <munderover><mo>∏</mo><mrow><mi>t</mi><mo>=</mo><mn>1</mn></mrow><mi>T</mi></munderover>
+                <mi>P</mi><mo>(</mo><msub><mi>y</mi><mi>t</mi></msub><mo>|</mo>
+                <msub><mi>y</mi><mn>1</mn></msub><mo>,</mo><mo>…</mo><mo>,</mo>
+                <msub><mi>y</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>,</mo><mi>x</mi><mo>)</mo>
+              </math>
+            </div>
+            <p>The slide uses translation as the example: <em>x</em> is the source sentence and <em>y</em> the
+              translation. For a plain language model, drop <em>x</em> or read it as the prompt.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Two slips on the slide</div>
+              <p>(1) The slide says find the <em>y</em> that <strong>minimizes</strong> <em>P(y|x)</em>. It
+                should be <strong>maximizes</strong>. Equivalently, minimise the negative log-probability
+                <em>−log P(y|x)</em>, which may be what was meant. (2) It says <em>V<sup>T</sup></em> partial
+                translations must be tracked "at each step". At step <em>t</em> there are <em>V<sup>t</sup></em>
+                partial sequences of length <em>t</em>. <em>V<sup>T</sup></em> is the number of complete
+                sequences of length <em>T</em>, which is the count that matters for exhaustive search.</p>
+            </div>
+            <h4>How expensive is "far too expensive"?</h4>
+            <p>With a vocabulary of 50,000 and a 20-token output, the number of sequences is
+              50,000<sup>20</sup> ≈ 10<sup>94</sup>. That is more than the number of atoms in the observable
+              universe (around 10<sup>80</sup>). Unlike some sequence models, a transformer has no small hidden
+              state that would let dynamic programming merge equivalent prefixes, because each token's
+              distribution depends on the whole prefix. So exact search is out, and every practical decoder is
+              an approximation.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="beam">
+        <h2><span class="num">§3</span>Beam search</h2>
+        <p class="section-intro">
+          Beam search sits between greedy (keep 1 candidate) and
+          exhaustive search (keep all of them). It keeps the k best
+          partial sequences at every step.
+        </p>
+
+        <div class="slide" id="s9">
+          <div class="slide-frame">
+            <div class="tag">Slide 09 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-09.png"
+              alt="Beam Search Decoding. Keep track of the k most probable partial translations (hypotheses). Here, k is the beam size (in practice 5-10). Score of the hypothesis is its log probability: score(y1,...,yt) = log P_LM(y1,...,yt | x) = sum over i from 1 to t of log P_LM(yi | y1,...,yi-1, x). Find the high scoring hypotheses tracking top-k on each step. Not guaranteed to find an optimal solution, but much more efficient than exhaustive search.">
+            <div class="slide-caption">slide 09 · keep the k best hypotheses</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Keep the <em>k</em> highest-scoring partial sequences ("hypotheses"), where <em>k</em> is the
+              <em>beam size</em>, typically 5–10. A hypothesis's score is its log-probability:</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mtext>score</mtext><mo>(</mo><msub><mi>y</mi><mn>1</mn></msub><mo>,</mo><mo>…</mo><mo>,</mo><msub><mi>y</mi><mi>t</mi></msub><mo>)</mo>
+                <mo>=</mo>
+                <mi>log</mi><msub><mi>P</mi><mtext>LM</mtext></msub><mo>(</mo><msub><mi>y</mi><mn>1</mn></msub><mo>,</mo><mo>…</mo><mo>,</mo><msub><mi>y</mi><mi>t</mi></msub><mo>|</mo><mi>x</mi><mo>)</mo>
+                <mo>=</mo>
+                <munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>t</mi></munderover>
+                <mi>log</mi><msub><mi>P</mi><mtext>LM</mtext></msub><mo>(</mo><msub><mi>y</mi><mi>i</mi></msub><mo>|</mo>
+                <msub><mi>y</mi><mn>1</mn></msub><mo>,</mo><mo>…</mo><mo>,</mo><msub><mi>y</mi><mrow><mi>i</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>,</mo><mi>x</mi><mo>)</mo>
+              </math>
+            </div>
+            <h4>Why logs</h4>
+            <p>The log turns the product of slide 8 into a sum. That avoids numerical underflow (a product of
+              50 probabilities around 0.1 is 10<sup>−50</sup>), and it means extending a hypothesis by one token
+              just adds that token's log-probability to the running score. Every score is ≤ 0, and higher
+              (closer to 0) is better.</p>
+            <h4>One step of the algorithm</h4>
+            <ol>
+              <li>For each of the <em>k</em> live hypotheses, run the model and get the next-token
+                distribution.</li>
+              <li>Form all <em>k × |V|</em> one-token extensions, each scored as old score + log P(new
+                token).</li>
+              <li>Keep the <em>k</em> best of those, across all parents. Discard the rest.</li>
+            </ol>
+            <p>On the example from slide 7 with <em>k = 2</em>: step 1 keeps "a" (log 0.5 = −0.69) and "b"
+              (log 0.4 = −0.92). At step 2 the best extension of "a" scores −0.69 + log 0.3 = −1.90 and the
+              best extension of "b" scores −0.92 + log 0.9 = −1.02. Beam search finds the "b" sequence that
+              greedy missed. The cost is about <em>k</em> times greedy's, instead of exponential.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Two things to keep straight</div>
+              <p>(1) The <em>k</em> here is the beam size. The <em>k</em> in top-k sampling (slide 16) is a
+                different thing: how many tokens a sampler may draw from. The slide's phrase "tracking top-k on
+                each step" means the k best hypotheses. (2) Beam search is still approximate. If the best
+                sequence's prefix falls out of the top <em>k</em> at any step, it is gone for good, which is
+                why the slide says "not guaranteed to find an optimal solution". Beam size 1 is exactly
+                greedy.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s10">
+          <div class="slide-frame">
+            <div class="tag">Slide 10 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-10.png"
+              alt="Beam Search Decoding. In greedy decoding, decode till we encounter EOS. In beam search, multiple hypotheses may produce EOS at different timestamps. When a hypothesis produces EOS, it is complete. Keep it aside and explore other hypotheses with beam search. Usually continue beam search until: we reach a pre-defined timestep T; we have at least n (pre-defined) completed hypotheses.">
+            <div class="slide-caption">slide 10 · when does beam search stop?</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Greedy decoding stops when it emits &lt;EOS&gt;. In beam search, different hypotheses finish at
+              different steps ("timestamps" on the slide means time steps). A hypothesis that emits
+              &lt;EOS&gt; is complete: set it aside and keep extending the others. Stop when you reach a
+              maximum length <em>T</em>, or when you have collected <em>n</em> completed hypotheses, whichever
+              comes first. Then return the best completed one.</p>
+            <h4>The length problem (not on the slide)</h4>
+            <p>Every extra token adds a negative number to the score, so longer hypotheses score lower just for
+              being longer. If you compare finished hypotheses by raw score, beam search prefers short outputs,
+              sometimes absurdly short ones. The usual fix is <em>length normalisation</em>: compare
+              hypotheses by score divided by length (or by length raised to some power α), which is the
+              average log-probability per token. Most beam-search implementations, including Hugging Face's,
+              have a length-penalty setting for this.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="degeneration">
+        <h2><span class="num">§4</span>Why the most likely text fails</h2>
+        <p class="section-intro">
+          Beam search works well for translation. For open-ended
+          generation, such as continuing a story, it produces dull,
+          repetitive text. Slides 11–14 show the evidence and explain
+          what goes wrong.
+        </p>
+
+        <div class="slide" id="s11">
+          <div class="slide-frame">
+            <div class="tag">Slide 11 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-11.png"
+              alt="Beam Search Decoding - Limitations. Not so good for open-ended generation. Two step plots of negative log-likelihood per token for two models, openai (blue) and lstm (red). Left, for the text I don't know.: tokens do, n't, know, . with openai NLL about 5.3, 1.1, 3.5, 3.1 and lstm about 3.5, 0.1, 1.0, 1.8. Right, for I don't know. repeated six times: the per-token NLL for both models drops with each repetition, with the lstm values falling close to 0 and the openai values decreasing more slowly. Caption: Self-amplification effect.">
+            <div class="slide-caption">slide 11 · repetition makes itself more likely</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two plots of the per-token negative log-likelihood (NLL, <em>−log P</em>, lower means the model
+              finds the token more likely) under two models, labelled "openai" (a transformer LM) and "lstm".
+              On the left, the sentence "I don't know." once. On the right, the same sentence repeated six
+              times. The NLL of each token tends to fall with every repetition. The caption calls this the
+              <em>self-amplification effect</em>.</p>
+            <h4>Why this is bad for beam search</h4>
+            <p>Language models learn that text often repeats itself (names, phrases, list items), so when a
+              phrase is already in the context, the model raises the probability of seeing it again. Each
+              repetition makes the next one more probable. A decoder that chases high probability, like greedy
+              or beam search, will find this loop and get stuck in it, because "I don't know. I don't know.
+              …" really is a high-probability sequence under the model. It is the model plus a
+              probability-maximising decoder that produces the loop.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s12">
+          <div class="slide-frame">
+            <div class="tag">Slide 12 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-12.png"
+              alt="Beam Search Decoding - Limitations. Scale also does not solve the problem!! Plot of negative log-likelihood per token for the text I'm tired. repeated eleven times, for openai (blue) and lstm (red). Both start high (about 4 to 7) on the first tokens, then decrease; after a few repetitions the openai values settle near 0.2 to 0.4 and the lstm values oscillate between about 0.8 and 1.6, so the larger openai model ends up assigning the repeated text even lower NLL than the LSTM.">
+            <div class="slide-caption">slide 12 · a bigger model repeats with more confidence</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>"I'm tired." repeated eleven times. Both models start uncertain, and the NLL falls as the
+              repetition goes on. By the end, the "openai" model (blue) gives the repeated tokens an NLL around
+              0.2–0.4, which is a probability of roughly 0.7–0.8 per token, and lower than the smaller LSTM
+              (red).</p>
+            <h4>What "scale does not solve it" means</h4>
+            <p>You might hope a bigger, better-trained model would recognise the loop as bad text. The plot
+              shows the opposite: the stronger model is <em>more</em> sure the repetition should continue. This
+              is a property of maximum-likelihood language models in general, so it needs a fix in decoding or
+              in training, not just more parameters.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s13">
+          <div class="slide-frame">
+            <div class="tag">Slide 13 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-13.png"
+              alt="What could be the way out? Simple option: Do not repeat n-grams. Complex options: using different training objectives: Unlikelihood objective (Welleck et al., 2020) penalize generation of already seen tokens; Coverage loss (See et al., 2017) prevents attention mechanism from attending to the same words. Using different decoding objectives?">
+            <div class="slide-caption">slide 13 · fixes for repetition</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three kinds of fix.</p>
+            <ul>
+              <li><strong>Ban repeated n-grams (decoding hack).</strong> While decoding, if a token would
+                complete an n-gram that already appears in the output, set its probability to 0. With
+                <em>n = 3</em>, no three-token phrase can appear twice. It is crude: a story about "the
+                United States" can only say it once. Hugging Face exposes this as
+                <code>no_repeat_ngram_size</code>.</li>
+              <li><strong>Unlikelihood training</strong> (Welleck et al., 2020). Add a training loss that pushes
+                <em>down</em> the probability of tokens that already appeared in the context, alongside the
+                usual loss that pushes up the probability of the correct token. The model itself then learns to
+                avoid repeating.</li>
+              <li><strong>Coverage loss</strong> (See et al., 2017, from summarisation with pointer-generator
+                networks). Keep a running total of how much attention each source word has already received, and
+                penalise attending to the same words again. This stops a summariser from copying the same
+                sentence twice.</li>
+            </ul>
+            <p>The last line, "using different decoding objectives?", leads into the rest of the lecture: maybe
+              the goal of finding the most probable sequence is itself the problem.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s14">
+          <div class="slide-frame">
+            <div class="tag">Slide 14 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-14.png"
+              alt="Why is taking argmax not good for open-ended generation? Line plot of the probability the model assigns to each token (y, 0 to 1) over 100 timesteps (x). The blue Beam Search line stays near 1 almost everywhere, with a few small dips to about 0.75 to 0.9. The orange Human line jumps wildly between 0 and 1, often near 0. Caption: Fails to match uncertainty distribution of human generated text.">
+            <div class="slide-caption">slide 14 · human text is not high-probability text</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>For 100 tokens of text, the probability the model assigned to each token. Beam-search output
+              (blue) sits near 1 almost all the time. Real human text (orange) swings between near 0 and near 1.
+              This figure is from Holtzman et al. (2020), "The Curious Case of Neural Text Degeneration", the
+              paper that introduced top-p sampling.</p>
+            <h4>The key observation</h4>
+            <p>People do not write by picking the most predictable next word. Most of the informative words in a
+              sentence (a specific name, a number, an unexpected verb) are ones a model could not have
+              predicted with high confidence. Text built only from high-probability tokens is grammatical but
+              says little and repeats itself. So for open-ended generation, the goal should be text that looks
+              like a <em>typical sample</em> from the distribution, not the <em>single most probable</em>
+              sequence.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>The mode of the distribution is not a typical member of it. A 100-token sequence where every
+                token has probability 0.9 has total probability 0.9<sup>100</sup> ≈ 3 × 10<sup>−5</sup>, and
+                almost no real text looks like that. This is the motivation for every sampling method in the
+                next section.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="sampling">
+        <h2><span class="num">§5</span>Random, top-k and top-p sampling</h2>
+        <p class="section-intro">
+          Instead of searching for the best sequence, draw each token at
+          random from the model's distribution. Plain sampling is too
+          wild, so top-k and top-p cut off the unreliable tail first and
+          sample from what is left.
+        </p>
+
+        <div class="slide" id="s15">
+          <div class="slide-frame">
+            <div class="tag">Slide 15 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-15.png"
+              alt="Random Sampling. Sample a token from the distribution of the tokens. It's random, so you can sample any token! Diagram: the prompt He wanted to go to the enters a red box labelled Model; arrows lead to a long-tailed bar chart of next-token probabilities with labels restroom, grocery, store, airport, bathroom, beach, doctor, hospital, pub, gym, the top bar much longer than the rest and the bars shrinking down the list.">
+            <div class="slide-caption">slide 15 · plain random sampling</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>For the prompt "He wanted to go to the", the model's next-token distribution has a head
+              (restroom, grocery, store, airport, …) and a long tail. Random sampling draws one token in
+              proportion to its probability: if "restroom" has probability 0.2, it is picked about 20% of the
+              time.</p>
+            <h4>The problem with "you can sample any token"</h4>
+            <p>The slide's second bullet is the flaw as well as the feature. The tail holds tens of thousands
+              of tokens, each very unlikely, but together they can hold a lot of probability mass. If 50,000
+              junk tokens each have probability 10<sup>−6</sup>, their total is 5%. Over a 100-token output
+              you would expect about five of them, and one bad token can derail everything after it, because
+              the model then conditions on its own mistake. The model's tail estimates are also the least
+              reliable part of the distribution. Top-k and top-p remove that tail.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Figure detail</div>
+              <p>The chart has more bars (around 18) than word labels (10), so the labels do not line up one
+                to one with the bars. Read the labels as examples from the head of the distribution, not as an
+                exact list.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s16">
+          <div class="slide-frame">
+            <div class="tag">Slide 16 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-16.png"
+              alt="Top-k sampling. Instead of sampling from whole distribution, just sample from the top-k tokens in the probability distribution. The same diagram: He wanted to go to the, Model, and the bar chart, but only the top bars and the words restroom, grocery, store, airport are drawn in full colour; the remaining bars and the words bathroom, beach, doctor, hospital, pub, gym are faded out.">
+            <div class="slide-caption">slide 16 · top-k: sample only from the k most likely</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Keep only the <em>k</em> most probable tokens, discard the rest, and sample from the survivors.
+              The faded bars and words are the discarded ones.</p>
+            <h4>The precise rule</h4>
+            <p>Let <em>V<sup>(k)</sup></em> be the set of the <em>k</em> highest-probability tokens. Then
+              sample from</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <mover accent="true"><mi>P</mi><mo>~</mo></mover><mo>(</mo><mi>w</mi><mo>)</mo>
+                <mo>=</mo>
+                <mrow><mo>{</mo>
+                  <mtable columnalign="left">
+                    <mtr><mtd>
+                      <mfrac>
+                        <mrow><mi>P</mi><mo>(</mo><mi>w</mi><mo>)</mo></mrow>
+                        <mrow><msub><mo>∑</mo><mrow><msup><mi>w</mi><mo>′</mo></msup><mo>∈</mo><msup><mi>V</mi><mrow><mo>(</mo><mi>k</mi><mo>)</mo></mrow></msup></mrow></msub><mi>P</mi><mo>(</mo><msup><mi>w</mi><mo>′</mo></msup><mo>)</mo></mrow>
+                      </mfrac>
+                    </mtd><mtd><mtext>if </mtext><mi>w</mi><mo>∈</mo><msup><mi>V</mi><mrow><mo>(</mo><mi>k</mi><mo>)</mo></mrow></msup></mtd></mtr>
+                    <mtr><mtd><mn>0</mn></mtd><mtd><mtext>otherwise</mtext></mtd></mtr>
+                  </mtable>
+                </mrow>
+              </math>
+            </div>
+            <p>The division renormalises the survivors so they sum to 1 again. In code, the usual trick is to
+              set every logit outside the top <em>k</em> to −∞ before the softmax, which gives the same result.
+              <em>k = 1</em> is greedy decoding, and <em>k = |V|</em> is plain random sampling. Values around
+              40–50 were common in early GPT-2 demos.</p>
+            <p>Example: probabilities 0.4, 0.3, 0.2, 0.1 with <em>k = 2</em> keep the first two, which together
+              hold 0.7. After renormalising they become 0.4/0.7 ≈ 0.57 and 0.3/0.7 ≈ 0.43.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s17">
+          <div class="slide-frame">
+            <div class="tag">Slide 17 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-17.png"
+              alt="Top-k sampling. Higher k gives diverse outputs but risky ones. Lower k gives safe but generic outputs. The same diagram as the previous slide, with restroom, grocery, store, airport in full colour and the rest faded.">
+            <div class="slide-caption">slide 17 · choosing k is a trade-off</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Same figure. Higher <em>k</em> lets more of the tail in: more variety, more risk of a bad
+              token. Lower <em>k</em> keeps only the safest tokens: less risk, but the text drifts back toward
+              greedy's blandness.</p>
+            <h4>Why no single k works</h4>
+            <p>The right <em>k</em> depends on how spread out the distribution is, and that changes from token
+              to token. After "He wanted to go to the" there are dozens of fine next words. After "The capital
+              of France is" there is essentially one. A fixed <em>k</em> treats both the same. The next slide
+              shows both failure cases.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s18">
+          <div class="slide-frame">
+            <div class="tag">Slide 18 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-18.png"
+              alt="Top-k sampling - Limitations. It can cut-off. Top right, labelled Too quickly: context She said, quote, I never, with a flat next-token distribution over thought, knew, had, saw, did, said, wanted, told, liked, got, all with similar bar lengths. Bottom left, labelled Too slowly: context I ate the pizza while it was still, with a very peaked distribution where hot has by far the longest bar, warm a small bar, and cooling, on, heating, fresh, cold, warming, burning, cooking tiny bars.">
+            <div class="slide-caption">slide 18 · a fixed k cuts too much or too little</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two contexts with very different next-token distributions.</p>
+            <ul>
+              <li><strong>Too quickly</strong> (orange, flat): after "She said, "I never", many verbs are about
+                equally good: thought, knew, had, saw, did, said, wanted, told, liked, got, and many more. A
+                small <em>k</em> (say 5) throws away perfectly good options like "told" or "liked", making the
+                output less varied than the model intended.</li>
+              <li><strong>Too slowly</strong> (purple, peaked): after "I ate the pizza while it was still",
+                "hot" holds nearly all the probability. A <em>k</em> of 10 still lets in "cold", "burning" and
+                "cooking", which are wrong or odd here. After renormalisation each gets a small but real chance
+                of being picked.</li>
+            </ul>
+            <p>The slide does not label the small bar charts drawn above each context. The point to read off is
+              the shape of the next-token distribution beside each one: flat in the first case, peaked in the
+              second.</p>
+            <div class="callout aha">
+              <div class="callout-label">✦ Key takeaway</div>
+              <p>The number of tokens worth keeping should depend on the shape of the distribution. Top-p does
+                that by fixing the amount of probability mass to keep, rather than the number of tokens.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s19">
+          <div class="slide-frame">
+            <div class="tag">Slide 19 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-19.png"
+              alt="Top-p sampling. Instead of top-k, threshold p on the probability. Sampling is done from all the tokens in the top-p cumulative probability mass. This approach overcomes the problem of top-k sampling and hence the dynamic probability distributions we sample from are handled. Putting a limit on p instead of k varies the k depending on the probability distribution.">
+            <div class="slide-caption">slide 19 · top-p (nucleus) sampling</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Top-p, also called <em>nucleus sampling</em> (Holtzman et al., 2020), keeps the smallest set of
+              most-probable tokens whose probabilities add up to at least <em>p</em>, then samples from that
+              set after renormalising. The number of tokens kept now changes with the distribution.</p>
+            <h4>The precise rule</h4>
+            <p>Sort tokens by probability, highest first. The nucleus <em>V<sup>(p)</sup></em> is the smallest
+              prefix of that list with</p>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <munder><mo>∑</mo><mrow><mi>w</mi><mo>∈</mo><msup><mi>V</mi><mrow><mo>(</mo><mi>p</mi><mo>)</mo></mrow></msup></mrow></munder>
+                <mi>P</mi><mo>(</mo><mi>w</mi><mo>|</mo><msub><mi>y</mi><mrow><mo>&lt;</mo><mi>t</mi></mrow></msub><mo>)</mo>
+                <mo>≥</mo><mi>p</mi>
+              </math>
+            </div>
+            <h4>Two worked examples with p = 0.9</h4>
+            <ul>
+              <li><strong>Flat:</strong> probabilities 0.5, 0.2, 0.15, 0.1, 0.05. Running totals 0.5, 0.7, 0.85,
+                0.95. The total first reaches 0.9 at the fourth token, so the nucleus has 4 tokens. Each is
+                divided by 0.95 to renormalise.</li>
+              <li><strong>Peaked:</strong> probabilities 0.92, 0.03, 0.02, … The first token alone already holds
+                0.92 ≥ 0.9, so the nucleus has 1 token and the step is effectively greedy.</li>
+            </ul>
+            <p>That is the "varies the k" in the last bullet: on slide 18, top-p would keep many verbs after
+              "I never" and only "hot" (perhaps with "warm") after "still". Common settings are
+              <em>p</em> = 0.9 to 0.95. <em>p = 1</em> is plain random sampling.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s20">
+          <div class="slide-frame">
+            <div class="tag">Slide 20 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-20.png"
+              alt="Top-p sampling. Top row: three next-token distributions labelled P_t^1(y_t = w | {y}_<t), P_t^2(y_t = w | {y}_<t), P_t^3(y_t = w | {y}_<t). The first (pink) slopes down gradually with a long tail; the second (blue) is nearly flat with many bars of similar length; the third (green) has one very long bar and many tiny ones. Bottom row: the same three, with a black box drawn around the kept tokens: about 6 bars for the first, about 14 for the second, and only the top 1 to 2 bars for the third; the rest are faded.">
+            <div class="slide-caption">slide 20 · the nucleus grows and shrinks with the distribution</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three different next-token distributions, <em>P<sub>t</sub><sup>1</sup></em>,
+              <em>P<sub>t</sub><sup>2</sup></em> and <em>P<sub>t</sub><sup>3</sup></em>. The superscripts just
+              number three different contexts, not powers. The bottom row boxes the nucleus for the same
+              <em>p</em> in each case.</p>
+            <ul>
+              <li><strong>Pink</strong> (moderate slope): a medium-sized nucleus, about 6 tokens.</li>
+              <li><strong>Blue</strong> (flat): it takes many tokens to reach <em>p</em>, so the nucleus is
+                large, about 14 tokens.</li>
+              <li><strong>Green</strong> (one dominant token): the nucleus is just the top one or two.</li>
+            </ul>
+            <p>A fixed <em>k</em> would draw the same-sized box around all three. Top-p draws a box of the
+              right size for each, which is exactly the fix for both failures on slide 18.</p>
+            <div class="callout link">
+              <div class="callout-label">→ In code</div>
+              <p>Top-p is implemented by sorting the probabilities, taking a cumulative sum, and masking every
+                token after the point where the sum passes <em>p</em>. Be careful to keep the token that pushes
+                the sum over <em>p</em>, otherwise a very peaked distribution can end up with an empty nucleus.
+                <a href="../assignments/2-moe-optimizers-decoding.html#p3-filters">A2 §8.2</a> walks through
+                <code>filter_top_k</code> and <code>filter_top_p</code> line by line.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="truncation">
+        <h2><span class="num">§6</span>Beyond top-p: typical and epsilon sampling</h2>
+        <p class="section-intro">
+          Top-k and top-p are both <em>truncation</em> rules: they decide
+          which tokens to throw away before sampling. Slide 21 names two
+          later truncation rules with different ideas of which tokens are
+          worth keeping.
+        </p>
+
+        <div class="slide" id="s21">
+          <div class="slide-frame">
+            <div class="tag">Slide 21 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-21.png"
+              alt="Some more sampling techniques. Typical Sampling, Meister et al. (2022): this method reweights the scores based on the entropy of the distribution. Epsilon Sampling, Hewitt et al. (2022): set a threshold on lower bounding valid probabilities. Two plots of probability of word (log scale) against rank of probability of word, each with three vertical dashed lines: green top-p cutoff, purple eta cutoff, red epsilon cutoff. Left: a flat, long-tailed distribution over about 3300 ranks; the epsilon cutoff is at rank about 650, the top-p cutoff at about 2600 and the eta cutoff at about 2750. Right: a peaked distribution over about 9 ranks where the first word has probability near 1; the top-p cutoff is after rank 1, the eta cutoff after about rank 5 and the epsilon cutoff after about rank 8.">
+            <div class="slide-caption">slide 21 · typical sampling, epsilon and eta sampling</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Two more methods, and two plots comparing where three truncation rules (top-p, eta, epsilon)
+              cut the same distribution.</p>
+            <h4>Epsilon sampling (Hewitt et al., 2022)</h4>
+            <p>Throw away every token whose probability is below a fixed threshold ε (values around
+              3 × 10<sup>−4</sup> are typical), then renormalise and sample. The idea from the paper
+              "Truncation Sampling as Language Model Desmoothing" is that a trained model spreads a little
+              probability over every token as a kind of smoothing, so very small probabilities are mostly
+              noise, whatever the shape of the rest of the distribution.</p>
+            <h4>Eta sampling (same paper, in the plots)</h4>
+            <p>The plots also show an <em>eta</em> cutoff, which the bullets do not mention. Eta sampling makes
+              the threshold depend on the entropy of the distribution: high-entropy (flat) distributions get a
+              lower threshold, so more tokens survive. As we understand the paper, the threshold is
+              <em>η = min(ε, √ε · e<sup>−H</sup>)</em>, where <em>H</em> is the entropy.</p>
+            <h4>Reading the plots</h4>
+            <ul>
+              <li><strong>Left, flat distribution</strong> (thousands of plausible words). Epsilon's fixed
+                threshold cuts at rank ~650 and throws away many reasonable words. Top-p and eta keep about
+                2,600–2,750.</li>
+              <li><strong>Right, peaked distribution</strong> (one dominant word). Top-p keeps only the top
+                word. Epsilon keeps about 8, because several small tokens are still above its fixed threshold.
+                Eta sits between them.</li>
+            </ul>
+            <p>Each rule fails somewhere: top-p can be too strict on peaked distributions, epsilon too strict on
+              flat ones. Eta is designed to behave sensibly in both.</p>
+            <h4>Typical sampling (Meister et al., 2022)</h4>
+            <p>Remember slide 14: human text is not made of the most probable tokens. Typical sampling keeps
+              the tokens whose <em>surprisal</em> (<em>−log P(w)</em>, how surprising the token is) is closest
+              to the distribution's entropy <em>H</em> (the average surprisal). Tokens are ranked by
+              <em>|−log P(w) − H|</em>, and the closest ones are kept until their total probability reaches a
+              threshold, as in top-p. So very surprising tail tokens are dropped, but so can be a token that
+              is far <em>more</em> predictable than average.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>The slide says typical sampling "reweights the scores based on the entropy". It is more
+                accurate to say it <em>truncates</em> by entropy: it keeps a set of tokens chosen by comparing
+                each token's surprisal with the entropy, then samples from that set in proportion to the
+                original (renormalised) probabilities. The scores of the kept tokens are not reweighted.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="temperature">
+        <h2><span class="num">§7</span>Task type and temperature</h2>
+        <p class="section-intro">
+          Whether to search or sample depends on the task. Temperature
+          is a separate knob that reshapes the distribution before any
+          of the rules above are applied.
+        </p>
+
+        <div class="slide" id="s22">
+          <div class="slide-frame">
+            <div class="tag">Slide 22 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-22.png"
+              alt="Generation Tasks. There are multiple kinds of generation tasks ranging from close ended ones to open ended ones. Open-ended generation: the output distribution still has high freedom, for example story generation. Non-open-ended generation: the input mostly determines the output generation, for example machine translation. A double-headed arrow from Less Open-ended (left) to More Open-ended (right) with markers in order: Machine Translation, Summarization, Task-driven Dialog, ChitChat Dialog, Story Generation.">
+            <div class="slide-caption">slide 22 · a spectrum from closed to open-ended tasks</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Generation tasks lie on a spectrum. At the closed end, the input almost fixes the output: there
+              are only a few good translations of a sentence. At the open end, the input leaves a great deal
+              free: a story prompt has endless good continuations. In order: machine translation,
+              summarisation, task-driven dialogue, chit-chat dialogue, story generation.</p>
+            <h4>Why this decides the decoder</h4>
+            <ul>
+              <li><strong>Closed tasks</strong>: the most probable output usually is the right one, and there
+                is little room for repetition because the output tracks the input. Beam search works well, and
+                was the standard for machine translation.</li>
+              <li><strong>Open tasks</strong>: the most probable output is the bland, repetitive one of
+                §4. Sampling with top-p and a moderate temperature works better.</li>
+            </ul>
+            <p>This also explains an apparent contradiction: beam search was the best decoder for years in MT
+              and still looked broken for story writing. Both observations are correct. They come from
+              opposite ends of this line.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s23">
+          <div class="slide-frame">
+            <div class="tag">Slide 23 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-23.png"
+              alt="Scaling Randomness: Temperature. Hyperparameter to rebalance the probability distribution. Equation: P_t(y_t = w) = exp(S_w / tau) / sum over w' in V of exp(S_w' / tau). Legend: P_t, probability of selecting word w at time step t; S_w, raw logit score for token w; tau, temperature.">
+            <div class="slide-caption">slide 23 · softmax with temperature</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <div class="eq boxed">
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+                <msub><mi>P</mi><mi>t</mi></msub><mo>(</mo><msub><mi>y</mi><mi>t</mi></msub><mo>=</mo><mi>w</mi><mo>)</mo>
+                <mo>=</mo>
+                <mfrac>
+                  <mrow><mi>exp</mi><mo>(</mo><msub><mi>S</mi><mi>w</mi></msub><mo>/</mo><mi>τ</mi><mo>)</mo></mrow>
+                  <mrow><msub><mo>∑</mo><mrow><msup><mi>w</mi><mo>′</mo></msup><mo>∈</mo><mi>V</mi></mrow></msub>
+                    <mi>exp</mi><mo>(</mo><msub><mi>S</mi><msup><mi>w</mi><mo>′</mo></msup></msub><mo>/</mo><mi>τ</mi><mo>)</mo></mrow>
+                </mfrac>
+              </math>
+            </div>
+            <ul>
+              <li><em>S<sub>w</sub></em> is the logit for token <em>w</em>, the raw score from slide 2.</li>
+              <li><em>τ</em> (tau) is the temperature, a positive number. Every logit is divided by it before
+                the softmax.</li>
+              <li><em>V</em> here is the vocabulary as a set (on slide 8, <em>V</em> was its size).</li>
+            </ul>
+            <p>At <em>τ = 1</em> this is the ordinary softmax and nothing changes.</p>
+            <h4>A worked example</h4>
+            <p>Three tokens with logits 2, 1, 0.</p>
+            <ul>
+              <li><em>τ = 1</em>: probabilities 0.67, 0.24, 0.09.</li>
+              <li><em>τ = 0.5</em>: the logits become 4, 2, 0, and the probabilities 0.87, 0.12, 0.02. The top
+                token gains.</li>
+              <li><em>τ = 2</em>: the logits become 1, 0.5, 0, and the probabilities 0.51, 0.31, 0.19. The
+                distribution flattens.</li>
+            </ul>
+            <p>Dividing by <em>τ</em> scales the <em>gaps</em> between logits. Softmax only cares about those
+              gaps, so a small <em>τ</em> stretches them (sharper) and a large <em>τ</em> squeezes them
+              (flatter). The ranking of tokens never changes, only how unequal they are.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s24">
+          <div class="slide-frame">
+            <div class="tag">Slide 24 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-24.png"
+              alt="Scaling Randomness: Temperature. Higher the temperature: probability distribution P_t becomes more uniform; more diverse output as probability is spread around vocab. Lower the temperature: probability distribution P_t becomes spikier; less diverse output (spelled Lss) as probability is concentrated in top words. The temperature softmax equation is repeated below.">
+            <div class="slide-caption">slide 24 · high temperature flattens, low temperature sharpens</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Higher <em>τ</em>: flatter distribution, more diverse output. Lower <em>τ</em>: spikier
+              distribution, less diverse output. ("Lss" on the slide is a typo for "Less".)</p>
+            <h4>The two limits</h4>
+            <ul>
+              <li><em>τ → 0</em>: the largest logit dominates completely, so sampling becomes greedy decoding.
+                (Implementations treat <em>τ = 0</em> as "use argmax", since dividing by zero is not
+                defined.)</li>
+              <li><em>τ → ∞</em>: all logits divided by a huge number are close to 0, so every token gets
+                nearly the same probability, 1/|V|. The output becomes random tokens.</li>
+            </ul>
+            <div class="callout mechanism">
+              <div class="callout-label">Under the hood</div>
+              <p>Temperature is not a decoding algorithm on its own. It reshapes the distribution, and then some
+                other rule picks a token. In practice it is applied first, and top-k or top-p is applied to the
+                reshaped distribution. The order matters for top-p: a higher temperature flattens the
+                distribution, so the same <em>p</em> then keeps more tokens. A common setting for chat models
+                is a temperature somewhere around 0.7–1.0 with top-p around 0.9–0.95, but defaults vary between
+                providers.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="soft">
+
+      <section id="rerank">
+        <h2><span class="num">§8</span>Re-ranking and takeaways</h2>
+        <p class="section-intro">
+          Any decoder can still produce a bad output. A cheap safeguard
+          is to generate several and pick the best one with a separate
+          scorer.
+        </p>
+
+        <div class="slide" id="s25">
+          <div class="slide-frame">
+            <div class="tag">Slide 25 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-25.png"
+              alt="Any Problems? What if we decode a bad sequence from our model?">
+            <div class="slide-caption">slide 25 · what if the output is bad anyway?</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Sampling is random, so even with good settings some outputs will be poor: off-topic, repetitive
+              or factually wrong. The next slide's answer is to stop relying on a single sample.</p>
+          </div>
+        </div>
+
+        <div class="slide" id="s26">
+          <div class="slide-frame">
+            <div class="tag">Slide 26 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-26.png"
+              alt="Re-ranking. Decode a bunch of sequences from the model. Then define a score to approximate quality of sequences and re-rank by this score. A simplest approach is to use perplexity as a score (but repetitive occurrences may get low perplexity). Re-rankers can score a variety of properties: style (Holtzman et al., 2018), discourse (Gabriel et al., 2021), entailment/factuality (Goyal et al., 2020), logical consistency (Lu et al., 2020), and many more. We can also compose multiple re-rankers together.">
+            <div class="slide-caption">slide 26 · generate many, keep the best</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Re-ranking in three steps: decode several candidates (by sampling several times, or by keeping
+              all <em>k</em> finished beams), score each with some quality measure, and return the
+              highest-scoring one.</p>
+            <h4>Perplexity as a score, and its trap</h4>
+            <p>Perplexity is the exponential of the average per-token NLL:
+              <em>PPL = exp(−(1/T) Σ log P(y<sub>t</sub> | y<sub>&lt;t</sub>))</em>. Lower means the model finds
+              the text more predictable. It is the simplest score because the model already provides it. But
+              slides 11–12 showed that repetitive text gets very low NLL, so ranking by perplexity alone
+              brings back exactly the degenerate outputs that sampling was meant to avoid. That is the
+              warning in the slide's parenthesis.</p>
+            <h4>Better scorers</h4>
+            <p>A re-ranker can be any model that scores a property you care about: style, discourse coherence,
+              whether the output is entailed by (factually consistent with) a source document, logical
+              consistency. Scores from several re-rankers can be combined, for example as a weighted sum. The
+              same pattern underlies "best-of-n" sampling with a learned reward model, which is used widely
+              with modern LLMs.</p>
+            <div class="callout gotcha">
+              <div class="callout-label">⚠ Watch out</div>
+              <p>Re-ranking costs <em>n</em> full generations for one output. It also can only choose among the
+                candidates it is given. If all <em>n</em> are bad, it returns the least bad.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide" id="s27">
+          <div class="slide-frame">
+            <div class="tag">Slide 27 / 27</div>
+            <img src="../assets/slides/L10-decoding/slide-27.png"
+              alt="Decoding Strategies: Takeaways. Still a challenging aspect in NLP; there is scope for work. Different decoding algorithms can allow us to inject biases that encourage different properties of coherent natural language generation (connect with the examples we have seen before). Some of the most impactful advances in NLG of the last few years have come from simple but effective modifications to decoding algorithms.">
+            <div class="slide-caption">slide 27 · takeaways</div>
+          </div>
+          <div class="explain">
+            <h4>On the slide</h4>
+            <p>Three closing points. Decoding is still an open problem. Each decoding algorithm builds in a
+              preference (a bias) for certain properties of the output. And small changes to decoding, such as
+              top-p, have had a large effect on generation quality.</p>
+            <h4>Connecting it to the examples</h4>
+            <ul>
+              <li>Beam search builds in a preference for high probability. That gives accuracy on closed tasks
+                and repetition on open ones (slides 11–14).</li>
+              <li>Top-k, top-p, typical and epsilon sampling build in a preference for "plausible but not
+                necessarily most probable", by removing the unreliable tail in different ways (slides
+                16–21).</li>
+              <li>Temperature sets the balance between safe and diverse (slides 23–24).</li>
+              <li>Re-ranking adds preferences the model's probabilities do not capture at all, such as
+                factuality (slide 26).</li>
+            </ul>
+            <p>Top-p is the clearest case of the third point: a few lines of code, no retraining, and it fixed
+              much of the degeneration that made early neural text generation look so poor.</p>
+          </div>
+        </div>
+
+        <p class="section-intro" style="margin-top:1.5rem">
+          Zoom out. A language model gives a distribution over the next
+          token, and decoding turns a sequence of those distributions into
+          text. Exact search for the most probable sequence is
+          exponentially expensive, so greedy keeps one candidate and beam
+          search keeps <em>k</em>. Those work well when the input fixes the
+          output, as in translation. In open-ended generation the most
+          probable text is repetitive and unlike human writing, so we
+          sample instead, after cutting off the unreliable tail: top-k
+          keeps a fixed number of tokens, top-p a fixed probability mass,
+          epsilon a fixed minimum probability, and typical sampling the
+          tokens with typical surprisal. Temperature sharpens or flattens
+          the distribution before any of these, and re-ranking chooses the
+          best of several outputs. For an exam, be able to run each rule
+          by hand on a small distribution and say which failure it fixes.
+          The next lecture keeps the same output distribution and asks a
+          different question: how to produce the same tokens faster.
+        </p>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="9-optimizers.html">
+          <span class="dir">← back</span>
+          <span class="lbl">09 · Optimizers</span>
+        </a>
+        <a class="next" href="11-speculative-decoding.html">
+          <span class="dir">next →</span>
+          <span class="lbl">11 · Speculative Decoding</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Lecture 10 · Decoding · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#deck">at a glance</a>
+        <a href="#background">§1 logits to sentence</a>
+        <a href="#greedy">§2 greedy &amp; exhaustive</a>
+        <a href="#beam">§3 beam search</a>
+        <a href="#degeneration">§4 degeneration</a>
+        <a href="#sampling">§5 top-k &amp; top-p</a>
+        <a href="#truncation">§6 typical &amp; epsilon</a>
+        <a href="#temperature">§7 temperature</a>
+        <a href="#rerank">§8 re-ranking</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>
