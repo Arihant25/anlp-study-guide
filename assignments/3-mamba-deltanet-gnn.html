@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Assignment 3 · Mamba, DeltaNet, GNNs — ANLP Study Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Assignment 3 for Advanced NLP, Monsoon 2026 IIIT-H, explained from the concepts up: analysing the cipher, state space models and Mamba, the delta rule and DeltaNet, a Mamba-DeltaNet hybrid, and GCN, GraphSAGE, GAT and Bi-GCN for fake news detection on UPFD, with every line of code and the results.">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical"
+    href="https://arihant25.github.io/anlp-study-guide/assignments/3-mamba-deltanet-gnn.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="ANLP Study Guide">
+  <meta property="og:title" content="Mamba, DeltaNet and GNNs from scratch | ANLP Assignment 3">
+  <meta property="og:description"
+    content="Mamba and DeltaNet built from their papers, a hybrid of the two, and four graph neural networks written with index_add_, each concept explained before its code.">
+  <meta property="og:url"
+    content="https://arihant25.github.io/anlp-study-guide/assignments/3-mamba-deltanet-gnn.html">
+  <meta name="twitter:card" content="summary">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"LearningResource","name":"Mamba, DeltaNet and GNNs from scratch","url":"https://arihant25.github.io/anlp-study-guide/assignments/3-mamba-deltanet-gnn.html","inLanguage":"en","isAccessibleForFree":true,"learningResourceType":"assignment","educationalLevel":"graduate"}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/css/site.css">
+  <style>
+    /* page-local: line-by-line tables, where column 1 is code and the last column is a shape */
+    table.tbl.lines td:first-child { white-space: nowrap; }
+    table.tbl.lines td:first-child code { font-size: .8em; }
+    table.tbl td.shape, table.tbl th.shape { font-family: var(--font-mono); font-size: .8rem; white-space: nowrap; color: var(--ink-2); }
+    pre.code.io { border-style: solid; font-size: .8rem; }
+  </style>
+</head>
+
+<body>
+  <div class="shell">
+
+    <aside class="rail-left">
+      <div class="brand">
+        <a href="../index.html" style="text-decoration:none;color:inherit">an attention<br><em>lab notebook</em></a>
+        <small>ANLP · Monsoon '26</small>
+      </div>
+      <nav>
+        <div class="grp">On this page</div>
+        <a href="#read">§0 · What the assignment asks</a>
+        <a href="#cipher">§1 · Look at the data first</a>
+        <a href="#why">§2 · Why look beyond Transformers</a>
+        <a href="#ssm">§3 · State space models to Mamba</a>
+        <a href="#delta">§4 · Linear attention and the delta rule</a>
+        <a href="#hybrid">§5 · The hybrid and its hypothesis</a>
+        <a href="#code-a">§6 · Part A code, line by line</a>
+        <a href="#results-a">§7 · Part A results</a>
+        <a href="#graphs">§8 · Part B concepts: news as a graph</a>
+        <a href="#code-b">§9 · Part B code, line by line</a>
+        <a href="#results-b">§10 · Part B results</a>
+        <a href="#viva">§11 · Viva questions</a>
+
+        <div class="grp">Elsewhere</div>
+        <a href="../index.html">← Home</a>
+        <a href="1-transformers-from-scratch.html">A1 · Transformers from Scratch</a>
+        <a href="2-moe-optimizers-decoding.html">A2 · MoE, Optimizers, Decoding</a>
+        <a href="../lectures/5-attention.html">L5 · Attention</a>
+        <a href="../lectures/6-more-attention.html">L6 · More Attention</a>
+        <a href="../lectures/12-evaluation.html">L12 · Evaluation</a>
+      </nav>
+    </aside>
+
+    <div class="topbar">
+      <div class="brand"><a href="../index.html" style="color:inherit;text-decoration:none">an attention <em>lab
+            notebook</em></a></div>
+      <button class="theme-toggle" onclick="__toggleTheme()">◑ dark</button>
+    </div>
+
+    <main>
+      <section class="hero">
+        <div class="kicker">Assignment 03 · due 13 Nov 2026</div>
+        <h1>Mamba, DeltaNet and GNNs — <em>concepts first, then every line</em>.</h1>
+        <p class="lead">
+          This page explains how Assignment 3 was done, in the order it was done. Part A builds Mamba, DeltaNet and a
+          hybrid of the two and trains them to decrypt a cipher, which turns out to be unbreakable. Part B classifies
+          fake news with four graph neural networks written from scratch. Each idea is explained before the code that
+          implements it, and the results come with the reasons behind them.
+        </p>
+        <div class="meta">
+          <span class="pill heat">Assignment 03</span>
+          <span class="pill">Mamba · DeltaNet · hybrid</span>
+          <span class="pill">GCN · GraphSAGE · GAT · Bi-GCN</span>
+          <span class="pill">UPFD GossipCop</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ §0 -->
+      <section id="read">
+        <h2><span class="num">§0</span>What the assignment asks, in one screen</h2>
+        <p class="section-intro">
+          Assignment 3 has two unrelated halves. Part A is about <strong>sequence models that are not
+          Transformers</strong>: you build Mamba and DeltaNet from their papers, plus a hybrid of the two, and race
+          them against a Transformer on a decryption task. Part B is about <strong>graph neural networks</strong>:
+          you decide whether a news article is fake by looking at how it spread on Twitter.
+        </p>
+        <div class="callout mechanism">
+          <div class="callout-label">the deliverables</div>
+          <p><strong>Part A.</strong> Four models (Transformer, Mamba, DeltaNet, Mamba–DeltaNet hybrid) trained on
+            <code>cipher.jsonl → cleaned.jsonl</code>. Report character accuracy, word accuracy, precision, recall, F1,
+            Levenshtein distance, parameter count and FLOPs. Weights live on Hugging Face and
+            <code>bash scripts/part1/test_assn.sh --heldout</code> must pull them and decrypt a hidden file. The hybrid's
+            design must be written in <code>docs/DESIGN.md</code> and pushed <em>before</em> the hybrid is coded.</p>
+          <p><strong>Part B.</strong> On the GossipCop part of UPFD, train a root-only MLP, GCN, GraphSAGE, GAT and
+            Bi-GCN with BERT features (5 seeds each), then GraphSAGE with each of the four feature types (5 seeds
+            each). Report mean ± std of accuracy, precision, recall and F1 using the best-validation-F1 epoch.</p>
+          <p><strong>Rules that shape the code.</strong> No comments or docstrings in code (decisions go in
+            <code>CHOICES.md</code>), models from scratch (no <code>mamba_ssm</code>), <code>uv</code> for the environment,
+            inference within 10 GB of VRAM.</p>
+        </div>
+      </section>
+
+      <!-- ================================================================ §1 -->
+      <section id="cipher">
+        <h2><span class="num">§1</span>Look at the data before building anything</h2>
+        <p class="section-intro">
+          The most important step of Part A happens before any model exists. If you know what the cipher does, you
+          know what the model has to learn. If the cipher turns out to be impossible to learn, you know what
+          accuracy to expect and you can stop chasing it.
+        </p>
+
+        <h3 id="cipher-look">§1.1 · What a sample looks like</h3>
+        <pre class="code"><code>cleaned: "valkyria chronicles iii"          23 characters, only a-z and space
+cipher:  "suD6OZe=Q04fY7Ty6 oeebip?"        25 characters, 81 different symbols</code></pre>
+        <p>
+          The plaintext is lower-cased Wikipedia text (WikiText-103) with only <code>a–z</code> and space. The ciphertext
+          uses 81 symbols: space, upper- and lower-case letters, digits, and 18 punctuation marks. The ciphertext is
+          usually a few characters longer than the plaintext.
+        </p>
+
+        <h3 id="cipher-nulls">§1.2 · The punctuation marks are padding</h3>
+        <p>
+          Split the 81 symbols into two groups: the 63 "core" symbols (space, letters, digits) and the 18 punctuation
+          marks <code>!'+,-./:;&lt;=&gt;?[]_{}</code>. Delete the punctuation from every ciphertext and compare lengths:
+        </p>
+        <table class="tbl">
+          <thead><tr><th>Check (200k training samples)</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>core-symbol length == plaintext length</td><td><strong>100%</strong> of samples</td></tr>
+            <tr><td>fraction of ciphertext that is punctuation</td><td>about 13%, and it grows with length</td></tr>
+            <tr><td>how often a punctuation mark sits next to a plaintext space</td><td>16.97%, while spaces are 16.95% of all characters</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The first row says each core symbol corresponds to exactly one plaintext character, in order. The last row
+          says the punctuation is dropped in at random places: it is no more likely to sit at a word boundary than
+          anywhere else. In cryptography these are called <em class="term">nulls</em>, symbols that mean nothing and
+          are there only to confuse. So the first preprocessing step is to delete them. After that, cipher position
+          <em>i</em> lines up with plaintext position <em>i</em>.
+        </p>
+
+        <h3 id="cipher-entropy">§1.3 · Does a cipher symbol tell you anything about its plaintext letter?</h3>
+        <p>
+          <em class="term">Entropy</em> H(X) measures, in bits, how uncertain you are about X: the average number of
+          yes/no questions needed to guess it. <em class="term">Conditional entropy</em> H(X | Y) is your remaining
+          uncertainty once you know Y. If knowing Y helps, H(X | Y) is smaller than H(X). If Y is useless,
+          the two are equal. You estimate both by counting:
+        </p>
+        <pre class="code"><code>H(P)     = - Σ_p  P(p) log₂ P(p)
+H(P | C) = H(P, C) - H(C)          # computed from pair counts (c, p)</code></pre>
+        <p>Over 172 million aligned character positions:</p>
+        <table class="tbl">
+          <thead><tr><th>What you are allowed to look at</th><th>Remaining uncertainty about the plaintext letter</th></tr></thead>
+          <tbody>
+            <tr><td>nothing</td><td>4.126 bits</td></tr>
+            <tr><td>the cipher symbol at the same position</td><td>4.126 bits</td></tr>
+            <tr><td>that symbol and the previous cipher symbol</td><td>4.04 bits (the small drop is counting noise from 3,969 contexts)</td></tr>
+            <tr><td>the position and the cipher symbol</td><td>3.99 bits (same counting noise, 2,235 contexts)</td></tr>
+            <tr><td>difference of consecutive cipher symbols (an autokey test)</td><td>4.123 bits</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Knowing the cipher symbol changes nothing. On top of that, the plaintext <code>history</code> appears about 6,000
+          times in the training set, and every copy gets a different ciphertext. Together these say the cipher
+          behaves like a <em class="term">one-time pad</em>: every sample is encrypted with its own random key. A
+          one-time pad is provably unbreakable. For any ciphertext, every plaintext of the same length is equally
+          likely, so no model, however large, can recover the text.
+        </p>
+
+        <div class="callout gotcha">
+          <div class="callout-label">what this means for Part A</div>
+          <p>The only thing the ciphertext reveals is the <strong>length</strong> of the plaintext. The best a model can
+            do is guess the most common character at each position. That is why so many people reported poor
+            accuracy on Moodle: the task is not solvable, so model quality hardly matters. The sensible response
+            is to build each model correctly and simply, train it properly, and explain why the numbers come out
+            as they do. Chasing accuracy with tricks gains nothing.</p>
+        </div>
+
+        <h3 id="cipher-framing">§1.4 · The resulting task: one label per character</h3>
+        <p>
+          Since cipher position <em>i</em> maps to plaintext position <em>i</em>, decryption becomes
+          <em class="term">sequence labelling</em>: read the cleaned cipher string and output one of 27 classes (space,
+          a–z) at every position. This is much simpler than an encoder–decoder: there is no generation loop and no
+          cross-attention, and the output always has the right length. Each model is just
+          <code>embedding → stack of layers → linear layer to 27 classes</code>, trained with cross-entropy at every
+          position.
+        </p>
+      </section>
+
+      <!-- ================================================================ §2 -->
+      <section id="why">
+        <h2><span class="num">§2</span>Why look beyond Transformers at all</h2>
+        <p class="section-intro">
+          Self-attention compares every token with every other token. For a sequence of L tokens that is an L×L
+          score matrix: time and memory grow as L². An RNN instead carries a fixed-size <em class="term">state</em>
+          and updates it once per token, so cost grows as L, and producing the next token costs the same however
+          long the history is. The catch is that a fixed-size state has to forget things. Mamba and DeltaNet are two
+          answers to the question "how do we get the speed of an RNN while forgetting only what doesn't matter?"
+        </p>
+        <table class="tbl">
+          <thead><tr><th></th><th>Transformer</th><th>Mamba</th><th>DeltaNet</th></tr></thead>
+          <tbody>
+            <tr><td>memory of the past</td><td>all past keys and values (grows with L)</td><td>a vector state per channel, size N = 16</td><td>a d×d matrix per head</td></tr>
+            <tr><td>training cost in L</td><td>O(L²)</td><td>O(L)</td><td>O(L)</td></tr>
+            <tr><td>cost per new token</td><td>O(L)</td><td>O(1)</td><td>O(1)</td></tr>
+            <tr><td>how it chooses what to keep</td><td>softmax over everything</td><td>input-dependent decay Δ</td><td>delta rule: overwrite the old value for a key</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ================================================================ §3 -->
+      <section id="ssm">
+        <h2><span class="num">§3</span>State space models, from zero to Mamba</h2>
+
+        <h3 id="ssm-cont">§3.1 · A continuous-time state space model</h3>
+        <p>
+          A <em class="term">state space model</em> (SSM) comes from control theory. An input signal x(t) drives a
+          hidden state h(t) of size N, and the output y(t) reads from that state:
+        </p>
+        <pre class="code"><code>h'(t) = A h(t) + B x(t)        # how the state changes over time
+y(t)  = C h(t)                 # what we read out</code></pre>
+        <p>
+          A (N×N) says how the state evolves on its own. If A is negative, the state decays toward zero, which
+          means the model forgets. B (N×1) says how the input is written into the state, and C (1×N) how the state is
+          read out. One SSM handles one scalar input channel. A model with D channels runs D of them side by
+          side.
+        </p>
+
+        <h3 id="ssm-disc">§3.2 · Discretisation: from a differential equation to a loop</h3>
+        <p>
+          Text is a sequence of steps, not a continuous signal, so we pick a step size Δ and ask what happens to h
+          over one step. With the <em class="term">zero-order hold</em> rule (keep x constant over the step), the
+          exact answer is:
+        </p>
+        <pre class="code"><code>Ā = exp(Δ A)
+B̄ = (Δ A)⁻¹ (exp(Δ A) − I) · Δ B   ≈  Δ B     (Mamba uses this simpler form for B)
+
+h_t = Ā h_{t−1} + B̄ x_t
+y_t = C h_t</code></pre>
+        <p>
+          That is an RNN with no nonlinearity. Δ acts as a <strong>knob for how much to remember</strong>. With a
+          small Δ, Ā ≈ 1 and B̄ ≈ 0: the state is kept and the input is mostly ignored. With a large Δ, Ā ≈ 0: the old
+          state is wiped and replaced by the current input.
+        </p>
+
+        <h3 id="ssm-s4">§3.3 · S4: make A diagonal and the loop becomes a convolution</h3>
+        <p>
+          S4 (Gu et al.) made SSMs practical. Two ideas matter here. First, if Ā, B̄, C are the same at every step, you
+          can unroll the loop: y_t = Σ_k C Ā<sup>k</sup> B̄ x_{t−k}. That is a convolution with a kernel
+          K = (CB̄, CĀB̄, CĀ²B̄, …), so training can use one big parallel convolution instead of a loop. Second, A is
+          given a special structure. In the simplified variants Mamba builds on, A is diagonal, so each of the N state
+          dimensions decays at its own rate and <code>exp(ΔA)</code> is just elementwise <code>exp</code>. Mamba
+          initialises A_n = −n for n = 1…N (the "S4D-real" initialisation), giving N different time scales.
+        </p>
+
+        <h3 id="ssm-mamba">§3.4 · Mamba: make Δ, B and C depend on the input</h3>
+        <p>
+          The weakness of S4 is that Ā, B̄, C are the same for every token, so the model cannot decide based on the
+          content "this token matters, store it" or "this token is noise, skip it". Mamba's change, called
+          <em class="term">selectivity</em>, is to compute Δ, B and C from the current token:
+        </p>
+        <pre class="code"><code>Δ_t = softplus(Linear(x_t))      # (D,)   one step size per channel, always &gt; 0
+B_t = Linear(x_t)                # (N,)   what to write
+C_t = Linear(x_t)                # (N,)   what to read
+h_t = exp(Δ_t A) ⊙ h_{t−1} + Δ_t B_t x_t     # elementwise, per channel
+y_t = C_t · h_t + D x_t                      # D is a learned skip connection</code></pre>
+        <p>
+          The price is that the convolution trick no longer works, since the kernel changes at every step. The Mamba
+          paper fixes this with a hardware-aware parallel scan written in CUDA. Our code instead runs the loop over
+          time in plain PyTorch. It computes exactly the same numbers, only more slowly, and you can read it line
+          by line.
+        </p>
+
+        <h3 id="ssm-block">§3.5 · The Mamba block around the SSM</h3>
+        <pre class="code"><code>x ─ RMSNorm ─ Linear(D → 2E) ─┬─ u ─ causal depthwise conv(4) ─ SiLU ─ selective SSM ─┐
+                              └─ z ─────────────────────────────────── SiLU ───────── ⊙ ─ Linear(E → D) ─ + x</code></pre>
+        <p>
+          The input is projected up to E = 2D channels and split into two halves. The <code>u</code> half goes through a
+          short convolution of width 4, which mixes each position with its 3 predecessors. This gives cheap local
+          context before the SSM. The <code>z</code> half becomes a <em class="term">gate</em>: after SiLU it is multiplied
+          elementwise with the SSM output, so the block can switch channels off. A Mamba block has no separate MLP,
+          and the gated up/down projection plays that role. That is why the paper stacks two Mamba blocks for every
+          Transformer layer when matching parameter counts. We do the same: 8 Mamba blocks against 4 Transformer
+          layers.
+        </p>
+      </section>
+
+      <!-- ================================================================ §4 -->
+      <section id="delta">
+        <h2><span class="num">§4</span>Linear attention and the delta rule</h2>
+
+        <h3 id="delta-linear">§4.1 · Linear attention is an RNN with a matrix state</h3>
+        <p>
+          Softmax attention computes o_t = Σ_{s≤t} softmax(q_t·k_s) v_s. Drop the softmax and the sum can be
+          regrouped:
+        </p>
+        <pre class="code"><code>o_t = Σ_{s≤t} (q_t · k_s) v_s  =  ( Σ_{s≤t} v_s k_sᵀ ) q_t  =  S_t q_t
+S_t = S_{t−1} + v_t k_tᵀ             # a d×d matrix, updated once per token</code></pre>
+        <p>
+          S is an <em class="term">associative memory</em>: writing <code>v kᵀ</code> stores the pair (k → v), and
+          multiplying by a query reads back a weighted mix of stored values. The problem is that S only ever adds. A
+          d×d matrix can hold about d independent pairs. After that, writes pile on top of each other and reads
+          return a blur of everything.
+        </p>
+
+        <h3 id="delta-rule">§4.2 · The delta rule: read, compare, correct</h3>
+        <p>
+          DeltaNet (Schlag et al.; parallelised by Yang et al., 2024) writes into S the way the
+          Widrow–Hoff learning rule does. It first reads what the memory currently returns for key k_t, then writes
+          only the <em>difference</em> between the new value and the old one:
+        </p>
+        <pre class="code"><code>v_old = S_{t−1} k_t                              # what the memory says now
+S_t   = S_{t−1} + β_t (v_t − v_old) k_tᵀ         # move toward the new value
+o_t   = S_t q_t</code></pre>
+        <p>
+          β_t ∈ (0, 1) is a per-token write strength, computed as <code>sigmoid(Linear(x_t))</code>. With β = 1 and a
+          unit-length k, the value stored under k is replaced completely: S_t k_t = v_t exactly. That is why the
+          keys are L2-normalised. Rearranged, the update is
+          <code>S_t = S_{t−1}(I − β k kᵀ) + β v kᵀ</code>: first erase the direction k, then write. In optimisation terms
+          it is one step of gradient descent on the loss ½‖S k_t − v_t‖² with learning rate β_t. The memory is
+          trained online, one token at a time, to map keys to values.
+        </p>
+
+        <h3 id="delta-layer">§4.3 · The DeltaNet layer we build</h3>
+        <ul>
+          <li>q, k, v from one linear projection, then a short causal depthwise convolution (width 4) and SiLU, as in
+            the paper.</li>
+          <li>Split into 4 heads of 64 dimensions. Each head has its own 64×64 memory S.</li>
+          <li>q and k are L2-normalised, and β = sigmoid(W x) gives one value per head per token.</li>
+          <li>The delta-rule recurrence runs over time, followed by an RMSNorm per head and an output projection.</li>
+          <li>As in the paper, a DeltaNet layer replaces attention inside a normal block, so an MLP follows it.</li>
+        </ul>
+        <p>
+          The paper's main contribution is a <em>chunkwise parallel</em> training algorithm (the WY representation) that
+          makes this fast on GPUs. We use the plain recurrent form instead. It gives the same outputs, and every line
+          of it can be explained.
+        </p>
+      </section>
+
+      <!-- ================================================================ §5 -->
+      <section id="hybrid">
+        <h2><span class="num">§5</span>The hybrid and its hypothesis</h2>
+        <pre class="code"><code>embed → [ Mamba → DeltaNet+MLP ] × 3 → RMSNorm → Linear(27)        ≈ 3.7M parameters</code></pre>
+        <p>
+          The reasoning in <code>docs/DESIGN.md</code>, which was pushed before any hybrid code was written:
+        </p>
+        <ol>
+          <li><strong>Mamba is a local feature extractor.</strong> Its convolution and selective Δ summarise the last
+            few symbols.</li>
+          <li><strong>DeltaNet is an associative memory.</strong> It stores and overwrites key → value pairs, and works
+            best when the keys are already informative.</li>
+          <li>So <strong>Mamba goes first in each pair</strong>, and DeltaNet's keys are built from contextual features
+            rather than raw single symbols.</li>
+          <li>The two types are <strong>interleaved</strong> so that each memory read can be refined by the next Mamba
+            layer, the way Jamba, Samba and Gated-DeltaNet hybrids interleave their layer types.</li>
+        </ol>
+        <p>
+          <strong>H1:</strong> at matched size, the hybrid does at least as well as the better pure model.
+          <strong>H2:</strong> if the cipher really is a one-time pad (§1), all four models will reach the same
+          prior-level accuracy. H1 then cannot be tested on accuracy and the comparison has to rest on loss curves,
+          parameters, FLOPs and speed.
+        </p>
+      </section>
+      <!-- ================================================================ §6 -->
+      <section id="code-a">
+        <h2><span class="num">§6</span>Part A code, line by line</h2>
+        <p class="section-intro">
+          Shapes use <strong>B</strong> = batch (16 in training), <strong>L</strong> = characters per chunk (≤ 256),
+          <strong>D</strong> = 256 (<code>d_model</code>), <strong>E</strong> = 512 (Mamba's inner width, 2D), <strong>N</strong> = 16 (Mamba
+          state size), <strong>H</strong> = 4 heads, <strong>d</strong> = 64 (D / H). All files live in <code>src/part1/</code>, and every
+          script is run from the repo root, so files import each other by plain name (<code>from mamba import MambaBlock</code>).
+        </p>
+
+        <h3 id="code-data">§6.1 · <code>data.py</code>: text ↔ numbers</h3>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>CIPHER_CHARS = " " + ascii_letters + digits</code></td><td>the 63 core cipher symbols. Punctuation is deliberately left out.</td></tr>
+            <tr><td><code>PLAIN_CHARS = " " + ascii_lowercase</code></td><td>the 27 output classes. Class 0 is space, 1 is 'a', and so on.</td></tr>
+            <tr><td><code>CIPHER_ID = {c: i + 1 ...}</code></td><td>symbol → id, starting at 1 so that id 0 is free for padding</td></tr>
+            <tr><td><code>CIPHER_VOCAB = len(CIPHER_CHARS) + 1</code></td><td>64 rows in the embedding table (63 symbols + pad)</td></tr>
+            <tr><td><code>read_jsonl(path, key, limit)</code></td><td>reads (id, text) pairs from a JSON-lines file, stopping after <code>limit</code> lines. The training files are about 0.5 GB each, so we read only the first 40k lines.</td></tr>
+            <tr><td><code>encode_cipher(text)</code></td><td><code>[CIPHER_ID[c] for c in text if c in CIPHER_ID]</code>. <strong>This is where the nulls are dropped</strong>, because punctuation is not in the dict.</td></tr>
+            <tr><td><code>encode_plain</code> / <code>decode_plain</code></td><td>character ↔ class index, using the position in <code>PLAIN_CHARS</code></td></tr>
+            <tr><td><code>chunk(ids, max_len)</code></td><td>cuts a long list into pieces of 256, used at inference for texts up to 24k characters. An empty text gives no pieces, and its prediction stays the empty string.</td></tr>
+            <tr><td><code>pad(seqs, value)</code></td><td>pads lists to equal length and stacks them into a <code>(B, L)</code> tensor. Cipher padding is 0. Label padding is −100, the value <code>cross_entropy</code> ignores by default.</td></tr>
+            <tr><td><code>CipherDataset</code></td><td>loads the cipher and cleaned files side by side, encodes both, and truncates both to <code>max_len</code>. Item <em>i</em> is (cipher ids, plain ids) of equal length.</td></tr>
+            <tr><td><code>collate(batch)</code></td><td>what the DataLoader calls to merge 16 items: returns <code>x (B, L)</code> and <code>y (B, L)</code></td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="code-tf">§6.2 · <code>transformer.py</code></h3>
+        <pre class="code"><code>class MLP:        x + down(gelu(up(norm(x))))                 # (B,L,D) → (B,L,4D) → (B,L,D)
+class Attention:
+    q, k, v = self.qkv(self.norm(x)).chunk(3, dim=-1)        # each (B, L, D)
+    q, k, v = [t.view(b, l, H, -1).transpose(1, 2) ...]      # each (B, H, L, d)
+    scores = q @ k.transpose(-1, -2) / sqrt(d)               # (B, H, L, L)
+    mask = ones(l, l).triu(1)                                # True above the diagonal = the future
+    scores = scores.masked_fill(mask, -inf)                  # exp(-inf) = 0 after softmax
+    o = scores.softmax(-1) @ v                               # (B, H, L, d)
+    return x + self.out(o.transpose(1, 2).reshape(b, l, d))  # heads glued back: (B, L, D)
+class TransformerBlock:  mlp(attn(x))                        # both sub-layers add their own residual</code></pre>
+        <p>
+          Every sub-layer is <em class="term">pre-norm</em>: RMSNorm first, then the operation, then add the input back.
+          The <code>triu(1)</code> mask makes attention <em>causal</em>, so position t only sees positions ≤ t, just like Mamba
+          and DeltaNet, which keeps the comparison fair.
+        </p>
+
+        <h3 id="code-mamba">§6.3 · <code>mamba.py</code></h3>
+        <p><strong>The scan.</strong> This is the recurrence of §3.4 written as a Python loop over time.</p>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>h = torch.zeros(b, d, N)</code></td><td>state: N numbers for each of the E channels</td><td class="shape">(B, E, N)</td></tr>
+            <tr><td><code>dA = exp(dt[:, t, :, None] * A)</code></td><td>Ā = exp(ΔA). Δ is per channel and A per (channel, state), so they are broadcast together.</td><td class="shape">(B,E,1)·(E,N) → (B,E,N)</td></tr>
+            <tr><td><code>dBu = dt[:,t,:,None] * B[:,t,None,:] * u[:,t,:,None]</code></td><td>B̄x = Δ·B·x. B is shared across channels, and x is per channel.</td><td class="shape">(B, E, N)</td></tr>
+            <tr><td><code>h = dA * h + dBu</code></td><td>forget part of the old state, write the new input</td><td class="shape">(B, E, N)</td></tr>
+            <tr><td><code>ys.append((h * C[:, t, None, :]).sum(-1))</code></td><td>y = C·h, a dot product over the N state dimensions</td><td class="shape">(B, E)</td></tr>
+            <tr><td><code>torch.stack(ys, dim=1)</code></td><td>put the L outputs back in sequence order</td><td class="shape">(B, L, E)</td></tr>
+          </tbody>
+        </table>
+        <p><strong><code>MambaBlock.__init__</code></strong></p>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>d_inner = expand * d_model</code></td><td>E = 512: the block works in a wider space, like an MLP's hidden layer</td></tr>
+            <tr><td><code>dt_rank = ceil(d_model / 16)</code></td><td>16. Δ is produced through a low-rank bottleneck (E → 16 → E) to save parameters, as in the paper.</td></tr>
+            <tr><td><code>in_proj = Linear(D, 2E)</code></td><td>produces both <code>u</code> (SSM input) and <code>z</code> (gate)</td></tr>
+            <tr><td><code>conv = Conv1d(E, E, 4, groups=E, padding=3)</code></td><td><em>depthwise</em> (<code>groups=E</code>: each channel has its own 4-tap filter). Padding 3 on both sides, keeping the first L outputs, means output t sees inputs t−3…t only, so the conv is causal.</td></tr>
+            <tr><td><code>x_proj = Linear(E, dt_rank + 2N)</code></td><td>one projection that outputs [Δ-low-rank ‖ B ‖ C]. This is what makes the SSM <em>selective</em>.</td></tr>
+            <tr><td><code>dt_proj = Linear(dt_rank, E)</code></td><td>expands Δ back to one value per channel</td></tr>
+            <tr><td><code>dt = exp(rand·(log 0.1 − log 0.001) + log 0.001)</code></td><td>samples the initial Δ log-uniformly in [0.001, 0.1], so channels start with time scales from long to short</td></tr>
+            <tr><td><code>bias = log(expm1(dt))</code></td><td>the inverse of softplus: softplus(b) = log(1 + eᵇ), so b = log(e^dt − 1). At initialisation <code>softplus(bias) = dt</code>.</td></tr>
+            <tr><td><code>A_log = log(arange(1, N+1).repeat(E, 1))</code></td><td>S4D-real initialisation A_n = −n. Storing log|A| and using <code>A = −exp(A_log)</code> keeps A negative throughout training, so the state always decays and never explodes.</td></tr>
+            <tr><td><code>D = ones(E)</code></td><td>skip connection from input to output, inside the SSM</td></tr>
+          </tbody>
+        </table>
+        <p><strong><code>MambaBlock.forward</code></strong></p>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>u, z = in_proj(norm(x)).chunk(2, -1)</code></td><td class="shape">(B,L,D) → 2 × (B,L,E)</td></tr>
+            <tr><td><code>u = conv(u.transpose(1, 2))[:, :, :l]</code>: Conv1d wants channels in the middle, so transpose, convolve, keep the first L outputs</td><td class="shape">(B,E,L)</td></tr>
+            <tr><td><code>u = silu(u.transpose(1, 2))</code>: transpose back, apply SiLU</td><td class="shape">(B,L,E)</td></tr>
+            <tr><td><code>dt, B, C = x_proj(u).split([16, N, N], -1)</code></td><td class="shape">(B,L,16), (B,L,N), (B,L,N)</td></tr>
+            <tr><td><code>dt = softplus(dt_proj(dt))</code>: softplus keeps Δ positive</td><td class="shape">(B,L,E)</td></tr>
+            <tr><td><code>y = selective_scan(u, dt, A, B, C) + u * D</code></td><td class="shape">(B,L,E)</td></tr>
+            <tr><td><code>return x + out_proj(y * silu(z))</code>: gate, project down, residual</td><td class="shape">(B,L,D)</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="code-delta">§6.4 · <code>deltanet.py</code></h3>
+        <table class="tbl lines">
+          <thead><tr><th>Line in <code>delta_rule</code></th><th>Meaning</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>S = zeros(b, h, d, d)</code></td><td>one d×d memory per head</td><td class="shape">(B,H,d,d)</td></tr>
+            <tr><td><code>k_t, v_t, q_t = k[:, :, t] ...</code></td><td>this step's key, value and query</td><td class="shape">(B,H,d)</td></tr>
+            <tr><td><code>v_old = einsum("bhkv,bhk->bhv", S, k_t)</code></td><td>read the memory with the key: Sᵀk in the einsum's index convention (S is stored key-major)</td><td class="shape">(B,H,d)</td></tr>
+            <tr><td><code>S = S + einsum("bhk,bhv->bhkv", k_t, β(v_t − v_old))</code></td><td>outer product k ⊗ β(v − v_old): write the correction</td><td class="shape">(B,H,d,d)</td></tr>
+            <tr><td><code>outs.append(einsum("bhkv,bhk->bhv", S, q_t))</code></td><td>read with the query</td><td class="shape">(B,H,d)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          <code>einsum</code> names every axis with a letter. Letters that appear in the inputs but not in the output are
+          summed over. <code>"bhkv,bhk->bhv"</code> therefore means: for each batch item and head, multiply S[k, v] by
+          key[k] and sum over k. It is a matrix–vector product written in a way where you can see which axis
+          disappears.
+        </p>
+        <table class="tbl lines">
+          <thead><tr><th>Line in <code>DeltaNetLayer.forward</code></th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>qkv = conv(qkv(h).transpose(1, 2))[:, :, :l]</code>: one projection and one causal depthwise conv for q, k, v together</td><td class="shape">(B,3D,L)</td></tr>
+            <tr><td><code>qkv = silu(qkv.transpose(1, 2))</code></td><td class="shape">(B,L,3D)</td></tr>
+            <tr><td><code>q, k, v = [t.view(b,l,H,-1).transpose(1,2) for t in qkv.chunk(3,-1)]</code></td><td class="shape">3 × (B,H,L,d)</td></tr>
+            <tr><td><code>q, k = normalize(q, dim=-1), normalize(k, dim=-1)</code>: unit length, which makes β = 1 an exact overwrite (§4.2)</td><td class="shape">(B,H,L,d)</td></tr>
+            <tr><td><code>beta = sigmoid(self.beta(h)).transpose(1, 2)</code>: one write strength per head per token</td><td class="shape">(B,H,L)</td></tr>
+            <tr><td><code>o = out_norm(delta_rule(q, k, v, beta))</code>: RMSNorm over each head's d values</td><td class="shape">(B,H,L,d)</td></tr>
+            <tr><td><code>return x + out(o.transpose(1,2).reshape(b,l,d))</code></td><td class="shape">(B,L,D)</td></tr>
+          </tbody>
+        </table>
+        <p><code>DeltaNetBlock</code> = <code>mlp(mixer(x))</code>: the DeltaNet layer takes attention's place in a normal block.</p>
+
+        <h3 id="code-hybrid">§6.5 · <code>hybrid.py</code> and <code>model.py</code></h3>
+        <pre class="code"><code>def hybrid_blocks(d_model, n_heads, n_pairs):
+    blocks = []
+    for _ in range(n_pairs):                       # 3 pairs
+        blocks.append(MambaBlock(d_model))         # local, selective
+        blocks.append(DeltaNetBlock(d_model, n_heads))   # associative memory + MLP
+    return blocks</code></pre>
+        <p>
+          The hybrid is only a list of existing blocks in the order DESIGN.md fixed. It lives in its own file, written
+          after DESIGN.md was pushed. <code>model.py</code> wraps any list of blocks the same way:
+        </p>
+        <pre class="code"><code>h = embed(x)                                   # (B, L) ints → (B, L, D)
+if pos: h = h + pos(arange(L))                 # Transformer only: learned positions
+for block in blocks: h = block(h)              # (B, L, D) all the way
+return head(norm(h))                           # (B, L, 27) logits, one score per class per position</code></pre>
+        <p>
+          Mamba and DeltaNet need no positional embedding: they read the sequence in order, so position is built into
+          the recurrence. Attention is order-blind, so the Transformer needs one. <code>build_model(cfg)</code> just picks the
+          block list from the YAML <code>arch</code> field.
+        </p>
+
+        <h3 id="code-train">§6.6 · <code>train.py</code></h3>
+        <ol>
+          <li>Reads the YAML config, loads <code>.env</code> (W&amp;B key), and seeds torch.</li>
+          <li>Builds the train set (first 40k samples) and the full validation set, each with a DataLoader.</li>
+          <li><strong>AdamW</strong> (lr 1e-3, weight decay 0.01) with <strong>OneCycleLR</strong>: a 5% linear warm-up, then cosine decay to almost 0.</li>
+          <li>Each step: <code>logits (B,L,27)</code> → <code>.transpose(1,2)</code> to <code>(B,27,L)</code>, because <code>cross_entropy</code> wants the class axis
+            second → loss averaged over non-padding positions → backward → clip gradient norm at 1 → step.</li>
+          <li>Every 500 steps: validation loss and per-character accuracy (padding masked out). If accuracy improved, save
+            <code>model.pt</code>.</li>
+          <li>With <code>--push</code>, upload <code>models/part1/&lt;arch&gt;/</code> (weights + config) to <code>Arihant25/anlp-a3-&lt;arch&gt;</code>.</li>
+        </ol>
+
+        <h3 id="code-decrypt">§6.7 · <code>decrypt.py</code> and <code>metrics.py</code></h3>
+        <ul>
+          <li><code>load_model</code>: by default calls <code>snapshot_download</code>, which fetches the whole HF repo (<code>model.pt</code> and <code>config.yaml</code>)
+            and returns its local folder (the TAs' setting). <code>--local</code> reads <code>models/part1/</code> instead.</li>
+          <li><code>decrypt</code>: encodes each text, splits it into 256-character chunks, and runs all chunks in batches of 64.
+            Takes <code>argmax</code> over the 27 classes, keeps only the real (non-pad) positions, and appends each chunk's
+            prediction back onto its row. The output length always equals the number of non-null cipher characters.</li>
+          <li><code>count_flops</code>: <code>FlopCounterMode</code> records every matmul and conv in one forward pass of 256 characters, stored as <code>"flops"</code>.</li>
+          <li>Metrics: <strong>character accuracy</strong> compares position by position. <strong>Word accuracy</strong> does the same on
+            whitespace-split words. <strong>Precision / recall / F1</strong> use word overlap
+            (<code>Counter(pred) &amp; Counter(ref)</code>, the SQuAD-style bag-of-words match), because position-wise precision would equal accuracy
+            when the lengths match. <strong>Levenshtein</strong> is the minimum number of single-character inserts, deletes and
+            substitutions turning the prediction into the reference.</li>
+        </ul>
+      </section>
+
+      <!-- ================================================================ §7 -->
+      <section id="results-a">
+        <h2><span class="num">§7</span>Part A results and what they mean</h2>
+        <p class="section-intro">
+          All four models were trained the same way: the first 40,000 training samples, one epoch, 2,500 steps of
+          batch 16, on an RTX 2070 (8 GB). The test numbers come from <code>bash scripts/part1/test_assn.sh</code>, which
+          downloads each model from Hugging Face and decrypts the 1,318 test texts in full.
+        </p>
+
+        <h3 id="ra-table">§7.1 · The numbers</h3>
+        <table class="tbl">
+          <thead><tr><th>model</th><th>char acc</th><th>word acc</th><th>precision</th><th>recall</th><th>F1</th><th>Levenshtein</th><th>norm.</th></tr></thead>
+          <tbody>
+            <tr><td>Transformer</td><td>0.1679</td><td>0.0023</td><td>0.442</td><td>0.025</td><td>0.047</td><td>736.6</td><td>0.828</td></tr>
+            <tr><td>Mamba</td><td>0.1681</td><td>0.0018</td><td>0.654</td><td>0.019</td><td>0.037</td><td>737.2</td><td>0.829</td></tr>
+            <tr><td>DeltaNet</td><td>0.1680</td><td>0.0010</td><td>0.210</td><td>0.011</td><td>0.021</td><td>737.0</td><td>0.829</td></tr>
+            <tr><td>Hybrid</td><td>0.1679</td><td>0.0022</td><td>0.427</td><td>0.024</td><td>0.045</td><td>736.6</td><td>0.829</td></tr>
+          </tbody>
+        </table>
+        <p>
+          These are test-set scores on whole texts. Precision, recall and F1 are computed over words. Levenshtein is
+          the mean edit distance per text, and the normalised value (norm.) divides the total distance by the total reference
+          length.
+        </p>
+        <table class="tbl">
+          <thead><tr><th>model</th><th>parameters</th><th>GFLOPs per 256 chars</th><th>training time</th><th>best val char accuracy</th></tr></thead>
+          <tbody>
+            <tr><td>Transformer</td><td>3.25M</td><td>1.88</td><td>1.5 min</td><td>0.1661</td></tr>
+            <tr><td>Mamba</td><td>3.53M</td><td>1.76</td><td>149 min</td><td>0.1661</td></tr>
+            <tr><td>DeltaNet</td><td>3.20M</td><td>1.69</td><td>73 min</td><td>0.1661</td></tr>
+            <tr><td>Hybrid</td><td>3.72M</td><td>1.93</td><td>116 min</td><td>0.1661</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Validation accuracy is measured during training on the first 256 characters of each validation text, which
+          is why it differs slightly from the test accuracy.
+        </p>
+
+        <h3 id="ra-output">§7.2 · What the models actually output</h3>
+        <pre class="code"><code>reference:    "robert boulter"
+transformer:  "the e         "
+mamba:        "the           "
+deltanet:     "tee e         "</code></pre>
+        <p>
+          About 98% of every model's output is the space character, with a few <code>e</code>, <code>t</code> and <code>h</code>,
+          as in the first test text above. Three numbers show that this is the best a model can do here:
+        </p>
+        <ul>
+          <li><strong>The loss equals the entropy of the plaintext.</strong> Every model's validation loss settles at 2.860
+            nats per character. Divided by ln 2, that is 4.126 bits, the same H(P) measured in §1.3 before any model
+            was built. Cross-entropy can only go below H(P) if the input says something about the output. It
+            never does, so the models have learned how often each letter occurs and little else.</li>
+          <li><strong>The accuracy equals the frequency of the space.</strong> The space is the most common character,
+            16.87% of the test set. A program that prints only spaces scores 16.87%. The models score 16.79–16.81%, a
+            touch lower because they sometimes guess a letter.</li>
+          <li><strong>The curves are flat from the first evaluation.</strong> Validation accuracy is 0.166 at step 500 and
+            0.166 at step 2,500 for all four models. More data or more steps would not move it.</li>
+        </ul>
+
+        <h3 id="ra-metrics">§7.3 · Reading the other metrics</h3>
+        <ul>
+          <li><strong>Word accuracy is about 0.2%.</strong> A word counts only if the whole word at that position is
+            right, and the models output almost no words.</li>
+          <li><strong>Precision is far higher than recall.</strong> Since most of the output is spaces, the models
+            produce very few words. The few they do produce are common ones that often appear somewhere in the
+            reference, so precision is 0.2–0.65. Recall is the share of reference words that were produced, and that
+            is 1–2.5%.</li>
+          <li><strong>Normalised Levenshtein is 0.83.</strong> To turn a prediction into its reference you would have to
+            change 83% of the characters. The other 17% are the spaces that happened to line up.</li>
+          <li>The differences between models in these columns are noise. They come down to which few letters a
+            model happens to guess, such as "the" or "tee".</li>
+        </ul>
+
+        <h3 id="ra-hyp">§7.4 · The hypothesis, and what can still be compared</h3>
+        <p>
+          <strong>H2 held:</strong> all four models reach the same prior-level accuracy, as predicted for a one-time pad.
+          That means <strong>H1 cannot be tested on accuracy</strong>. The hybrid ties with the pure models because every
+          model ties. What is left to compare is cost:
+        </p>
+        <ul>
+          <li><strong>Parameters and FLOPs are close by design.</strong> The models have 3.2–3.7M parameters and need
+            1.7–1.9 GFLOPs for 256 characters. The hybrid is the largest on both, since each pair holds a Mamba block
+            and a full DeltaNet block with its MLP.</li>
+          <li><strong>Wall-clock time is very different.</strong> The Transformer trains in 1.5 minutes. Mamba takes 149,
+            DeltaNet 73 and the hybrid 116. The hybrid lands between the two pure models because it is made of three
+            blocks of each.</li>
+        </ul>
+        <div class="callout gotcha">
+          <div class="callout-label">FLOPs and seconds measure different things</div>
+          <p>Mamba needs fewer FLOPs than the Transformer and still trains about 100 times slower. Attention is a few
+            large matrix products that the GPU runs in parallel. Our scans are Python loops of 256 steps, and each step
+            sends several tiny operations to the GPU, which sits about 90% idle waiting for the next one. The slowness
+            comes from the simple loop, and the architectures themselves are fast: the Mamba paper uses a parallel
+            scan written in CUDA, and the DeltaNet paper a chunkwise algorithm. We kept the loop so that every line can be
+            explained.</p>
+        </div>
+        <div class="callout link">
+          <div class="callout-label">where the weights are</div>
+          <p>The four checkpoints are public on Hugging Face as <code>Arihant25/anlp-a3-transformer</code>, <code>-mamba</code>,
+            <code>-deltanet</code> and <code>-hybrid</code>. <code>bash scripts/part1/test_assn.sh --heldout</code> uses the Transformer,
+            which has the highest validation accuracy by a hair and is by far the fastest.</p>
+        </div>
+      </section>
+
+      <!-- ================================================================ §8 -->
+      <section id="graphs">
+        <h2><span class="num">§8</span>Part B concepts: news as a graph</h2>
+
+        <h3 id="g-upfd">§8.1 · The UPFD GossipCop dataset</h3>
+        <p>
+          Each sample is one news article and everyone who retweeted it. <strong>Node 0</strong> is the article. Every
+          other node is a Twitter user, and an edge <code>u → v</code> means the story reached v through u. The label
+          says whether the article is fake. GossipCop (celebrity news) has 5,464 graphs, split by the dataset
+          itself into 20% train, 10% validation and 70% test, and we must not re-split. Each node comes with one of
+          four feature vectors:
+        </p>
+        <table class="tbl">
+          <thead><tr><th>feature</th><th>size</th><th>what it encodes</th></tr></thead>
+          <tbody>
+            <tr><td><code>profile</code></td><td>10</td><td>account metadata: followers, friends, status count, account age, verified, …</td></tr>
+            <tr><td><code>spacy</code></td><td>300</td><td>average word2vec-style spaCy vectors of the user's recent tweets (and of the article for node 0)</td></tr>
+            <tr><td><code>bert</code></td><td>768</td><td>BERT sentence embedding of the same text</td></tr>
+            <tr><td><code>content</code></td><td>310</td><td>spacy (300) + profile (10) concatenated</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="g-mp">§8.2 · Message passing, the one idea behind every GNN here</h3>
+        <p>
+          A graph neural network layer updates every node by <strong>gathering its neighbours' vectors, combining
+          them, and mixing the result with the node's own vector</strong>. Stack two layers and each node sees
+          neighbours two hops away. To classify a whole graph, <em class="term">pool</em> all node vectors into one
+          (we take the mean) and apply a linear layer. In code, "gather from neighbours" is a single operation. The
+          edge list <code>edge_index</code> is a <code>(2, E)</code> tensor of (source, destination) pairs, and
+        </p>
+        <pre class="code"><code>out = zeros(n, d).index_add_(0, dst, messages)     # add each edge's message into its destination row</code></pre>
+        <p>sums the messages arriving at each node. Each model below differs only in what the message is and how it is weighted.</p>
+
+        <h3 id="g-models">§8.3 · The five models</h3>
+        <table class="tbl">
+          <thead><tr><th>model</th><th>update for node i</th><th>idea</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Root-only MLP</strong></td><td>MLP(x_0)</td><td>ignore the graph, read only the article. This is the text-only baseline.</td></tr>
+            <tr><td><strong>GCN</strong> (Kipf &amp; Welling)</td><td>Σ_{j∈N(i)∪{i}} W x_j / √(d_i d_j)</td><td>average over neighbours and self. The 1/√(d_i d_j) factor stops high-degree nodes from blowing up.</td></tr>
+            <tr><td><strong>GraphSAGE</strong> (Hamilton et al.)</td><td>W₁ x_i + W₂ · mean_{j∈N(i)} x_j</td><td>keep self and neighbours in separate weights, so a node is not drowned out by its neighbours.</td></tr>
+            <tr><td><strong>GAT</strong> (Veličković et al.)</td><td>Σ_j α_ij W x_j, with α = softmax_j LeakyReLU(aᵀ[Wx_i ‖ Wx_j])</td><td>learn how much each neighbour matters. Attention is computed only over edges, with 4 heads.</td></tr>
+            <tr><td><strong>Bi-GCN</strong> (Bian et al.)</td><td>a GCN on the edges + a GCN on the reversed edges, with root features concatenated after each layer</td><td>a story spreads top-down (source → retweeters) and responses travel bottom-up. Model both, and keep reminding each node what the source said.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout mechanism">
+          <div class="callout-label">which Bi-GCN?</div>
+          <p>The PDF links arXiv 2101.05519, which is the <em>Binary</em> GCN paper (1-bit weights for efficiency). The
+            model usually called Bi-GCN for propagation trees is Bian et al. 2020 (bi-directional). A student asked on
+            Moodle which was meant and got no reply. We implement Bian et al., because it is the one designed for
+            propagation graphs, and record that choice in <code>CHOICES.md</code>.</p>
+        </div>
+
+        <h3 id="g-eval">§8.4 · Evaluation protocol</h3>
+        <ul>
+          <li>For each run, train for 60 epochs and keep the weights from the epoch with the best <strong>validation
+            macro-F1</strong>. Evaluate those on test.</li>
+          <li>Repeat with seeds 0–4 and report mean ± standard deviation.</li>
+          <li><strong>Macro</strong> precision, recall and F1 compute the metric for the "fake" class and the "real" class
+            separately and then average the two. Since the classes are balanced, this treats both kinds of mistake
+            equally.</li>
+          <li>The ablation fixes GraphSAGE and every hyperparameter, and changes only the node features.</li>
+        </ul>
+      </section>
+
+      <!-- ================================================================ §9 -->
+      <section id="code-b">
+        <h2><span class="num">§9</span>Part B code, line by line</h2>
+        <p class="section-intro">
+          PyG's <code>DataLoader</code> merges a batch of graphs into one big disconnected graph. <code>data.x</code> is
+          <code>(n, F)</code>, the features of every node in the batch. <code>data.edge_index</code> is <code>(2, E)</code>, with node ids
+          already shifted so they point into that big graph. <code>data.batch</code> is <code>(n,)</code> and says which graph each
+          node belongs to. <code>data.ptr</code> is <code>(G+1,)</code>, where each graph's first node starts, so <code>data.ptr[:-1]</code>
+          gives the index of every root (node 0).
+        </p>
+
+        <h3 id="code-helpers">§9.1 · Helpers</h3>
+        <table class="tbl lines">
+          <thead><tr><th>Function</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>add_self_loops(edge_index, n)</code></td><td>appends the edges (i, i) for every node, so a node's own vector is part of its update</td></tr>
+            <tr><td><code>undirected(edge_index)</code></td><td>adds every edge in reverse too, so information flows both ways</td></tr>
+            <tr><td><code>scatter_sum(values, index, n)</code></td><td><code>zeros(n, ...).index_add_(0, index, values)</code>: row <code>index[e]</code> receives <code>values[e]</code>. This is the "gather from neighbours" step.</td></tr>
+            <tr><td><code>mean_pool(h, batch, G)</code></td><td>scatter-sum node vectors by graph id and divide by the node count from <code>bincount(batch)</code>: <code>(n, D) → (G, D)</code></td></tr>
+            <tr><td><code>torch.bincount(idx, minlength=n)</code></td><td>counts how many times each number 0…n−1 appears in <code>idx</code>. With <code>dst</code>, that is each node's in-degree.</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="code-gcn">§9.2 · <code>GCNLayer</code></h3>
+        <pre class="code"><code>src, dst = add_self_loops(edge_index, n)
+deg  = torch.bincount(dst, minlength=n)              # in-degree of each node (incl. itself)
+norm = deg[src].rsqrt() * deg[dst].rsqrt()           # 1/√(d_j d_i) per edge
+h    = self.lin(x)                                   # W x, no bias yet
+return scatter_sum(norm[:, None] * h[src], dst, n) + self.bias</code></pre>
+        <p>
+          <code>h[src]</code> picks the transformed sender vector for every edge <code>(E, D)</code>, scales it by the edge's
+          normalisation, and adds it into the receiver's row. The bias is added after aggregation, as in the paper. If it
+          were inside <code>lin</code>, it would be summed once per neighbour.
+        </p>
+
+        <h3 id="code-sage">§9.3 · <code>SAGELayer</code></h3>
+        <pre class="code"><code>neigh = scatter_sum(x[src], dst, n) / deg[:, None]   # mean of neighbours (deg clamped ≥ 1)
+return self.lin_self(x) + self.lin_neigh(neigh)</code></pre>
+        <p>Two separate weight matrices: one for the node itself, one for its neighbourhood average. There are no self-loops.</p>
+
+        <h3 id="code-gat">§9.4 · <code>GATLayer</code></h3>
+        <pre class="code"><code>h = self.lin(x).view(n, heads, -1)                                   # (n, 4, 32)
+e = leaky_relu((h*att_src).sum(-1)[src] + (h*att_dst).sum(-1)[dst])  # (E, 4) score per edge per head
+node_max = zeros(n, 4).index_reduce_(0, dst, e, "amax", include_self=False)   # each node's largest score
+w = (e - node_max[dst]).exp()                                        # stable exp, at most 1
+alpha = w / scatter_sum(w, dst, n)[dst]                              # softmax over each node's incoming edges
+return scatter_sum(alpha[:, :, None] * h[src], dst, n).reshape(n, -1) + self.bias</code></pre>
+        <p>
+          The paper's score <code>aᵀ[Wh_i ‖ Wh_j]</code> splits into <code>a_dstᵀWh_i + a_srcᵀWh_j</code>, which is why there are
+          two attention vectors. The softmax groups edges by receiver: <code>scatter_sum(w, dst)</code> is each node's
+          denominator, and <code>[dst]</code> copies it back to every edge. <code>index_reduce_(..., "amax")</code> is the max-version of
+          <code>index_add_</code>: it finds each receiver's largest score. Subtracting it does not change the softmax (every score in
+          a group shifts by the same constant). It stops <code>exp</code> from overflowing, and each node's best edge
+          gets weight exp(0) = 1, so the denominator can never underflow to 0.
+        </p>
+
+        <h3 id="code-models">§9.5 · Models</h3>
+        <table class="tbl lines">
+          <thead><tr><th>Class</th><th>Forward</th></tr></thead>
+          <tbody>
+            <tr><td><code>RootMLP</code></td><td><code>net(data.x[data.ptr[:-1]])</code>: only the G root vectors. Linear → ReLU → Dropout → Linear → ReLU → Linear(2).</td></tr>
+            <tr><td><code>GNN(layer)</code></td><td>undirected edges → conv1 → ReLU → dropout 0.5 → conv2 → ReLU → mean pool → Linear(2). The same class serves GCN, SAGE and GAT.</td></tr>
+            <tr><td><code>BiGCN</code></td><td>runs <code>branch</code> on <code>edge_index</code> (top-down) and on <code>edge_index.flip(0)</code> (bottom-up). In each branch, <code>root = data.ptr[:-1][data.batch]</code> is each node's root id. The root's input features are concatenated after layer 1, and the root's layer-1 output after layer 2. Both pooled branches are concatenated (4 × 128) → Linear(2).</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="code-btrain">§9.6 · <code>train.py</code></h3>
+        <ul>
+          <li><code>run(model, feature, seed)</code>: seed torch, load the three fixed UPFD splits, Adam (lr 1e-3, weight decay 0.01),
+            60 epochs. After every epoch, log the mean training loss, compute validation metrics and deep-copy the weights if validation macro-F1 improved.
+            At the end, load the best weights and evaluate on test.</li>
+          <li><code>evaluate</code>: argmax predictions, then sklearn <code>accuracy_score</code> and
+            <code>precision_recall_fscore_support(average="macro")</code>.</li>
+          <li><code>main</code>: experiment <code>part_a</code> = 5 models × BERT, <code>part_b</code> = GraphSAGE × 4 features, each × 5 seeds.
+            Writes the means in the template's layout to <code>output/part2/results.json</code> (or <code>results_ta.json</code> with
+            <code>--ta</code>), and every run plus mean and std to <code>results/part2/</code>.</li>
+          <li>W&amp;B logs every run when a key is present. Otherwise W&amp;B is disabled, so the TAs' run does not need an account.</li>
+        </ul>
+      </section>
+
+      <!-- ================================================================ §10 -->
+      <section id="results-b">
+        <h2><span class="num">§10</span>Part B results and what they mean</h2>
+        <p class="section-intro">
+          Test set (3,826 graphs), mean ± std over seeds 0–4. Each run uses its best-validation-F1 epoch, and P/R/F1
+          are macro-averaged. Run with <code>bash scripts/part2/test_gnn.sh</code> (about 25 minutes on an RTX 2070).
+        </p>
+
+        <h3 id="rb-arch">§10.1 · Architecture comparison (BERT features)</h3>
+        <table class="tbl">
+          <thead><tr><th>model</th><th>accuracy</th><th>precision</th><th>recall</th><th>F1</th></tr></thead>
+          <tbody>
+            <tr><td>Root-only MLP</td><td>0.7448 ± 0.0022</td><td>0.7525 ± 0.0042</td><td>0.7449 ± 0.0022</td><td>0.7429 ± 0.0028</td></tr>
+            <tr><td><strong>GCN</strong></td><td><strong>0.9479 ± 0.0013</strong></td><td><strong>0.9481 ± 0.0012</strong></td><td><strong>0.9479 ± 0.0013</strong></td><td><strong>0.9479 ± 0.0013</strong></td></tr>
+            <tr><td>GraphSAGE</td><td>0.9275 ± 0.0013</td><td>0.9278 ± 0.0011</td><td>0.9276 ± 0.0013</td><td>0.9275 ± 0.0013</td></tr>
+            <tr><td><strong>GAT</strong></td><td><strong>0.9480 ± 0.0014</strong></td><td><strong>0.9482 ± 0.0014</strong></td><td><strong>0.9480 ± 0.0014</strong></td><td><strong>0.9480 ± 0.0014</strong></td></tr>
+            <tr><td>Bi-GCN</td><td>0.9442 ± 0.0018</td><td>0.9443 ± 0.0018</td><td>0.9442 ± 0.0018</td><td>0.9442 ± 0.0018</td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li><strong>The graph matters a lot.</strong> Every GNN beats the article-only MLP by 18–21 F1 points, and the gap is
+            more than 50 standard deviations wide. Who spreads a story, and what those users usually post, says more than
+            the article's own text. Fake celebrity news tends to be passed around by a different crowd of accounts than
+            real news is.</li>
+          <li><strong>The four GNNs are within about 2 points of each other.</strong> GAT and GCN are tied (0.9480 vs 0.9479, far less than one standard deviation apart),
+            Bi-GCN is 0.4 points behind, and GraphSAGE trails by 2. GossipCop trees are shallow and star-like. Graphs average 58 nodes, 77% of users sit
+            directly under the news node, and 97% are within two hops. With two layers, every model already sees almost the whole graph, so the
+            choice of aggregator matters little.</li>
+          <li><strong>Why GraphSAGE is lowest.</strong> Its mean aggregator gives the hub (the news node, with many neighbours) and a
+            leaf the same per-neighbour weight, and it keeps the self vector separate. GCN's degree normalisation
+            and GAT's learned weights both make a node's update smoother across a star. GraphSAGE's main strength,
+            inductive sampling on huge graphs, is not exercised here.</li>
+          <li><strong>Why Bi-GCN does not win.</strong> Its bottom-up branch helps when replies flow back up deep cascades. UPFD
+            graphs are mostly one level deep, so top-down and bottom-up see almost the same thing. Its root
+            enhancement mostly re-adds the article text, which the MLP shows is the weaker signal.</li>
+        </ul>
+
+        <h3 id="rb-feat">§10.2 · Feature ablation (GraphSAGE)</h3>
+        <table class="tbl">
+          <thead><tr><th>features</th><th>dim</th><th>accuracy</th><th>precision</th><th>recall</th><th>F1</th></tr></thead>
+          <tbody>
+            <tr><td>profile</td><td>10</td><td>0.8601 ± 0.0047</td><td>0.8615 ± 0.0038</td><td>0.8602 ± 0.0046</td><td>0.8600 ± 0.0047</td></tr>
+            <tr><td>spacy</td><td>300</td><td>0.9149 ± 0.0044</td><td>0.9149 ± 0.0044</td><td>0.9149 ± 0.0044</td><td>0.9149 ± 0.0044</td></tr>
+            <tr><td>bert</td><td>768</td><td>0.9291 ± 0.0018</td><td>0.9292 ± 0.0018</td><td>0.9291 ± 0.0018</td><td>0.9291 ± 0.0018</td></tr>
+            <tr><td><strong>content</strong></td><td>310</td><td><strong>0.9494 ± 0.0019</strong></td><td><strong>0.9500 ± 0.0019</strong></td><td><strong>0.9494 ± 0.0019</strong></td><td><strong>0.9494 ± 0.0019</strong></td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li><strong>Profile alone already reaches 86%</strong>, 12 points above the article-only MLP with BERT. Ten numbers
+            about each account (followers, account age, verification) carried through the graph beat a 768-dimensional
+            embedding of the article.</li>
+          <li><strong>BERT beats spaCy by about 1.4 points.</strong> Contextual sentence embeddings describe users' tweet history a little better than
+            averaged word vectors.</li>
+          <li><strong>Content (spaCy + profile) is best</strong>, even above BERT. Text and account metadata are
+            <em>complementary</em>: adding 10 profile numbers to spaCy gains 3.5 points, much more than switching spaCy to
+            BERT (1.4 points).</li>
+        </ul>
+        <div class="callout gotcha">
+          <div class="callout-label">same config, slightly different numbers</div>
+          <p>GraphSAGE + BERT appears in both tables: 0.9275 in one and 0.9291 in the other, with the same seeds. CUDA's
+            <code>index_add_</code> uses atomic additions, whose order changes between runs, and floating-point addition is
+            not associative. Seeds fix the initialisation and batch order but not this. The difference is about one standard deviation, so it is noise.</p>
+        </div>
+      </section>
+
+      <!-- ================================================================ §11 -->
+      <section id="viva">
+        <h2><span class="num">§11</span>Viva questions, answered out loud</h2>
+        <p class="section-intro">Short answers you can say without notes. Each one points back to the section with the details.</p>
+        <ol class="qa">
+          <li><details><summary>Why are your Part A accuracies so low?</summary><div class="a">
+            <p>"Because the cipher can't be broken. Once the punctuation nulls are removed, every cipher symbol lines up with
+              one plaintext letter, but the cipher symbol carries zero information about that letter. Over 172 million positions,
+              H(plain | cipher) equals H(plain), 4.126 bits. The same word gets a different ciphertext in every
+              sample. That's a one-time pad. The only thing leaked is the length, so the best possible model predicts the most
+              common character at each position, which is about 17% character accuracy. All four of my models
+              converge there, and their loss equals the plaintext entropy." (§1, §7)</p></div></details></li>
+          <li><details><summary>Why drop the punctuation symbols?</summary><div class="a">
+            <p>"After deleting them, the ciphertext length equals the plaintext length in 100% of training samples, and their
+              positions are independent of word boundaries: they sit next to a space 16.97% of the time against a base rate of
+              16.95%. So they're nulls. Dropping them gives a 1:1 alignment, which turns decryption into per-character
+              classification, with no decoder and no length problem." (§1.2)</p></div></details></li>
+          <li><details><summary>Write the Mamba recurrence and explain Δ.</summary><div class="a">
+            <p>"h_t = exp(Δ_t A) h_{t−1} + Δ_t B_t x_t, y_t = C_t h_t + D x_t. A is diagonal and negative, initialised to −1…−16.
+              Δ_t = softplus(Linear(x_t)) is the step size. A small Δ keeps the state and ignores the input, and a large Δ resets the
+              state to the current input. Because Δ, B and C come from the input, the model chooses per token what to remember.
+              That's selectivity, and it's the difference from S4." (§3.4)</p></div></details></li>
+          <li><details><summary>Why is A stored as <code>A_log</code>?</summary><div class="a">
+            <p>"A = −exp(A_log) is always negative whatever value the optimiser gives A_log, so exp(ΔA) is always below 1 and the state
+              can't blow up."</p></div></details></li>
+          <li><details><summary>What does the conv in a Mamba block do, and why is it causal?</summary><div class="a">
+            <p>"It's a depthwise width-4 convolution: each channel mixes itself with its previous 3 positions. That gives cheap
+              local context before the SSM. I pad by 3 on both sides and keep only the first L outputs, so output t depends
+              only on inputs t−3 to t."</p></div></details></li>
+          <li><details><summary>Write the delta rule and say why it beats linear attention.</summary><div class="a">
+            <p>"S_t = S_{t−1} + β_t (v_t − S_{t−1} k_t) k_tᵀ, o_t = S_t q_t. Linear attention only adds v kᵀ, so old associations
+              pile up and reads get blurry once more pairs are stored than there are dimensions. The delta rule first reads what's
+              stored under k, then writes only the difference. With unit k and β = 1, the old value is replaced exactly. It's
+              one gradient step on ‖S k − v‖²." (§4.2)</p></div></details></li>
+          <li><details><summary>Why L2-normalise q and k in DeltaNet?</summary><div class="a">
+            <p>"With ‖k‖ = 1, the matrix I − β k kᵀ has eigenvalue 1 − β along k and 1 everywhere else. For β in (0, 1) it never
+              stretches the memory, so S stays bounded, and β = 1 would mean 'replace exactly'. Without normalisation, a large key could make the update overshoot and diverge."</p></div></details></li>
+          <li><details><summary>Why is your Mamba 8 layers but the others 4?</summary><div class="a">
+            <p>"A Mamba block has no MLP. Its gated expand-and-project plays that role, so one block has about half the
+              parameters of a Transformer layer. The Mamba paper matches sizes by using two Mamba blocks per Transformer layer.
+              With 8 blocks, all models land between 3.2M and 3.7M parameters."</p></div></details></li>
+          <li><details><summary>Explain your hybrid and whether the hypothesis held.</summary><div class="a">
+            <p>"Three pairs of Mamba followed by DeltaNet+MLP. Mamba builds local context, and DeltaNet uses it to form keys for its
+              associative memory. Interleaving lets each read be refined by the next Mamba layer. H1 said it would match or beat both
+              pure models. H2 said that if the cipher is a one-time pad, all models tie at the prior. The results match H2,
+              so accuracy can't test H1. What the results do show is the hybrid's cost relative to the pure models." (§5, §7)</p></div></details></li>
+          <li><details><summary>How did you count FLOPs, and what does it miss?</summary><div class="a">
+            <p>"<code>torch.utils.flop_counter.FlopCounterMode</code> on one forward pass of 256 characters. It counts matmuls and
+              convolutions, at 2 FLOPs per multiply-add. Mamba's scan is elementwise, so it isn't counted. DeltaNet's state update is an
+              einsum, so it is. Attention's L² cost shows up in the two batched matmuls."</p></div></details></li>
+          <li><details><summary>Why per-chunk inference instead of the full sequence?</summary><div class="a">
+            <p>"Training saw at most 256 characters, and the Transformer's learned positions only go up to 256. Splitting the test
+              texts the same way keeps train and test identical and caps memory, even for 24k-character inputs. Here it costs
+              nothing, because there is no information that crosses positions anyway."</p></div></details></li>
+          <li><details><summary>Does the propagation graph help? Which model is best?</summary><div class="a">
+            <p>"Yes, by a lot: about 74% F1 from the article alone against 93–95% with the graph. GAT and GCN are tied at 94.8, Bi-GCN is at 94.4
+              and GraphSAGE at 92.8. The graphs are shallow stars (77% of users at depth 1), so two layers of any
+              aggregator see almost everything." (§10.1)</p></div></details></li>
+          <li><details><summary>Which features matter most?</summary><div class="a">
+            <p>"Content, which is spaCy + profile, at 94.9. Then BERT at 92.9, spaCy at 91.5 and profile at 86.0. User metadata alone is
+              surprisingly strong, and combining it with text beats a bigger text encoder, so the two are complementary." (§10.2)</p></div></details></li>
+          <li><details><summary>Write GCN's update and explain the normalisation.</summary><div class="a">
+            <p>"h_i' = Σ_{j ∈ N(i) ∪ {i}} W h_j / √(d_i d_j). Without it, a node's output would scale with its degree. The symmetric
+              square-root form comes from normalising the adjacency matrix with self-loops, D^{−1/2}(A+I)D^{−1/2}. In code: add
+              self-loops, count in-degrees with bincount, weight each edge, and index_add_ the weighted messages into their destinations."</p></div></details></li>
+          <li><details><summary>Why macro-F1?</summary><div class="a">
+            <p>"It's the average of the F1 for 'fake' and the F1 for 'real', so neither class dominates. GossipCop is balanced
+              (49% fake), so macro and binary F1 come out close, but macro doesn't depend on which class we call positive."</p></div></details></li>
+        </ol>
+      </section>
+
+      <div class="pager">
+        <a class="prev" href="2-moe-optimizers-decoding.html">
+          <span class="dir">← back</span>
+          <span class="lbl">A2 · MoE, Optimizers, Decoding</span>
+        </a>
+        <a class="next" href="../project/anlp-doomsday.html">
+          <span class="dir">next →</span>
+          <span class="lbl">Project · ANLP Doomsday</span>
+        </a>
+      </div>
+
+      <footer class="foot">
+        <div>Assignment 03 · Mamba, DeltaNet, GNNs · ANLP Monsoon '26</div>
+        <div><a href="../index.html">home</a> · <a href="https://github.com/Arihant25/anlp-study-guide" target="_blank"
+            rel="noopener">github ↗</a></div>
+      </footer>
+    </main>
+
+    <aside class="rail-right">
+      <div class="kicker">progress</div>
+      <div class="heatmap-rail" aria-hidden="true"></div>
+      <div class="kicker">sections</div>
+      <div class="rail-toc">
+        <a href="#read">§0 the brief</a>
+        <a href="#cipher">§1 the cipher</a>
+        <a href="#why">§2 why not attention</a>
+        <a href="#ssm">§3 Mamba</a>
+        <a href="#delta">§4 DeltaNet</a>
+        <a href="#hybrid">§5 hybrid</a>
+        <a href="#code-a">§6 Part A code</a>
+        <a href="#results-a">§7 Part A results</a>
+        <a href="#graphs">§8 GNN concepts</a>
+        <a href="#code-b">§9 Part B code</a>
+        <a href="#results-b">§10 Part B results</a>
+        <a href="#viva">§11 viva</a>
+      </div>
+    </aside>
+  </div>
+
+  <script src="../assets/js/site.js"></script>
+</body>
+
+</html>
