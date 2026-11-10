@@ -227,130 +227,295 @@ H(P | C) = H(P, C) - H(C)          # computed from pair counts (c, p)</code></pr
       <!-- ================================================================ §3 -->
       <section id="ssm">
         <h2><span class="num">§3</span>State space models, from zero to Mamba</h2>
-
-        <h3 id="ssm-cont">§3.1 · A continuous-time state space model</h3>
-        <p>
-          A <em class="term">state space model</em> (SSM) comes from control theory. An input signal x(t) drives a
-          hidden state h(t) of size N, and the output y(t) reads from that state:
-        </p>
-        <pre class="code"><code>h'(t) = A h(t) + B x(t)        # how the state changes over time
-y(t)  = C h(t)                 # what we read out</code></pre>
-        <p>
-          A (N×N) says how the state evolves on its own. If A is negative, the state decays toward zero, which
-          means the model forgets. B (N×1) says how the input is written into the state, and C (1×N) how the state is
-          read out. One SSM handles one scalar input channel. A model with D channels runs D of them side by
-          side.
+        <p class="section-intro">
+          "State space model" sounds like control theory, and that is where the name comes from, but the idea needed
+          here is small: <strong>a memory that is one line of arithmetic</strong>. This section builds it up in four
+          steps, each with numbers you can check by hand. Mamba is step four.
         </p>
 
-        <h3 id="ssm-disc">§3.2 · Discretisation: from a differential equation to a loop</h3>
+        <h3 id="ssm-cont">§3.1 · Step 1: a memory made of one number</h3>
         <p>
-          Text is a sequence of steps, not a continuous signal, so we pick a step size Δ and ask what happens to h
-          over one step. With the <em class="term">zero-order hold</em> rule (keep x constant over the step), the
-          exact answer is:
+          Suppose you read a sequence of numbers x₁, x₂, x₃, … one at a time and may keep only <em>one</em> number
+          <code>h</code> as memory. The simplest useful rule is:
         </p>
-        <pre class="code"><code>Ā = exp(Δ A)
-B̄ = (Δ A)⁻¹ (exp(Δ A) − I) · Δ B   ≈  Δ B     (Mamba uses this simpler form for B)
-
-h_t = Ā h_{t−1} + B̄ x_t
-y_t = C h_t</code></pre>
+        <pre class="code"><code>h = a * h + b * x     # keep a fraction a of the old memory, add b times x
+y = c * h             # the output is the memory times c</code></pre>
         <p>
-          That is an RNN with no nonlinearity. Δ acts as a <strong>knob for how much to remember</strong>. With a
-          small Δ, Ā ≈ 1 and B̄ ≈ 0: the state is kept and the input is mostly ignored. With a large Δ, Ā ≈ 0: the old
-          state is wiped and replaced by the current input.
+          <code>h</code> is called the <em class="term">state</em>. The three numbers do three different jobs:
+          <code>a</code> decides how much is <strong>remembered</strong>, <code>b</code> how strongly the input is
+          <strong>written</strong>, and <code>c</code> how the memory is <strong>read</strong>. That is a complete state
+          space model. Everything below is this rule with more numbers.
         </p>
-
-        <h3 id="ssm-s4">§3.3 · S4: make A diagonal and the loop becomes a convolution</h3>
         <p>
-          S4 (Gu et al.) made SSMs practical. Two ideas matter here. First, if Ā, B̄, C are the same at every step, you
-          can unroll the loop: y_t = Σ_k C Ā<sup>k</sup> B̄ x_{t−k}. That is a convolution with a kernel
-          K = (CB̄, CĀB̄, CĀ²B̄, …), so training can use one big parallel convolution instead of a loop. Second, A is
-          given a special structure. In the simplified variants Mamba builds on, A is diagonal, so each of the N state
-          dimensions decays at its own rate and <code>exp(ΔA)</code> is just elementwise <code>exp</code>. Mamba
-          initialises A_n = −n for n = 1…N (the "S4D-real" initialisation), giving N different time scales.
+          To see what <code>a</code> does, feed in the inputs 1, 0, 0, 0 with b = 1 and watch <code>h</code>:
         </p>
-
-        <h3 id="ssm-mamba">§3.4 · Mamba: make Δ, B and C depend on the input</h3>
+        <table class="tbl">
+          <thead><tr><th></th><th>after x = 1</th><th>after x = 0</th><th>after x = 0</th><th>after x = 0</th></tr></thead>
+          <tbody>
+            <tr><td>a = 0.9 (slow to forget)</td><td>1</td><td>0.9</td><td>0.81</td><td>0.73</td></tr>
+            <tr><td>a = 0.1 (quick to forget)</td><td>1</td><td>0.1</td><td>0.01</td><td>0.001</td></tr>
+          </tbody>
+        </table>
         <p>
-          The weakness of S4 is that Ā, B̄, C are the same for every token, so the model cannot decide based on the
-          content "this token matters, store it" or "this token is noise, skip it". Mamba's change, called
-          <em class="term">selectivity</em>, is to compute Δ, B and C from the current token:
-        </p>
-        <pre class="code"><code>Δ_t = softplus(Linear(x_t))      # (D,)   one step size per channel, always &gt; 0
-B_t = Linear(x_t)                # (N,)   what to write
-C_t = Linear(x_t)                # (N,)   what to read
-h_t = exp(Δ_t A) ⊙ h_{t−1} + Δ_t B_t x_t     # elementwise, per channel
-y_t = C_t · h_t + D x_t                      # D is a learned skip connection</code></pre>
-        <p>
-          The price is that the convolution trick no longer works, since the kernel changes at every step. The Mamba
-          paper fixes this with a hardware-aware parallel scan written in CUDA. Our code instead runs the loop over
-          time in plain PyTorch. It computes exactly the same numbers, only more slowly, and you can read it line
-          by line.
+          With a = 0.9 the first input is still clearly there three steps later. With a = 0.1 it is gone almost
+          immediately. So <strong>a close to 1 means long memory, a close to 0 means short memory</strong>. If a were
+          larger than 1, h would grow at every step and blow up, so a has to stay between 0 and 1.
         </p>
 
-        <h3 id="ssm-block">§3.5 · The Mamba block around the SSM</h3>
-        <pre class="code"><code>x ─ RMSNorm ─ Linear(D → 2E) ─┬─ u ─ causal depthwise conv(4) ─ SiLU ─ selective SSM ─┐
-                              └─ z ─────────────────────────────────── SiLU ───────── ⊙ ─ Linear(E → D) ─ + x</code></pre>
+        <h3 id="ssm-disc">§3.2 · Step 2: many memories with different speeds, and where Δ comes from</h3>
         <p>
-          The input is projected up to E = 2D channels and split into two halves. The <code>u</code> half goes through a
-          short convolution of width 4, which mixes each position with its 3 predecessors. This gives cheap local
-          context before the SSM. The <code>z</code> half becomes a <em class="term">gate</em>: after SiLU it is multiplied
-          elementwise with the SSM output, so the block can switch channels off. A Mamba block has no separate MLP,
-          and the gated up/down projection plays that role. That is why the paper stacks two Mamba blocks for every
-          Transformer layer when matching parameter counts. We do the same: 8 Mamba blocks against 4 Transformer
-          layers.
+          One number is not much memory. So keep <strong>N = 16 numbers</strong> instead, each with its own
+          <code>a</code>. Some forget slowly and hold long-range information, some forget quickly and track what
+          just happened. The rule is the same, applied to each of the 16 slots separately, and the output adds the
+          slots up:
+        </p>
+        <pre class="code"><code>h[n] = a[n] * h[n] + b[n] * x        for each slot n = 1 … 16
+y    = c[1]*h[1] + c[2]*h[2] + … + c[16]*h[16]</code></pre>
+        <p>
+          Mamba does not learn <code>a</code> directly. It builds it from two parts:
+        </p>
+        <pre class="code"><code>a[n] = exp(Δ * A[n])        with A[n] negative:  A = −1, −2, −3, …, −16
+b[n] = Δ * B[n]</code></pre>
+        <ul>
+          <li><strong>A[n]</strong> is the <em>forgetting speed</em> of slot n. Slot 1 (A = −1) is the slow one, slot 16
+            (A = −16) the fast one. Starting A at −1 … −16 is the "S4D-real" initialisation.</li>
+          <li><strong>Δ</strong> (delta, always positive) is a <em>step size</em>: how much "time" passes at this token.
+            It is one knob that turns all 16 slots at once.</li>
+          <li><code>exp</code> of a negative number is always between 0 and 1. So whatever values training gives Δ and
+            A, <code>a</code> is a valid forgetting factor and the memory can never blow up. That is the reason for this
+            form.</li>
+        </ul>
+        <table class="tbl">
+          <thead><tr><th>Δ</th><th>a for the slow slot, exp(−1·Δ)</th><th>a for the fast slot, exp(−16·Δ)</th><th>what happens at this token</th></tr></thead>
+          <tbody>
+            <tr><td>0.01</td><td>0.99</td><td>0.85</td><td>almost everything is kept, and almost nothing is written (b = Δ·B is tiny)</td></tr>
+            <tr><td>0.1</td><td>0.90</td><td>0.20</td><td>slow slots keep, fast slots mostly refresh</td></tr>
+            <tr><td>1</td><td>0.37</td><td>0.00</td><td>most of the old memory is wiped and the new input is written strongly</td></tr>
+          </tbody>
+        </table>
+        <div class="callout aha">
+          <div class="callout-label">the one thing to remember about Δ</div>
+          <p>Δ answers "how much should this token change the memory?" A small Δ means <strong>skip this token</strong>:
+            keep the memory, write almost nothing. A large Δ means <strong>this token matters</strong>: forget the past
+            and write the token in.</p>
+        </div>
+        <div class="callout mechanism">
+          <div class="callout-label">where the names come from (safe to skip)</div>
+          <p>In control theory the memory changes continuously in time: h′(t) = A·h(t) + B·x(t), "the state decays at
+            rate A and is pushed by the input". Text comes in steps, so you ask where h ends up after a time step of
+            length Δ. Solving that gives exactly h = exp(ΔA)·h + (≈ ΔB)·x. This step is called
+            <em class="term">discretisation</em>, and it is why the step size Δ and the exponential appear. You do not
+            need the calculus to follow the code.</p>
+        </div>
+
+        <h3 id="ssm-s4">§3.3 · Step 3: the older models (S4) use the same numbers for every token</h3>
+        <p>
+          In S4, the model Mamba grew out of, Δ, A, B and C are learned once and then <strong>fixed</strong>. Every
+          token, important or not, is written with the same strength and makes the memory fade by the same amount.
+          This has one nice consequence and one serious weakness:
+        </p>
+        <ul>
+          <li><strong>Nice:</strong> because nothing depends on the token, the whole loop can be rewritten as one
+            convolution and run in parallel on a GPU. That is what made S4 fast to train.</li>
+          <li><strong>Weak:</strong> the model cannot react to content. Take the inputs 3, 1, 1, where the 3 is the
+            important token and the 1s are filler, with Δ = 1 everywhere (one slot, A = −1, B = 1):</li>
+        </ul>
+        <pre class="code"><code>fixed Δ = 1 for every token:
+    h = 3.00  →  0.37·3.00 + 1 = 2.10  →  0.37·2.10 + 1 = 1.77
+    the 3 is fading and the filler is mixed in</code></pre>
+
+        <h3 id="ssm-mamba">§3.4 · Step 4, Mamba: let each token choose its own Δ, B and C</h3>
+        <p>
+          Mamba's change is called <em class="term">selectivity</em>. Δ, B and C are no longer fixed. A small linear
+          layer computes them <strong>from the current token</strong>, so each token decides how much the memory
+          forgets (Δ), what gets written (B) and what gets read (C):
+        </p>
+        <pre class="code"><code>for each token x_t:
+    Δ_t = softplus(Linear(x_t))     # this token's step size, kept positive
+    B_t = Linear(x_t)               # 16 numbers: what to write
+    C_t = Linear(x_t)               # 16 numbers: how to read
+    h   = exp(Δ_t * A) * h + Δ_t * B_t * x_t      # the rule of §3.1
+    y_t = sum(C_t * h) + D * x_t    # read the memory, plus a skip D·x</code></pre>
+        <p>The same example again, but now the model gives the filler tokens a tiny Δ:</p>
+        <pre class="code"><code>Δ = 1, then 0.01, then 0.01:
+    h = 3.00  →  0.99·3.00 + 0.01 = 2.98  →  0.99·2.98 + 0.01 = 2.96
+    the 3 is still there, and the filler was skipped</code></pre>
+        <p>
+          That is all "selective state space model" means: <strong>the memory rule of §3.1, where every token sets
+          its own forget, write and read numbers</strong>. A (the 16 forgetting speeds) stays a normal learned
+          parameter and is not chosen per token.
+        </p>
+        <div class="callout gotcha">
+          <div class="callout-label">what selectivity costs</div>
+          <p>Because the numbers now change at every token, the convolution trick of §3.3 no longer works. The Mamba
+            paper gets its speed back with a parallel scan written in CUDA. Our code simply runs the loop above, one
+            token at a time, in plain PyTorch. It computes the same values, it is slow, and every line can be
+            explained.</p>
+        </div>
+        <p>
+          One more detail on sizes. The rule above handles one stream of numbers. A token inside the model is a
+          vector, so Mamba runs <strong>one such memory per channel</strong>: E = 512 channels, each with its own 16
+          slots. Δ is one number per channel, while B and C (16 numbers each) are shared by all channels.
+        </p>
+
+        <h3 id="ssm-block">§3.5 · The Mamba block around it</h3>
+        <p>The selective memory is the core. A Mamba block wraps a few simple layers around it:</p>
+        <pre class="code"><code>x → RMSNorm → Linear(D → 2E) → split into u and z
+
+u → causal conv(4) → SiLU → selective memory ─┐
+z → SiLU ─────────────────────────────────────⊙   (multiply)
+                                              └→ Linear(E → D) → add x</code></pre>
+        <ol>
+          <li><strong>Normalise</strong> the input (RMSNorm), as in a Transformer block.</li>
+          <li><strong>Widen</strong> it from D = 256 to 2E = 1,024 numbers and cut it into two halves, <code>u</code> and
+            <code>z</code>, of 512 each.</li>
+          <li><strong>Convolve <code>u</code></strong> with a width-4 filter: each position is mixed with the 3 positions
+            before it. This matters because Δ, B and C are computed from <code>u</code>. With the convolution, a token's
+            decision to "skip" or "store" can depend on its recent neighbours and not only on itself.</li>
+          <li><strong>Run the selective memory</strong> of §3.4 over <code>u</code>.</li>
+          <li><strong>Gate</strong> the result: multiply it by SiLU(<code>z</code>), which lets the block turn individual
+            channels down or off.</li>
+          <li><strong>Project back</strong> to 256 numbers and add the block's input (the residual connection).</li>
+        </ol>
+        <p>
+          A Mamba block has no separate MLP. The widen, gate and project-back steps do that job. So one Mamba block
+          has about half the parameters of a Transformer layer, and the paper uses two Mamba blocks for every
+          Transformer layer when it compares models of equal size. We do the same: 8 Mamba blocks against 4
+          Transformer layers.
         </p>
       </section>
 
       <!-- ================================================================ §4 -->
       <section id="delta">
         <h2><span class="num">§4</span>Linear attention and the delta rule</h2>
-
-        <h3 id="delta-linear">§4.1 · Linear attention is an RNN with a matrix state</h3>
-        <p>
-          Softmax attention computes o_t = Σ_{s≤t} softmax(q_t·k_s) v_s. Drop the softmax and the sum can be
-          regrouped:
-        </p>
-        <pre class="code"><code>o_t = Σ_{s≤t} (q_t · k_s) v_s  =  ( Σ_{s≤t} v_s k_sᵀ ) q_t  =  S_t q_t
-S_t = S_{t−1} + v_t k_tᵀ             # a d×d matrix, updated once per token</code></pre>
-        <p>
-          S is an <em class="term">associative memory</em>: writing <code>v kᵀ</code> stores the pair (k → v), and
-          multiplying by a query reads back a weighted mix of stored values. The problem is that S only ever adds. A
-          d×d matrix can hold about d independent pairs. After that, writes pile on top of each other and reads
-          return a blur of everything.
+        <p class="section-intro">
+          Mamba's memory is a handful of numbers that fade. DeltaNet's memory is different: it is a
+          <strong>lookup table stored inside a matrix</strong>, where you save a value under a key and later ask for it
+          back. This section shows how a matrix can do that, what goes wrong when you only ever add to it, and how
+          the delta rule fixes it. All examples use 2 dimensions so you can check them by hand.
         </p>
 
-        <h3 id="delta-rule">§4.2 · The delta rule: read, compare, correct</h3>
+        <h3 id="delta-linear">§4.1 · A matrix that works like a dictionary</h3>
         <p>
-          DeltaNet (Schlag et al.; parallelised by Yang et al., 2024) writes into S the way the
-          Widrow–Hoff learning rule does. It first reads what the memory currently returns for key k_t, then writes
-          only the <em>difference</em> between the new value and the old one:
+          A Python dictionary does <code>memory[key] = value</code> and later <code>memory[key]</code>. A matrix S can
+          do the same with vectors:
         </p>
-        <pre class="code"><code>v_old = S_{t−1} k_t                              # what the memory says now
-S_t   = S_{t−1} + β_t (v_t − v_old) k_tᵀ         # move toward the new value
-o_t   = S_t q_t</code></pre>
+        <pre class="code"><code>write:   S = S + v kᵀ     # v kᵀ is a matrix: entry (i, j) is v[i] * k[j]
+read:    S k              # multiply the matrix by the key</code></pre>
+        <p><code>v kᵀ</code> is called the <em class="term">outer product</em> of v and k. Store the value v₁ = [5, 7] under the key k₁ = [1, 0],
+          starting from an empty (all-zero) S:</p>
+        <pre class="code"><code>write, S = v₁ k₁ᵀ:
+    [5·1  5·0]  =  [5  0]
+    [7·1  7·0]     [7  0]
+
+read, S k₁:
+    [5·1 + 0·0]  =  [5]      ← v₁ comes back
+    [7·1 + 0·0]     [7]</code></pre>
+        <p>Now also store v₂ = [2, 3] under a second key k₂ = [0, 1]:</p>
+        <pre class="code"><code>S = [5  0] + [0  2]  =  [5  2]          S k₁ = [5, 7]   ← still v₁
+    [7  0]   [0  3]     [7  3]          S k₂ = [2, 3]   ← v₂</code></pre>
         <p>
-          β_t ∈ (0, 1) is a per-token write strength, computed as <code>sigmoid(Linear(x_t))</code>. With β = 1 and a
-          unit-length k, the value stored under k is replaced completely: S_t k_t = v_t exactly. That is why the
-          keys are L2-normalised. Rearranged, the update is
-          <code>S_t = S_{t−1}(I − β k kᵀ) + β v kᵀ</code>: first erase the direction k, then write. In optimisation terms
-          it is one step of gradient descent on the loss ½‖S k_t − v_t‖² with learning rate β_t. The memory is
-          trained online, one token at a time, to map keys to values.
+          Both values come back exactly, from one 2×2 matrix. It works because the two keys point in completely
+          different directions (they are <em>orthogonal</em>), so they do not disturb each other. A memory like this is
+          called an <em class="term">associative memory</em>: it associates keys with values.
         </p>
+        <p>
+          <strong>This is what attention without the softmax is.</strong> Attention computes, for a query q, a
+          weighted sum of all past values, weighted by how well q matches each key. Drop the softmax and the sum can
+          be regrouped so that all past (key, value) pairs are folded into one matrix:
+        </p>
+        <pre class="code"><code>o_t = Σ_{s ≤ t} (q_t · k_s) v_s   =   ( Σ_{s ≤ t} v_s k_sᵀ ) q_t   =   S_t q_t
+
+S_t = S_{t−1} + v_t k_tᵀ        # write this token's pair
+o_t = S_t q_t                   # read with this token's query</code></pre>
+        <p>
+          This is <em class="term">linear attention</em>. A Transformer has to keep every past key and value, so its
+          memory grows with the sequence. Linear attention keeps only the matrix S, whose size never changes, and
+          updates it once per token, like an RNN.
+        </p>
+
+        <h3 id="delta-rule">§4.2 · The problem with only adding, and the delta rule</h3>
+        <p>
+          <strong>The problem.</strong> Linear attention can only add to S. Suppose that later in the sequence the model
+          wants key k₁ to mean [1, 1] instead of [5, 7]. Adding the new pair gives:
+        </p>
+        <pre class="code"><code>S = [5  2] + [1  0]  =  [6  2]      S k₁ = [6, 8]   ← old + new, not [1, 1]
+    [7  3]   [1  0]     [8  3]</code></pre>
+        <p>
+          The old value is still in there, mixed with the new one. Nothing is ever removed. A second limit is space:
+          in d dimensions only d keys can be orthogonal, so once more than d pairs are stored, keys overlap and every
+          read returns a blur of several values.
+        </p>
+        <p>
+          <strong>The fix.</strong> Before writing, <em>look up what the memory currently returns for this key</em>, and
+          write only the difference between what you want and what is there. "Delta" means difference:
+        </p>
+        <pre class="code"><code>v_old = S k                     # 1. read what is stored under this key now
+S     = S + β (v − v_old) kᵀ    # 2. write only the correction, scaled by β
+o     = S q                     # 3. answer this token's query</code></pre>
+        <p>The same example with the delta rule and β = 1:</p>
+        <pre class="code"><code>v_old      = S k₁ = [5, 7]
+correction = [1, 1] − [5, 7] = [−4, −6]
+
+S = [5  2] + [−4  0]  =  [1  2]      S k₁ = [1, 1]   ← replaced exactly
+    [7  3]   [−6  0]     [1  3]      S k₂ = [2, 3]   ← untouched</code></pre>
+        <p>
+          <strong>β is the write strength</strong>, a number between 0 and 1 that the model computes for each token as
+          <code>sigmoid(Linear(x_t))</code>:
+        </p>
+        <table class="tbl">
+          <thead><tr><th>β</th><th>what S k₁ returns after the write</th><th>meaning</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>[5, 7]</td><td>do not write, keep the old value</td></tr>
+            <tr><td>0.5</td><td>[3, 4]</td><td>move halfway from the old value to the new one</td></tr>
+            <tr><td>1</td><td>[1, 1]</td><td>replace the old value completely</td></tr>
+          </tbody>
+        </table>
+        <div class="callout gotcha">
+          <div class="callout-label">why the keys must have length 1</div>
+          <p>The exact replacement above only works because k₁ has length 1. Try the key [2, 0] on an empty memory with
+            v = [5, 7]: S = v kᵀ = [[10, 0], [14, 0]], and reading gives S k = [20, 28], four times too large, because
+            the key's length is counted twice (2 × 2). So DeltaNet scales every key and query to length 1
+            (<em class="term">L2 normalisation</em>) before using it. Then β = 1 means exactly "replace", and a write
+            can never overshoot and make the memory grow out of control.</p>
+        </div>
+        <div class="callout mechanism">
+          <div class="callout-label">two other ways to see the same rule (safe to skip)</div>
+          <p>Multiplying out the update gives <code>S = S(I − β k kᵀ) + β v kᵀ</code>: first erase what was stored in
+            the direction of k, then write the new value. It is also one step of gradient descent on the error
+            ½‖S k − v‖² with learning rate β. So the memory is being trained while the sequence is read, one token at
+            a time, to map each key to its value. This is the Widrow–Hoff rule from the 1960s, and it is where the
+            name comes from.</p>
+        </div>
 
         <h3 id="delta-layer">§4.3 · The DeltaNet layer we build</h3>
-        <ul>
-          <li>q, k, v from one linear projection, then a short causal depthwise convolution (width 4) and SiLU, as in
-            the paper.</li>
-          <li>Split into 4 heads of 64 dimensions. Each head has its own 64×64 memory S.</li>
-          <li>q and k are L2-normalised, and β = sigmoid(W x) gives one value per head per token.</li>
-          <li>The delta-rule recurrence runs over time, followed by an RMSNorm per head and an output projection.</li>
-          <li>As in the paper, a DeltaNet layer replaces attention inside a normal block, so an MLP follows it.</li>
-        </ul>
+        <p>For every token the layer does this:</p>
+        <ol>
+          <li>Compute a query, a key and a value from the token with one linear layer, as attention does. Then pass
+            them through a short causal convolution (width 4) and SiLU, as in the paper, so each one also sees the 3
+            tokens before it.</li>
+          <li>Split them into 4 heads of 64 numbers. Each head has its own 64×64 memory S.</li>
+          <li>Scale q and k to length 1, and compute β = sigmoid(W x), one write strength per head.</li>
+          <li>Run the three delta-rule lines of §4.2: read the old value, write the correction, answer the query.</li>
+          <li>Normalise each head's output (RMSNorm), join the heads and project back to 256 numbers.</li>
+        </ol>
         <p>
-          The paper's main contribution is a <em>chunkwise parallel</em> training algorithm (the WY representation) that
-          makes this fast on GPUs. We use the plain recurrent form instead. It gives the same outputs, and every line
-          of it can be explained.
+          A DeltaNet layer takes the place of attention inside an ordinary block, so an MLP follows it, exactly as
+          in a Transformer.
         </p>
+        <p>
+          The DeltaNet paper (Yang et al., 2024, building on Schlag et al.) is mainly about making this fast: it
+          derives a way to process a chunk of tokens at once on a GPU. We use the plain one-token-at-a-time loop
+          instead. It gives the same outputs and every line of it can be explained.
+        </p>
+        <table class="tbl">
+          <thead><tr><th></th><th>Mamba</th><th>DeltaNet</th></tr></thead>
+          <tbody>
+            <tr><td>what the memory is</td><td>16 fading numbers per channel</td><td>a 64×64 key → value table per head</td></tr>
+            <tr><td>how a token controls it</td><td>Δ: how much to forget and how strongly to write</td><td>β: how much of the old value under this key to replace</td></tr>
+            <tr><td>what it is good at</td><td>summarising recent context</td><td>storing a fact and looking it up later</td></tr>
+          </tbody>
+        </table>
       </section>
 
       <!-- ================================================================ §5 -->
