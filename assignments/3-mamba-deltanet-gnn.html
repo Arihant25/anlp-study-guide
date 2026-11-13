@@ -79,7 +79,9 @@
         <h1>Mamba, DeltaNet and GNNs — <em>concepts first, then every line</em>.</h1>
         <p class="lead">
           This page explains how Assignment 3 was done, in the order it was done. Part A builds Mamba, DeltaNet and a
-          hybrid of the two and trains them to decrypt a cipher, which turns out to be unbreakable. Part B classifies
+          hybrid of the two and trains them to decrypt a cipher. A preprocessing step undoes one layer of the cipher,
+          and all four models then decrypt more than 99.9% of the test characters. Two Triton GPU kernels make the
+          recurrent models fast enough to train. Part B classifies
           fake news with four graph neural networks written from scratch. Each idea is explained before the code that
           implements it, and the results come with the reasons behind them.
         </p>
@@ -97,7 +99,8 @@
         <p class="section-intro">
           Assignment 3 has two unrelated halves. Part A is about <strong>sequence models that are not
           Transformers</strong>: you build Mamba and DeltaNet from their papers, plus a hybrid of the two, and race
-          them against a Transformer on a decryption task. Part B is about <strong>graph neural networks</strong>:
+          them against a Transformer on a decryption task. In the final version, preprocessing undoes part of the
+          cipher and all four models decrypt more than 99.9% of the test characters. Part B is about <strong>graph neural networks</strong>:
           you decide whether a news article is fake by looking at how it spread on Twitter.
         </p>
         <div class="callout mechanism">
@@ -121,85 +124,254 @@
         <h2><span class="num">§1</span>Look at the data before building anything</h2>
         <p class="section-intro">
           The most important step of Part A happens before any model exists. If you know what the cipher does, you
-          know what the model has to learn. If the cipher turns out to be impossible to learn, you know what
-          accuracy to expect and you can stop chasing it.
+          know which part of it a short program can undo exactly, and which part is left for the network to learn.
+          This section takes the cipher apart one layer at a time.
         </p>
 
         <h3 id="cipher-look">§1.1 · What a sample looks like</h3>
-        <pre class="code"><code>cleaned: "valkyria chronicles iii"          23 characters, only a-z and space
-cipher:  "suD6OZe=Q04fY7Ty6 oeebip?"        25 characters, 81 different symbols</code></pre>
+        <pre class="code"><code>cleaned: "robert boulter"          14 characters, only a-z and space
+cipher:  "35wq3n-6I4i8=fM1{"       17 characters, 81 different symbols</code></pre>
         <p>
-          The plaintext is lower-cased Wikipedia text (WikiText-103) with only <code>a–z</code> and space. The ciphertext
-          uses 81 symbols: space, upper- and lower-case letters, digits, and 18 punctuation marks. The ciphertext is
-          usually a few characters longer than the plaintext.
+          This is the first test text. The plaintext is lower-cased text with only <code>a–z</code> and space. The
+          ciphertext uses 81 symbols: space, upper- and lower-case letters, digits, and 18 punctuation marks. The
+          ciphertext is a few characters longer than the plaintext.
         </p>
 
         <h3 id="cipher-nulls">§1.2 · The punctuation marks are padding</h3>
         <p>
           Split the 81 symbols into two groups: the 63 "core" symbols (space, letters, digits) and the 18 punctuation
-          marks <code>!'+,-./:;&lt;=&gt;?[]_{}</code>. Delete the punctuation from every ciphertext and compare lengths:
+          marks <code>!'+,-./:;&lt;=&gt;?[]_{}</code>. Delete the punctuation from every ciphertext and compare:
         </p>
         <table class="tbl">
-          <thead><tr><th>Check (200k training samples)</th><th>Result</th></tr></thead>
+          <thead><tr><th>Check</th><th>Result</th></tr></thead>
           <tbody>
-            <tr><td>core-symbol length == plaintext length</td><td><strong>100%</strong> of samples</td></tr>
-            <tr><td>fraction of ciphertext that is punctuation</td><td>about 13%, and it grows with length</td></tr>
-            <tr><td>how often a punctuation mark sits next to a plaintext space</td><td>16.97%, while spaces are 16.95% of all characters</td></tr>
+            <tr><td>core-symbol length == plaintext length</td><td><strong>every</strong> training sample, and all 1,318 test texts</td></tr>
+            <tr><td>share of the test ciphertext that is punctuation</td><td>11.7% (155,851 of 1,327,685 characters)</td></tr>
+            <tr><td>the same plaintext encrypted twice</td><td>the core symbols are identical, the punctuation is different</td></tr>
           </tbody>
         </table>
         <p>
-          The first row says each core symbol corresponds to exactly one plaintext character, in order. The last row
-          says the punctuation is dropped in at random places: it is no more likely to sit at a word boundary than
-          anywhere else. In cryptography these are called <em class="term">nulls</em>, symbols that mean nothing and
-          are there only to confuse. So the first preprocessing step is to delete them. After that, cipher position
-          <em>i</em> lines up with plaintext position <em>i</em>.
+          The last row is easy to see in the test set. Two test texts begin with the words "robert boulter":
+        </p>
+        <pre class="code"><code>text 1:  35wq3n-6I4i8=fM1{                  "robert boulter"
+text 2:  35wq3n6I4i8fM1E4UsI-HVnDhf...      "robert boulter is an english film ..."
+
+without punctuation, both start:  35wq3n6I4i8fM1</code></pre>
+        <p>
+          The first row says each core symbol corresponds to exactly one plaintext character, in order. The example
+          says the punctuation carries no message: it lands in different places each time while everything else
+          stays the same. In cryptography these are called <em class="term">nulls</em>, symbols that mean nothing
+          and are there only to confuse. So the first preprocessing step is to delete them. After that, cipher
+          position <em>i</em> lines up with plaintext position <em>i</em>.
         </p>
 
-        <h3 id="cipher-entropy">§1.3 · Does a cipher symbol tell you anything about its plaintext letter?</h3>
+        <h3 id="cipher-det">§1.3 · The cipher is deterministic</h3>
         <p>
-          <em class="term">Entropy</em> H(X) measures, in bits, how uncertain you are about X: the average number of
-          yes/no questions needed to guess it. <em class="term">Conditional entropy</em> H(X | Y) is your remaining
-          uncertainty once you know Y. If knowing Y helps, H(X | Y) is smaller than H(X). If Y is useless,
-          the two are equal. You estimate both by counting:
+          <em class="term">Deterministic</em> means there is no randomness: the same input always gives the same
+          output. The example above already shows it. Once the nulls are gone, the same plaintext always gives the
+          same string of core symbols. It shows one more thing. Text 2 is much longer than text 1, yet its first 14
+          symbols are the same. So <strong>the symbol at position <em>i</em> depends only on the plaintext up to
+          position <em>i</em></strong>, never on what comes later.
         </p>
-        <pre class="code"><code>H(P)     = - Σ_p  P(p) log₂ P(p)
-H(P | C) = H(P, C) - H(C)          # computed from pair counts (c, p)</code></pre>
-        <p>Over 172 million aligned character positions:</p>
+        <p>
+          A deterministic cipher is a fixed rule, and a fixed rule can be worked out from enough examples. To do
+          arithmetic on symbols we number them in the order space, <code>a–z</code>, <code>A–Z</code>,
+          <code>0–9</code>:
+        </p>
+        <pre class="code"><code>space = 0     a = 1 … z = 26     A = 27 … Z = 52     0 = 53 … 9 = 62        63 symbols in all</code></pre>
+        <p>
+          The rule turns out to have two steps. Call the plaintext letter at position <em>i</em> <code>p_i</code>,
+          the result of step 1 <code>x_i</code>, and the final cipher symbol <code>c_i</code>:
+        </p>
+        <pre class="code"><code>plaintext letter p_i  ──step 1: substitution──▶  x_i  ──step 2: chained shift──▶  cipher symbol c_i</code></pre>
+
+        <h3 id="cipher-wheels">§1.4 · Step 1: a substitution table that changes at every position</h3>
+        <p>
+          A <em class="term">substitution cipher</em> replaces each letter using a table, for example "a becomes Q,
+          b becomes 7, …". The simplest kind uses one table for the whole message. This cipher uses a
+          <strong>different table at every position</strong>. Write <code>T_i</code> for the table used at
+          position <em>i</em>:
+        </p>
+        <pre class="code"><code>x_i = T_i(p_i)        # look up letter p_i in the table for position i</code></pre>
+        <p>
+          The tables do not change at random. They change the way the digits of a car's
+          <strong>odometer</strong> change. On an odometer the last digit moves every kilometre, the next digit moves
+          once every 10 km, the next once every 100 km. Here there are three "wheels", and each wheel has 63
+          settings instead of 10. First shift the position by a fixed amount, <code>j = i − 762</code>. Then:
+        </p>
         <table class="tbl">
-          <thead><tr><th>What you are allowed to look at</th><th>Remaining uncertainty about the plaintext letter</th></tr></thead>
+          <thead><tr><th>wheel</th><th>its setting</th><th>how often it moves</th></tr></thead>
           <tbody>
-            <tr><td>nothing</td><td>4.126 bits</td></tr>
-            <tr><td>the cipher symbol at the same position</td><td>4.126 bits</td></tr>
-            <tr><td>that symbol and the previous cipher symbol</td><td>4.04 bits (the small drop is counting noise from 3,969 contexts)</td></tr>
-            <tr><td>the position and the cipher symbol</td><td>3.99 bits (same counting noise, 2,235 contexts)</td></tr>
-            <tr><td>difference of consecutive cipher symbols (an autokey test)</td><td>4.123 bits</td></tr>
+            <tr><td>fast</td><td><code>j mod 63</code></td><td>every position. It is back where it started after 63 positions.</td></tr>
+            <tr><td>middle</td><td><code>(j div 63) mod 63</code></td><td>once every 63 positions. Back where it started after 63 × 63 = 3,969 positions.</td></tr>
+            <tr><td>slow</td><td><code>j div 3969</code></td><td>once every 3,969 positions</td></tr>
           </tbody>
         </table>
         <p>
-          Knowing the cipher symbol changes nothing. On top of that, the plaintext <code>history</code> appears about 6,000
-          times in the training set, and every copy gets a different ciphertext. Together these say the cipher
-          behaves like a <em class="term">one-time pad</em>: every sample is encrypted with its own random key. A
-          one-time pad is provably unbreakable. For any ciphertext, every plaintext of the same length is equally
-          likely, so no model, however large, can recover the text.
+          <code>div</code> is division rounded down, and <code>mod</code> is the remainder. For example
+          <code>130 div 63 = 2</code> and <code>130 mod 63 = 4</code>, because 130 = 2 × 63 + 4. The table
+          <code>T_i</code> is built from three parts, one per wheel. One part repeats with the fast wheel, one with
+          the middle wheel, and one changes only when the slow wheel moves.
         </p>
-
-        <div class="callout gotcha">
-          <div class="callout-label">what this means for Part A</div>
-          <p>The only thing the ciphertext reveals is the <strong>length</strong> of the plaintext. The best a model can
-            do is guess the most common character at each position. That is why so many people reported poor
-            accuracy on Moodle: the task is not solvable, so model quality hardly matters. The sensible response
-            is to build each model correctly and simply, train it properly, and explain why the numbers come out
-            as they do. Chasing accuracy with tricks gains nothing.</p>
+        <table class="tbl">
+          <thead><tr><th>position i</th><th>j = i − 762</th><th>fast</th><th>middle</th><th>slow</th><th>what happened</th></tr></thead>
+          <tbody>
+            <tr><td>762</td><td>0</td><td>0</td><td>0</td><td>0</td><td>all wheels at zero</td></tr>
+            <tr><td>763</td><td>1</td><td>1</td><td>0</td><td>0</td><td>the fast wheel moved</td></tr>
+            <tr><td>825</td><td>63</td><td>0</td><td>1</td><td>0</td><td>the fast wheel came round, the middle wheel moved</td></tr>
+            <tr><td>4,730</td><td>3,968</td><td>62</td><td>62</td><td>0</td><td>last position before the slow wheel moves</td></tr>
+            <tr><td>4,731</td><td>3,969</td><td>0</td><td>0</td><td>1</td><td>the slow wheel moved to its second setting</td></tr>
+            <tr><td>8,700</td><td>7,938</td><td>0</td><td>0</td><td>2</td><td>third setting of the slow wheel</td></tr>
+            <tr><td>0</td><td>−762</td><td>57</td><td>50</td><td>−1</td><td>the start of every text: the wheels begin part-way round</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The <strong>762</strong> is the wheels' starting setting. A text does not begin with all wheels at zero.
+          It begins 762 steps "before zero", and the number was found from the data. Old cipher machines such as
+          Enigma worked on the same idea: a set of rotors that turn a little with every letter, so that the same
+          letter is encrypted differently each time. They are called <em class="term">rotor machines</em>.
+        </p>
+        <div class="callout aha">
+          <div class="callout-label">why the wheels matter later</div>
+          <p>Two positions that share a wheel setting share that part of the table. Position 763 and position 4,732
+            have the same fast and middle settings and differ only in the slow wheel. A model that is told the three
+            wheel settings can reuse what it learned at early positions when it reads deep ones. This is exactly
+            how the position input of the models is built (§6.9).</p>
         </div>
 
-        <h3 id="cipher-framing">§1.4 · The resulting task: one label per character</h3>
+        <h3 id="cipher-chain">§1.5 · Step 2: the chained shift</h3>
         <p>
-          Since cipher position <em>i</em> maps to plaintext position <em>i</em>, decryption becomes
-          <em class="term">sequence labelling</em>: read the cleaned cipher string and output one of 27 classes (space,
-          a–z) at every position. This is much simpler than an encoder–decoder: there is no generation loop and no
-          cross-attention, and the output always has the right length. Each model is just
-          <code>embedding → stack of layers → linear layer to 27 classes</code>, trained with cross-entropy at every
-          position.
+          Step 1 alone would be easy to break, because at a given position the same letter always gives the same
+          symbol. Step 2 hides that. It adds to each <code>x_i</code> a number computed from the
+          <strong>earlier</strong> symbols <code>x_0 … x_(i−1)</code>. All arithmetic is
+          <em class="term">mod 63</em>: after every operation keep only the remainder after dividing by 63, so the
+          result is again one of the 63 symbols. It works like a clock with 63 hours: 70 becomes 7, and −11 becomes
+          52.
+        </p>
+        <pre class="code"><code>c_0 = x_0                                           the first symbol is not shifted
+
+c_i = x_i − o_i + Σ w_j · x_j + follow(x_q)         (mod 63), for i ≥ 1
+                  └─ over the window ─┘</code></pre>
+        <p>The four ingredients, one at a time:</p>
+        <ul>
+          <li><strong>The window</strong> is the last <code>W</code> positions before <em>i</em>, that is positions
+            <code>i − W</code> to <code>i − 1</code>. <code>W</code> takes the values
+            <code>[49, 17, 1, 17, 17, 33][i mod 6]</code>, so it cycles through six lengths. Near the start of a
+            text the window is cut off at position 0.</li>
+          <li><strong>The weights</strong> <code>w_j</code> are 48 fixed numbers. Position <em>j</em> uses weight
+            number <code>j mod 48</code>, so they repeat every 48 positions. The sum
+            <code>Σ w_j · x_j</code> multiplies each symbol in the window by the weight of its position and adds
+            the results.</li>
+          <li><strong><code>q</code></strong> is the oldest position in the window, and
+            <strong><code>follow(s)</code></strong> answers the question "the last time symbol <em>s</em>
+            appeared earlier in this text, which symbol came right after it?". If <em>s</em> has not appeared
+            before, the answer is 1. Example: after the symbols <code>3 i m</code> have been read,
+            <code>follow(3) = i</code> and <code>follow(i) = m</code>.</li>
+          <li><strong>The offset</strong> <code>o_i</code> is a fixed constant for each position. The first 97 are
+            listed one by one. From position 49 onwards they repeat every 48 positions.</li>
+        </ul>
+        <p>
+          It is called <em>chained</em> because every symbol depends on the ones before it. Change one early letter
+          and every later cipher symbol changes. This is why the same word looks completely different in two
+          places, and why counting how often each cipher symbol occurs tells you nothing.
+        </p>
+
+        <h3 id="cipher-undo">§1.6 · Why step 2 can be undone from the ciphertext alone</h3>
+        <p>
+          Look at what the shift is made of: only <strong>earlier</strong> <code>x</code> values and fixed
+          constants. No plaintext and no secret key. So you can peel it off from left to right:
+        </p>
+        <ol>
+          <li><code>x_0 = c_0</code>. The first symbol was never shifted, so it is known.</li>
+          <li>At position 1 the shift uses only <code>x_0</code>, which you now have. Compute the shift, subtract
+            it from <code>c_1</code>, and you have <code>x_1</code>.</li>
+          <li>At position 2 the shift uses only <code>x_0</code> and <code>x_1</code>. Subtract it from
+            <code>c_2</code> to get <code>x_2</code>.</li>
+          <li>Continue to the end. At every position, everything the shift needs has already been recovered.</li>
+        </ol>
+        <pre class="code"><code>shift_i = Σ w_j · x_j + follow(x_q) − o_i        (only earlier x values)
+x_i     = c_i − shift_i                          (mod 63)</code></pre>
+        <p>
+          This is ordinary arithmetic, with no learning in it. The function that does it is <code>unchain</code>
+          in <code>src/part1/keystream.py</code> (§6.1). The windows, weights and offsets in that file were fitted
+          on the training split only.
+        </p>
+
+        <h3 id="cipher-example">§1.7 · A worked example: the first four symbols of "robert boulter"</h3>
+        <p>
+          With the nulls dropped, the ciphertext starts <code>3 5 w q</code>. As numbers that is
+          <code>56, 58, 23, 17</code> (digit 3 is symbol 53 + 3 = 56, <code>w</code> is the 23rd letter, and so on).
+          The constants below are the real ones from <code>keystream.py</code>: weights 49, 17, 2 for positions 0,
+          1, 2 and offsets 50, 18, 6 for positions 1, 2, 3.
+        </p>
+        <pre class="code"><code>i = 0   x_0 = c_0 = 56                                                  → "3"
+
+i = 1   window length 17, cut off at 0  → position 0 only, oldest q = 0
+        sum     = 49·56 = 2744
+        follow(x_0 = 56) = 1            (nothing has followed a 56 yet)
+        shift   = 2744 + 1 − 50 = 2695  = 49 (mod 63)
+        x_1     = 58 − 49 = 9                                           → "i"
+
+i = 2   window length 1  → position 1 only, q = 1
+        sum     = 17·9 = 153
+        follow(x_1 = 9) = 1             (nothing has followed a 9 yet)
+        shift   = 153 + 1 − 18 = 136    = 10 (mod 63)
+        x_2     = 23 − 10 = 13                                          → "m"
+
+i = 3   window length 17, cut off at 0  → positions 0, 1, 2, q = 0
+        sum     = 49·56 + 17·9 + 2·13 = 2923
+        follow(x_0 = 56) = 9            (at position 0 a 56 was followed by a 9)
+        shift   = 2923 + 9 − 6 = 2926   = 28 (mod 63)
+        x_3     = 17 − 28 = −11         = 52 (mod 63)                   → "Z"</code></pre>
+        <p>Carried on to the end of the text, this gives:</p>
+        <pre class="code"><code>plaintext:           r o b e r t   b o u l t e r
+cipher, no nulls:    3 5 w q 3 n 6 I 4 i 8 f M 1
+after unchain (x):   3 i m Z 2 5 d g A M S T Q p</code></pre>
+
+        <h3 id="cipher-framing">§1.8 · What is left for the network: (symbol, position) → letter</h3>
+        <p>
+          After <code>unchain</code>, only step 1 remains. In the whole training split, every pair
+          (position, unchained symbol) goes with exactly one plaintext letter: 0 contradictions over 490 million
+          symbols. So the question the network has to answer is small:
+        </p>
+        <pre class="code"><code>given   the unchained symbol x_i   (one of 63)
+and     its position i in the text
+say     which letter p_i it is     (one of 27: space, a–z)</code></pre>
+        <p>
+          Since symbol <em>i</em> maps to letter <em>i</em>, decryption is
+          <em class="term">sequence labelling</em>: read the symbols and output one of 27 classes at every position.
+          There is no generation loop, and the output always has the right length. Each model is
+          <code>symbol embedding + position embeddings → stack of layers → linear layer to 27 classes</code>,
+          trained with cross-entropy at every position. What the network learns is the per-position substitution
+          table of step 1.
+        </p>
+        <div class="callout mechanism">
+          <div class="callout-label">is this allowed?</div>
+          <p>Yes. The TA confirmed on Moodle that preprocessing derived from the data is allowed around the network.
+            The preprocessing is two things: delete the nulls, and run <code>unchain</code>. It never looks at
+            the plaintext of the text being decrypted, and its constants come from the training split only. The
+            substitution itself, which is the part that turns symbols into letters, is learned by the network.</p>
+        </div>
+
+        <h3 id="cipher-alone">§1.9 · Why not let the network learn both steps?</h3>
+        <p>
+          That was tried first. An earlier version skipped <code>unchain</code> and trained the models on the raw
+          core symbols of the first 64 characters of each text. The Transformer reached:
+        </p>
+        <table class="tbl">
+          <thead><tr><th>measured on</th><th>character accuracy</th></tr></thead>
+          <tbody>
+            <tr><td>validation, first 64 characters of each text</td><td>57.7%</td></tr>
+            <tr><td>test, full texts</td><td>18.7%</td></tr>
+          </tbody>
+        </table>
+        <p>
+          It decoded only about the first 15 positions of a text. The reason is the kind of arithmetic step 2 asks
+          for. To undo the shift at one position, the network would have to add up as many as 49 earlier symbols,
+          each times its own weight, and keep only the remainder mod 63. And it would have to work this rule out
+          from examples. Near the start of a text the windows are short and it managed. Further in, it did not. A
+          twenty-line Python function does the same job exactly, so the shift goes into preprocessing and the
+          network is left with the part it is good at.
         </p>
       </section>
 
@@ -348,9 +520,10 @@ b[n] = Δ * B[n]</code></pre>
         <div class="callout gotcha">
           <div class="callout-label">what selectivity costs</div>
           <p>Because the numbers now change at every token, the convolution trick of §3.3 no longer works. The Mamba
-            paper gets its speed back with a parallel scan written in CUDA. Our code simply runs the loop above, one
-            token at a time, in plain PyTorch. It computes the same values, it is slow, and every line can be
-            explained.</p>
+            paper gets its speed back with a parallel scan written in CUDA. Our code runs the loop above one token at a
+            time, in two forms that compute the same values. On the CPU it is a plain Python loop. On a GPU it is a
+            Triton kernel, one GPU program with the loop over time inside it (§6.6, §6.7). The Python loop is the
+            reference the kernel was checked against.</p>
         </div>
         <p>
           One more detail on sizes. The rule above handles one stream of numbers. A token inside the model is a
@@ -505,8 +678,9 @@ S = [5  2] + [−4  0]  =  [1  2]      S k₁ = [1, 1]   ← replaced exactly
         </p>
         <p>
           The DeltaNet paper (Yang et al., 2024, building on Schlag et al.) is mainly about making this fast: it
-          derives a way to process a chunk of tokens at once on a GPU. We use the plain one-token-at-a-time loop
-          instead. It gives the same outputs and every line of it can be explained.
+          derives a way to process a chunk of tokens at once on a GPU. We use the plain one-token-at-a-time
+          recurrence instead, which gives the same outputs. On the CPU it is a Python loop, and on a GPU the same
+          loop runs inside a Triton kernel (§6.8).
         </p>
         <table class="tbl">
           <thead><tr><th></th><th>Mamba</th><th>DeltaNet</th></tr></thead>
@@ -521,56 +695,199 @@ S = [5  2] + [−4  0]  =  [1  2]      S k₁ = [1, 1]   ← replaced exactly
       <!-- ================================================================ §5 -->
       <section id="hybrid">
         <h2><span class="num">§5</span>The hybrid and its hypothesis</h2>
-        <pre class="code"><code>embed → [ Mamba → DeltaNet+MLP ] × 3 → RMSNorm → Linear(27)        ≈ 3.7M parameters</code></pre>
+        <pre class="code"><code>embed → [ Mamba → DeltaNet+MLP ] × 3 → RMSNorm → Linear(27)        ≈ 3.75M parameters</code></pre>
         <p>
-          The reasoning in <code>docs/DESIGN.md</code>, which was pushed before any hybrid code was written:
+          The Mamba layer is the same block as in the pure Mamba model, and the DeltaNet layer is the same
+          delta-rule layer followed by an MLP as in the pure DeltaNet model. The hybrid reads the same input as the
+          other three models: the unchained symbols and each symbol's position (§1.8). The reasoning in
+          <code>docs/DESIGN.md</code>:
         </p>
         <ol>
-          <li><strong>Mamba is a local feature extractor.</strong> Its convolution and selective Δ summarise the last
-            few symbols.</li>
-          <li><strong>DeltaNet is an associative memory.</strong> It stores and overwrites key → value pairs, and works
-            best when the keys are already informative.</li>
-          <li>So <strong>Mamba goes first in each pair</strong>, and DeltaNet's keys are built from contextual features
-            rather than raw single symbols.</li>
-          <li>The two types are <strong>interleaved</strong> so that each memory read can be refined by the next Mamba
-            layer, the way Jamba, Samba and Gated-DeltaNet hybrids interleave their layer types.</li>
+          <li><strong>Mamba is a local feature extractor.</strong> Its short causal convolution and selective Δ let it
+            decide, per token, how much of the recent past to keep. That suits building a representation of the last
+            few cipher symbols.</li>
+          <li><strong>DeltaNet is an associative memory.</strong> It stores key → value pairs and overwrites the old
+            value when a key comes back. That suits a mapping from cipher patterns to plaintext characters. It works
+            best when the keys are already informative and well separated.</li>
+          <li>So <strong>Mamba goes first in each pair</strong>, and DeltaNet's keys are built from Mamba's contextual
+            features rather than raw single-symbol embeddings.</li>
+          <li>The two types are <strong>interleaved</strong> rather than stacked as two halves. After each memory
+            read, the next Mamba layer can mix the result across neighbouring positions before the next lookup.
+            Jamba, Samba and Gated-DeltaNet hybrids interleave their layer types in the same way.</li>
         </ol>
         <p>
-          <strong>H1:</strong> at matched size, the hybrid does at least as well as the better pure model.
-          <strong>H2:</strong> if the cipher really is a one-time pad (§1), all four models will reach the same
-          prior-level accuracy. H1 then cannot be tested on accuracy and the comparison has to rest on loss curves,
-          parameters, FLOPs and speed.
+          <strong>H1:</strong> at matched parameter count and training budget, the hybrid reaches validation loss
+          and character accuracy at least as good as the better of pure Mamba and pure DeltaNet, because it combines
+          local selective filtering with associative recall.
         </p>
+        <p>
+          <strong>H2:</strong> after the preprocessing, the letter at a position is fixed by the unchained symbol
+          and the position. A model could in principle decrypt without looking at any neighbouring character. So
+          all four models are expected to reach <strong>high and similar</strong> accuracy, and the hybrid's
+          advantage, if any, to be small. Where models can differ is in how fast they learn the per-position
+          tables, and at positions deep in long texts, which have few training examples. If the hybrid is better
+          there, that supports H1. If all four are within noise of each other, H1 cannot be separated from the
+          alternative on accuracy, and the comparison falls back to training dynamics, parameter count, FLOPs and
+          speed.
+        </p>
+        <div class="callout gotcha">
+          <div class="callout-label">the order things happened in</div>
+          <p>The first version of <code>DESIGN.md</code> was pushed before any hybrid code was written, as the
+            assignment requires. The course then replaced the dataset. H1 and the arrangement did not change. H2 was
+            rewritten for the new dataset before the hybrid was trained on it, but after the Transformer's result on
+            the new data was already known. Say this plainly if asked (§11).</p>
+        </div>
       </section>
       <!-- ================================================================ §6 -->
       <section id="code-a">
         <h2><span class="num">§6</span>Part A code, line by line</h2>
         <p class="section-intro">
-          Shapes use <strong>B</strong> = batch (16 in training), <strong>L</strong> = characters per chunk (≤ 256),
+          Shapes use <strong>B</strong> = batch (256 in training), <strong>L</strong> = characters per window (64),
           <strong>D</strong> = 256 (<code>d_model</code>), <strong>E</strong> = 512 (Mamba's inner width, 2D), <strong>N</strong> = 16 (Mamba
           state size), <strong>H</strong> = 4 heads, <strong>d</strong> = 64 (D / H). All files live in <code>src/part1/</code>, and every
           script is run from the repo root, so files import each other by plain name (<code>from mamba import MambaBlock</code>).
+          The order below follows the data: preprocessing, dataset, the four models, the two GPU kernels, training,
+          inference.
         </p>
 
-        <h3 id="code-data">§6.1 · <code>data.py</code>: text ↔ numbers</h3>
+        <h3 id="code-keystream">§6.1 · <code>keystream.py</code>: undoing the chained shift</h3>
+        <p>
+          This file is the preprocessing of §1.5–§1.7. It holds three lists of constants and one function. It is
+          plain Python with no PyTorch in it.
+        </p>
+        <pre class="code"><code>WINDOWS = [49, 17, 1, 17, 17, 33]
+WEIGHTS = [49, 17, 2, 18, 19, 36, 54, 26, ...]        # 48 numbers
+OFFSETS = [0, 50, 18, 6, 24, 43, 16, 7, ...]          # 97 numbers
+
+
+def unchain(cipher):
+    x = []
+    prefix = [0]
+    follow = {}
+    for i, c in enumerate(cipher):
+        if i == 0:
+            symbol = c
+        else:
+            start = max(0, i - WINDOWS[i % 6])
+            offset = OFFSETS[i] if i &lt; 97 else OFFSETS[49 + (i - 49) % 48]
+            shift = prefix[i] - prefix[start] + follow.get(x[start], 1) - offset
+            symbol = (c - shift) % 63
+            follow[x[i - 1]] = symbol
+        x.append(symbol)
+        prefix.append(prefix[i] + WEIGHTS[i % 48] * symbol)
+    return x</code></pre>
         <table class="tbl lines">
           <thead><tr><th>Line</th><th>What it does</th></tr></thead>
           <tbody>
-            <tr><td><code>CIPHER_CHARS = " " + ascii_letters + digits</code></td><td>the 63 core cipher symbols. Punctuation is deliberately left out.</td></tr>
-            <tr><td><code>PLAIN_CHARS = " " + ascii_lowercase</code></td><td>the 27 output classes. Class 0 is space, 1 is 'a', and so on.</td></tr>
-            <tr><td><code>CIPHER_ID = {c: i + 1 ...}</code></td><td>symbol → id, starting at 1 so that id 0 is free for padding</td></tr>
-            <tr><td><code>CIPHER_VOCAB = len(CIPHER_CHARS) + 1</code></td><td>64 rows in the embedding table (63 symbols + pad)</td></tr>
-            <tr><td><code>read_jsonl(path, key, limit)</code></td><td>reads (id, text) pairs from a JSON-lines file, stopping after <code>limit</code> lines. The training files are about 0.5 GB each, so we read only the first 40k lines.</td></tr>
-            <tr><td><code>encode_cipher(text)</code></td><td><code>[CIPHER_ID[c] for c in text if c in CIPHER_ID]</code>. <strong>This is where the nulls are dropped</strong>, because punctuation is not in the dict.</td></tr>
-            <tr><td><code>encode_plain</code> / <code>decode_plain</code></td><td>character ↔ class index, using the position in <code>PLAIN_CHARS</code></td></tr>
-            <tr><td><code>chunk(ids, max_len)</code></td><td>cuts a long list into pieces of 256, used at inference for texts up to 24k characters. An empty text gives no pieces, and its prediction stays the empty string.</td></tr>
-            <tr><td><code>pad(seqs, value)</code></td><td>pads lists to equal length and stacks them into a <code>(B, L)</code> tensor. Cipher padding is 0. Label padding is −100, the value <code>cross_entropy</code> ignores by default.</td></tr>
-            <tr><td><code>CipherDataset</code></td><td>loads the cipher and cleaned files side by side, encodes both, and truncates both to <code>max_len</code>. Item <em>i</em> is (cipher ids, plain ids) of equal length.</td></tr>
-            <tr><td><code>collate(batch)</code></td><td>what the DataLoader calls to merge 16 items: returns <code>x (B, L)</code> and <code>y (B, L)</code></td></tr>
+            <tr><td><code>WINDOWS</code>, <code>WEIGHTS</code>, <code>OFFSETS</code></td><td>the constants of step 2: six window lengths, 48 weights, 97 offsets. They were fitted on the training split.</td></tr>
+            <tr><td><code>def unchain(cipher)</code></td><td><code>cipher</code> is one text as a list of numbers 0–62, with the nulls already removed. The function returns the list <code>x</code> of the same length.</td></tr>
+            <tr><td><code>x = []</code></td><td>the recovered symbols so far</td></tr>
+            <tr><td><code>prefix = [0]</code></td><td>running totals. <code>prefix[i]</code> is the sum of weight × symbol over positions 0 to i−1. See the note below the table.</td></tr>
+            <tr><td><code>follow = {}</code></td><td>a dictionary: symbol → the symbol that came right after it the last time it appeared</td></tr>
+            <tr><td><code>for i, c in enumerate(cipher)</code></td><td>walk left to right. <code>i</code> is the position and <code>c</code> the cipher symbol there.</td></tr>
+            <tr><td><code>if i == 0: symbol = c</code></td><td>the first symbol was never shifted: <code>x_0 = c_0</code></td></tr>
+            <tr><td><code>start = max(0, i - WINDOWS[i % 6])</code></td><td>the oldest position in the window (the <code>q</code> of §1.5). <code>max(0, …)</code> cuts the window off at the start of the text.</td></tr>
+            <tr><td><code>offset = OFFSETS[i] if i &lt; 97 else OFFSETS[49 + (i - 49) % 48]</code></td><td>the constant <code>o_i</code>. The first 97 are read straight from the list. After that, entries 49 to 96 are reused in a cycle of 48: position 97 uses entry 49, position 98 entry 50, and position 145 entry 49 again.</td></tr>
+            <tr><td><code>shift = prefix[i] - prefix[start] + follow.get(x[start], 1) - offset</code></td><td>the three parts of the shift. <code>prefix[i] - prefix[start]</code> is the weighted sum over the window. <code>follow.get(x[start], 1)</code> looks up what followed the oldest window symbol last time, with 1 as the answer if it has no entry. Then the offset is subtracted.</td></tr>
+            <tr><td><code>symbol = (c - shift) % 63</code></td><td>remove the shift. In Python, <code>%</code> with a positive number on the right always gives a result from 0 to 62, even when <code>c - shift</code> is negative (<code>-11 % 63</code> is 52).</td></tr>
+            <tr><td><code>follow[x[i - 1]] = symbol</code></td><td>record "the previous symbol was followed by this one". It runs after the lookup above, so the lookup only ever sees pairs from earlier in the text.</td></tr>
+            <tr><td><code>x.append(symbol)</code></td><td>store the recovered symbol</td></tr>
+            <tr><td><code>prefix.append(prefix[i] + WEIGHTS[i % 48] * symbol)</code></td><td>extend the running total with this position's weight × symbol. Position <em>i</em> uses weight number <code>i % 48</code>.</td></tr>
           </tbody>
         </table>
+        <p>
+          <strong>Why a running total.</strong> The window can hold up to 49 symbols. Adding them up again at every
+          position would be 49 multiplications per character. A <em class="term">prefix sum</em> avoids that: if you
+          keep the total of everything up to each position, the sum over any stretch is one subtraction. In the
+          example of §1.7 the list grows as <code>prefix = [0, 2744, 2897, 2923]</code>. The window sum at
+          <em>i</em> = 3 over positions 0–2 is <code>prefix[3] − prefix[0] = 2923</code>, and at <em>i</em> = 2 over
+          position 1 only it is <code>prefix[2] − prefix[1] = 153</code>. The totals are never reduced mod 63.
+          Python integers do not overflow, and the one <code>% 63</code> at the end is enough.
+        </p>
 
-        <h3 id="code-tf">§6.2 · <code>transformer.py</code></h3>
+        <h3 id="code-data">§6.2 · <code>data.py</code>: text ↔ numbers, and one long array</h3>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>CIPHER_CHARS = " " + string.ascii_letters + string.digits</code></td><td>the 63 core cipher symbols in the order space, a–z, A–Z, 0–9. Punctuation is deliberately left out.</td></tr>
+            <tr><td><code>PLAIN_CHARS = " " + string.ascii_lowercase</code></td><td>the 27 output classes. Class 0 is space, 1 is 'a', and so on.</td></tr>
+            <tr><td><code>CIPHER_ID = {c: i for i, c in enumerate(CIPHER_CHARS)}</code></td><td>symbol → number 0–62. These are the numbers the arithmetic in <code>unchain</code> runs on, so the order matters.</td></tr>
+            <tr><td><code>CIPHER_VOCAB = len(CIPHER_CHARS)</code></td><td>63 rows in the symbol embedding table. There is no padding symbol, because every window has the same length.</td></tr>
+            <tr><td><code>NUM_CLASSES = len(PLAIN_CHARS)</code></td><td>27</td></tr>
+            <tr><td><code>read_jsonl(path, key)</code></td><td>reads every line of a JSON-lines file and returns a list of (id, text) pairs</td></tr>
+            <tr><td><code>return unchain([CIPHER_ID[c] for c in text if c in CIPHER_ID])</code></td><td>the whole of <code>encode_cipher</code>. <code>if c in CIPHER_ID</code> <strong>drops the nulls</strong>, because punctuation is not in the dictionary. <code>unchain</code> then <strong>undoes the shift</strong>.</td></tr>
+            <tr><td><code>return [PLAIN_CHARS.index(c) for c in text]</code></td><td><code>encode_plain</code>: each plaintext character → its class number</td></tr>
+            <tr><td><code>return "".join(PLAIN_CHARS[i] for i in ids)</code></td><td><code>decode_plain</code>: class numbers → text</td></tr>
+          </tbody>
+        </table>
+        <p><strong><code>flatten</code></strong> joins many texts into one long array and remembers where each character sat in its own text.</p>
+        <pre class="code"><code>def flatten(rows):
+    x = torch.tensor([s for row in rows for s in row], dtype=torch.uint8)
+    pos = torch.cat([torch.arange(len(row), dtype=torch.int32) for row in rows])
+    return x, pos</code></pre>
+        <pre class="code"><code>rows = [[56, 9, 13], [14, 48]]        two short texts
+
+x    = [56,  9, 13, 14, 48]           all symbols, end to end
+pos  = [ 0,  1,  2,  0,  1]           position inside its own text: restarts at 0 for each text</code></pre>
+        <p>
+          <code>uint8</code> stores each symbol in one byte, which is enough for numbers below 256. The training
+          split has about 490 million symbols, so the size of each entry matters.
+        </p>
+        <p><strong><code>CipherDataset</code></strong></p>
+        <pre class="code"><code>class CipherDataset(torch.utils.data.Dataset):
+    def __init__(self, folder, max_len):
+        cache = f"{folder}/symbols.pt"
+        if not os.path.exists(cache):
+            ciphers = read_jsonl(f"{folder}/cipher.jsonl", "ciphertext")
+            plains = read_jsonl(f"{folder}/cleaned.jsonl", "text")
+            x, pos = flatten([encode_cipher(c) for _, c in ciphers])
+            y = torch.tensor([s for _, p in plains for s in encode_plain(p)], dtype=torch.uint8)
+            torch.save((x, pos, y), cache)
+        self.x, self.pos, self.y = torch.load(cache)
+        self.max_len = max_len
+
+    def __len__(self):
+        return len(self.x) // self.max_len
+
+    def __getitem__(self, i):
+        window = slice(i * self.max_len, (i + 1) * self.max_len)
+        return self.x[window].long(), self.pos[window].long(), self.y[window].long()</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>cache = f"{folder}/symbols.pt"</code></td><td>where the preprocessed split is kept, for example <code>data/part1/train/symbols.pt</code></td></tr>
+            <tr><td><code>if not os.path.exists(cache):</code></td><td>the slow work is done only once. Running <code>unchain</code> over the whole training split takes about 10 minutes. Every later run loads the file.</td></tr>
+            <tr><td><code>x, pos = flatten([encode_cipher(c) for _, c in ciphers])</code></td><td>drop nulls and unchain every text, then join them into one array with positions</td></tr>
+            <tr><td><code>y = torch.tensor([... encode_plain(p)], dtype=torch.uint8)</code></td><td>all plaintext classes, end to end. Because core length equals plaintext length for every text (§1.2), <code>y[n]</code> is the label of <code>x[n]</code>.</td></tr>
+            <tr><td><code>torch.save((x, pos, y), cache)</code></td><td>write the three arrays to the cache file</td></tr>
+            <tr><td><code>return len(self.x) // self.max_len</code></td><td>the number of full windows of 64. A leftover of fewer than 64 characters at the very end of the split is not used.</td></tr>
+            <tr><td><code>window = slice(i * self.max_len, (i + 1) * self.max_len)</code></td><td>window <em>i</em> is characters 64·i to 64·i + 63 of the long array</td></tr>
+            <tr><td><code>return self.x[window].long(), ...</code></td><td>the symbols, their positions and their labels, each of shape <code>(64,)</code>. <code>.long()</code> converts to 64-bit integers, the type embedding layers and <code>cross_entropy</code> expect.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          <strong>Windows can cross from one text into the next.</strong> The array is cut every 64 characters
+          without looking at where texts begin or end. Suppose text A has 100 characters and text B comes after it:
+        </p>
+        <pre class="code"><code>window 0:  A[0..63]                  pos = 0, 1, …, 63
+window 1:  A[64..99] + B[0..27]      pos = 64, 65, …, 99, 0, 1, …, 27</code></pre>
+        <p>This is fine for three reasons:</p>
+        <ul>
+          <li><strong>Each character carries its own true position.</strong> After <code>unchain</code>, a letter is
+            fixed by its symbol and its position (§1.8). Both are correct for every character in the window, whichever
+            text it came from.</li>
+          <li><strong>Nothing is wasted.</strong> There is no padding, every window is exactly 64 long, and every
+            character of every text falls in exactly one window. Texts shorter than 64 need no special handling.</li>
+          <li><strong>Inference cuts the test texts the same way</strong> (§6.11), so the model sees at test time what
+            it saw in training.</li>
+        </ul>
+        <p>
+          The earlier version trained only on the first 64 characters of each text. Now a window can come from
+          anywhere in a text, which is the only way the model ever sees the deep positions it must decode at test
+          time.
+        </p>
+
+        <h3 id="code-tf">§6.3 · <code>transformer.py</code></h3>
         <pre class="code"><code>class MLP:        x + down(gelu(up(norm(x))))                 # (B,L,D) → (B,L,4D) → (B,L,D)
 class Attention:
     q, k, v = self.qkv(self.norm(x)).chunk(3, dim=-1)        # each (B, L, D)
@@ -584,20 +901,25 @@ class TransformerBlock:  mlp(attn(x))                        # both sub-layers a
         <p>
           Every sub-layer is <em class="term">pre-norm</em>: RMSNorm first, then the operation, then add the input back.
           The <code>triu(1)</code> mask makes attention <em>causal</em>, so position t only sees positions ≤ t, just like Mamba
-          and DeltaNet, which keeps the comparison fair.
+          and DeltaNet, which keeps the comparison fair. This file has no positional embedding of its own. The
+          position input is added once, in <code>model.py</code>, for all four models (§6.9).
         </p>
 
-        <h3 id="code-mamba">§6.3 · <code>mamba.py</code></h3>
-        <p><strong>The scan.</strong> This is the recurrence of §3.4 written as a Python loop over time.</p>
+        <h3 id="code-mamba">§6.4 · <code>mamba.py</code></h3>
+        <p>
+          <strong>The scan as a Python loop.</strong> <code>selective_scan</code> is the recurrence of §3.4 written
+          one time step at a time. It is used when the model runs on the CPU, and it is the reference the GPU kernel
+          of §6.7 was checked against.
+        </p>
         <table class="tbl lines">
           <thead><tr><th>Line</th><th>Meaning</th><th class="shape">Shape</th></tr></thead>
           <tbody>
-            <tr><td><code>h = torch.zeros(b, d, N)</code></td><td>state: N numbers for each of the E channels</td><td class="shape">(B, E, N)</td></tr>
-            <tr><td><code>dA = exp(dt[:, t, :, None] * A)</code></td><td>Ā = exp(ΔA). Δ is per channel and A per (channel, state), so they are broadcast together.</td><td class="shape">(B,E,1)·(E,N) → (B,E,N)</td></tr>
-            <tr><td><code>dBu = dt[:,t,:,None] * B[:,t,None,:] * u[:,t,:,None]</code></td><td>B̄x = Δ·B·x. B is shared across channels, and x is per channel.</td><td class="shape">(B, E, N)</td></tr>
+            <tr><td><code>h = torch.zeros(b, d, A.shape[1], device=u.device)</code></td><td>state: N numbers for each of the E channels</td><td class="shape">(B, E, N)</td></tr>
+            <tr><td><code>dA = torch.exp(dt[:, t, :, None] * A)</code></td><td>Ā = exp(ΔA). Δ is per channel and A per (channel, state), so they are broadcast together.</td><td class="shape">(B,E,1)·(E,N) → (B,E,N)</td></tr>
+            <tr><td><code>dBu = dt[:, t, :, None] * B[:, t, None, :] * u[:, t, :, None]</code></td><td>B̄x = Δ·B·x. B is shared across channels, and x is per channel.</td><td class="shape">(B, E, N)</td></tr>
             <tr><td><code>h = dA * h + dBu</code></td><td>forget part of the old state, write the new input</td><td class="shape">(B, E, N)</td></tr>
             <tr><td><code>ys.append((h * C[:, t, None, :]).sum(-1))</code></td><td>y = C·h, a dot product over the N state dimensions</td><td class="shape">(B, E)</td></tr>
-            <tr><td><code>torch.stack(ys, dim=1)</code></td><td>put the L outputs back in sequence order</td><td class="shape">(B, L, E)</td></tr>
+            <tr><td><code>return torch.stack(ys, dim=1)</code></td><td>put the L outputs back in sequence order</td><td class="shape">(B, L, E)</td></tr>
           </tbody>
         </table>
         <p><strong><code>MambaBlock.__init__</code></strong></p>
@@ -618,50 +940,489 @@ class TransformerBlock:  mlp(attn(x))                        # both sub-layers a
         </table>
         <p><strong><code>MambaBlock.forward</code></strong></p>
         <table class="tbl lines">
-          <thead><tr><th>Line</th><th class="shape">Shape</th></tr></thead>
+          <thead><tr><th>Line</th><th>Meaning</th><th class="shape">Shape</th></tr></thead>
           <tbody>
-            <tr><td><code>u, z = in_proj(norm(x)).chunk(2, -1)</code></td><td class="shape">(B,L,D) → 2 × (B,L,E)</td></tr>
-            <tr><td><code>u = conv(u.transpose(1, 2))[:, :, :l]</code>: Conv1d wants channels in the middle, so transpose, convolve, keep the first L outputs</td><td class="shape">(B,E,L)</td></tr>
-            <tr><td><code>u = silu(u.transpose(1, 2))</code>: transpose back, apply SiLU</td><td class="shape">(B,L,E)</td></tr>
-            <tr><td><code>dt, B, C = x_proj(u).split([16, N, N], -1)</code></td><td class="shape">(B,L,16), (B,L,N), (B,L,N)</td></tr>
-            <tr><td><code>dt = softplus(dt_proj(dt))</code>: softplus keeps Δ positive</td><td class="shape">(B,L,E)</td></tr>
-            <tr><td><code>y = selective_scan(u, dt, A, B, C) + u * D</code></td><td class="shape">(B,L,E)</td></tr>
-            <tr><td><code>return x + out_proj(y * silu(z))</code>: gate, project down, residual</td><td class="shape">(B,L,D)</td></tr>
+            <tr><td><code>u, z = self.in_proj(self.norm(x)).chunk(2, dim=-1)</code></td><td>normalise, widen, cut in two halves</td><td class="shape">(B,L,D) → 2 × (B,L,E)</td></tr>
+            <tr><td><code>u = self.conv(u.transpose(1, 2))[:, :, :l]</code></td><td>Conv1d wants channels in the middle, so transpose, convolve, keep the first L outputs</td><td class="shape">(B,E,L)</td></tr>
+            <tr><td><code>u = F.silu(u.transpose(1, 2))</code></td><td>transpose back, apply SiLU</td><td class="shape">(B,L,E)</td></tr>
+            <tr><td><code>dt, B, C = self.x_proj(u).split([self.dt_rank, self.d_state, self.d_state], dim=-1)</code></td><td>this token's Δ (low-rank), B and C</td><td class="shape">(B,L,16), (B,L,N), (B,L,N)</td></tr>
+            <tr><td><code>dt = F.softplus(self.dt_proj(dt))</code></td><td>expand Δ to one value per channel. softplus keeps it positive.</td><td class="shape">(B,L,E)</td></tr>
+            <tr><td><code>A = -torch.exp(self.A_log)</code></td><td>the forgetting speeds, always negative</td><td class="shape">(E,N)</td></tr>
+            <tr><td><code>scan = triton_scan if u.is_cuda else selective_scan</code></td><td><strong>the dispatch.</strong> If the tensor is on a CUDA GPU, use the Triton kernel. Otherwise use the Python loop. Both take the same five arguments and return the same output.</td><td class="shape">–</td></tr>
+            <tr><td><code>y = scan(u, dt, A, B, C) + u * self.D</code></td><td>run the selective memory, then add the skip D·u</td><td class="shape">(B,L,E)</td></tr>
+            <tr><td><code>return x + self.out_proj(y * F.silu(z))</code></td><td>gate, project down, residual</td><td class="shape">(B,L,D)</td></tr>
           </tbody>
         </table>
 
-        <h3 id="code-delta">§6.4 · <code>deltanet.py</code></h3>
+        <h3 id="code-delta">§6.5 · <code>deltanet.py</code></h3>
+        <p>
+          <code>delta_rule</code> is the Python loop for the three delta-rule lines of §4.2. Like
+          <code>selective_scan</code>, it is the CPU path and the reference for the kernel of §6.8.
+        </p>
         <table class="tbl lines">
           <thead><tr><th>Line in <code>delta_rule</code></th><th>Meaning</th><th class="shape">Shape</th></tr></thead>
           <tbody>
-            <tr><td><code>S = zeros(b, h, d, d)</code></td><td>one d×d memory per head</td><td class="shape">(B,H,d,d)</td></tr>
-            <tr><td><code>k_t, v_t, q_t = k[:, :, t] ...</code></td><td>this step's key, value and query</td><td class="shape">(B,H,d)</td></tr>
-            <tr><td><code>v_old = einsum("bhkv,bhk->bhv", S, k_t)</code></td><td>read the memory with the key: Sᵀk in the einsum's index convention (S is stored key-major)</td><td class="shape">(B,H,d)</td></tr>
-            <tr><td><code>S = S + einsum("bhk,bhv->bhkv", k_t, β(v_t − v_old))</code></td><td>outer product k ⊗ β(v − v_old): write the correction</td><td class="shape">(B,H,d,d)</td></tr>
-            <tr><td><code>outs.append(einsum("bhkv,bhk->bhv", S, q_t))</code></td><td>read with the query</td><td class="shape">(B,H,d)</td></tr>
+            <tr><td><code>S = torch.zeros(b, h, d, d, device=q.device)</code></td><td>one d×d memory per head</td><td class="shape">(B,H,d,d)</td></tr>
+            <tr><td><code>k_t, v_t, q_t, beta_t = k[:, :, t], v[:, :, t], q[:, :, t], beta[:, :, t, None]</code></td><td>this step's key, value, query and write strength</td><td class="shape">(B,H,d), β: (B,H,1)</td></tr>
+            <tr><td><code>v_old = torch.einsum("bhkv,bhk-&gt;bhv", S, k_t)</code></td><td>read the memory with the key: Sᵀk in the einsum's index convention (S is stored key-major, so its first index is the key and its second the value)</td><td class="shape">(B,H,d)</td></tr>
+            <tr><td><code>S = S + torch.einsum("bhk,bhv-&gt;bhkv", k_t, beta_t * (v_t - v_old))</code></td><td>outer product k ⊗ β(v − v_old): write the correction</td><td class="shape">(B,H,d,d)</td></tr>
+            <tr><td><code>outs.append(torch.einsum("bhkv,bhk-&gt;bhv", S, q_t))</code></td><td>read with the query</td><td class="shape">(B,H,d)</td></tr>
+            <tr><td><code>return torch.stack(outs, dim=2)</code></td><td>the L outputs in sequence order</td><td class="shape">(B,H,L,d)</td></tr>
           </tbody>
         </table>
         <p>
           <code>einsum</code> names every axis with a letter. Letters that appear in the inputs but not in the output are
-          summed over. <code>"bhkv,bhk->bhv"</code> therefore means: for each batch item and head, multiply S[k, v] by
+          summed over. <code>"bhkv,bhk-&gt;bhv"</code> therefore means: for each batch item and head, multiply S[k, v] by
           key[k] and sum over k. It is a matrix–vector product written in a way where you can see which axis
           disappears.
         </p>
         <table class="tbl lines">
-          <thead><tr><th>Line in <code>DeltaNetLayer.forward</code></th><th class="shape">Shape</th></tr></thead>
+          <thead><tr><th>Line in <code>DeltaNetLayer.forward</code></th><th>Meaning</th><th class="shape">Shape</th></tr></thead>
           <tbody>
-            <tr><td><code>qkv = conv(qkv(h).transpose(1, 2))[:, :, :l]</code>: one projection and one causal depthwise conv for q, k, v together</td><td class="shape">(B,3D,L)</td></tr>
-            <tr><td><code>qkv = silu(qkv.transpose(1, 2))</code></td><td class="shape">(B,L,3D)</td></tr>
-            <tr><td><code>q, k, v = [t.view(b,l,H,-1).transpose(1,2) for t in qkv.chunk(3,-1)]</code></td><td class="shape">3 × (B,H,L,d)</td></tr>
-            <tr><td><code>q, k = normalize(q, dim=-1), normalize(k, dim=-1)</code>: unit length, which makes β = 1 an exact overwrite (§4.2)</td><td class="shape">(B,H,L,d)</td></tr>
-            <tr><td><code>beta = sigmoid(self.beta(h)).transpose(1, 2)</code>: one write strength per head per token</td><td class="shape">(B,H,L)</td></tr>
-            <tr><td><code>o = out_norm(delta_rule(q, k, v, beta))</code>: RMSNorm over each head's d values</td><td class="shape">(B,H,L,d)</td></tr>
-            <tr><td><code>return x + out(o.transpose(1,2).reshape(b,l,d))</code></td><td class="shape">(B,L,D)</td></tr>
+            <tr><td><code>h = self.norm(x)</code></td><td>pre-norm</td><td class="shape">(B,L,D)</td></tr>
+            <tr><td><code>qkv = self.conv(self.qkv(h).transpose(1, 2))[:, :, :l]</code></td><td>one projection and one causal depthwise conv for q, k, v together</td><td class="shape">(B,3D,L)</td></tr>
+            <tr><td><code>qkv = F.silu(qkv.transpose(1, 2))</code></td><td>transpose back, apply SiLU</td><td class="shape">(B,L,3D)</td></tr>
+            <tr><td><code>q, k, v = [t.view(b, l, self.n_heads, -1).transpose(1, 2) for t in qkv.chunk(3, dim=-1)]</code></td><td>cut into q, k, v and split each into heads</td><td class="shape">3 × (B,H,L,d)</td></tr>
+            <tr><td><code>q, k = F.normalize(q, dim=-1), F.normalize(k, dim=-1)</code></td><td>unit length, which makes β = 1 an exact overwrite (§4.2)</td><td class="shape">(B,H,L,d)</td></tr>
+            <tr><td><code>beta = torch.sigmoid(self.beta(h)).transpose(1, 2)</code></td><td>one write strength per head per token</td><td class="shape">(B,H,L)</td></tr>
+            <tr><td><code>rule = triton_delta if x.is_cuda else delta_rule</code></td><td><strong>the dispatch</strong>, exactly as in Mamba: Triton kernel on a CUDA GPU, Python loop otherwise</td><td class="shape">–</td></tr>
+            <tr><td><code>o = self.out_norm(rule(q, k, v, beta))</code></td><td>run the delta rule, then RMSNorm over each head's d values</td><td class="shape">(B,H,L,d)</td></tr>
+            <tr><td><code>return x + self.out(o.transpose(1, 2).reshape(b, l, d))</code></td><td>join the heads, project, residual</td><td class="shape">(B,L,D)</td></tr>
           </tbody>
         </table>
         <p><code>DeltaNetBlock</code> = <code>mlp(mixer(x))</code>: the DeltaNet layer takes attention's place in a normal block.</p>
 
-        <h3 id="code-hybrid">§6.5 · <code>hybrid.py</code> and <code>model.py</code></h3>
+        <h3 id="code-triton">§6.6 · Triton: what it is and why the loops needed it</h3>
+        <p>
+          <strong>Why a Python loop over time is slow on a GPU.</strong> A GPU runs small programs called
+          <em class="term">kernels</em>. Every PyTorch operation on a GPU tensor, such as one <code>torch.exp</code> or
+          one multiplication, starts ("launches") one kernel. A launch has a fixed cost, however little data it
+          touches. Now look at <code>selective_scan</code>: the loop body is a handful of small operations, and it runs
+          64 times per sequence, in each of 8 Mamba blocks, and autograd then replays all of it backwards. That is
+          thousands of tiny launches per training step. The GPU spends most of its time waiting for Python to
+          hand it the next small job. With the Python loops, one training step took about 1.5 seconds on the
+          RTX 2070.
+        </p>
+        <p>
+          <strong>The fix</strong> is to write <em>one</em> kernel that contains the whole loop over time. It is
+          launched once. The loop runs inside the GPU, and the running state stays in the GPU's registers (its
+          fastest working storage) from one time step to the next.
+        </p>
+        <pre class="code"><code>Python loop:     for t in range(64):  launch, launch, launch, launch …     hundreds of small launches
+Triton kernel:   launch once:  { for t in range(64): … }                   the loop is inside the GPU</code></pre>
+        <p>
+          <strong>Triton</strong> is a Python library for writing such kernels. You write a Python function, put
+          <code>@triton.jit</code> above it, and Triton compiles it into GPU code the first time it is called. The
+          vocabulary used in the two kernel files:
+        </p>
+        <table class="tbl lines">
+          <thead><tr><th>Piece</th><th>What it means</th></tr></thead>
+          <tbody>
+            <tr><td><code>@triton.jit</code></td><td>"compile this function for the GPU". Its body is written with Triton's own operations, which live in <code>triton.language</code>, imported as <code>tl</code>.</td></tr>
+            <tr><td><code>kernel[(b, e // BLOCK)](args…)</code></td><td>the <em class="term">launch grid</em>. The tuple says how many copies of the kernel run in parallel. Each copy is called a <em>program</em>. A grid of <code>(256, 16)</code> starts 256 × 16 programs. All run the same code, each on its own slice of the data.</td></tr>
+            <tr><td><code>tl.program_id(0)</code>, <code>tl.program_id(1)</code></td><td>"which copy am I?". It returns this program's coordinate along axis 0 or axis 1 of the grid. The program uses it to work out which slice of the data is its own.</td></tr>
+            <tr><td><code>tl.arange(0, N)</code></td><td>the vector 0, 1, …, N−1. It is used to build a list of memory offsets, so that one <code>tl.load</code> fetches N numbers at once.</td></tr>
+            <tr><td><code>u_ptr</code>, <code>A_ptr</code>, …</td><td>a tensor passed to a kernel arrives as a <em class="term">pointer</em>: the memory address of its first number. The kernel does not know the tensor's shape. It has to compute where each element lives.</td></tr>
+            <tr><td><code>tl.load(ptr + offsets)</code></td><td>read the numbers stored at those addresses. The result has the same shape as <code>offsets</code>.</td></tr>
+            <tr><td><code>tl.store(ptr + offsets, values)</code></td><td>write <code>values</code> to those addresses</td></tr>
+            <tr><td><code>x[:, None]</code>, <code>x[None, :]</code></td><td>the same broadcasting as in NumPy and PyTorch: add an axis of length 1 so that a vector can be combined with a matrix</td></tr>
+            <tr><td><code>N: tl.constexpr</code></td><td>a <em>compile-time constant</em>. Its value is fixed when the kernel is compiled and baked into the GPU code. Sizes that set the shape of the vectors inside the kernel (N, BLOCK, D) must be given this way. <code>L</code> and <code>E</code> are ordinary numbers passed at run time.</td></tr>
+            <tr><td><code>tl.atomic_add(ptr + offsets, values)</code></td><td>add <code>values</code> to what is already stored there, safely, even if several programs add to the same address at the same moment (§6.7)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          <strong>Pointer arithmetic.</strong> In memory a tensor is one flat row of numbers, last index changing
+          fastest. For a tensor of shape <code>(B, L, E)</code>, element <code>[b, t, e]</code> is at offset
+          <code>(b·L + t)·E + e</code> from the start. Check with shape (2, 3, 4): element [1, 2, 3] is at
+          (1·3 + 2)·4 + 3 = 23, the last of the 24 numbers. Both kernels compute <code>row = b * L + t</code> once
+          per time step and then add <code>row * E + e</code>. This only works if the tensor really is stored in
+          that order. A tensor made by <code>transpose</code> or <code>split</code> may not be, so the wrappers call
+          <code>.contiguous()</code> on every input, which makes a properly ordered copy when needed.
+        </p>
+        <p>
+          <strong>The price: a hand-written backward pass.</strong> PyTorch's autograd works by recording every
+          PyTorch operation. It cannot see inside a Triton kernel. So each kernel file has three parts: a forward
+          kernel, a backward kernel that computes the gradients by hand, and a <code>torch.autograd.Function</code>
+          that tells PyTorch "use this for the forward pass and that for the backward pass".
+        </p>
+        <table class="tbl">
+          <thead><tr><th>one call at batch 64</th><th>Python loop</th><th>Triton kernel</th><th>speed-up</th></tr></thead>
+          <tbody>
+            <tr><td>Mamba scan</td><td>403 ms</td><td>36 ms</td><td>about 11×</td></tr>
+            <tr><td>DeltaNet delta rule</td><td>310 ms</td><td>13 ms</td><td>about 24×</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Both kernels were checked against the Python loops: same outputs and same gradients for the same inputs.
+          That is the reason the loops are still in the code.
+        </p>
+
+        <h3 id="code-scan-triton">§6.7 · <code>scan_triton.py</code>: the Mamba scan kernel</h3>
+        <p><strong>The forward kernel.</strong> The launch grid is <code>(b, e // BLOCK)</code> = (batch size, 512 / 32 = 16).
+          One program handles <strong>one sequence and one block of 32 channels</strong>, and loops over all L time steps.</p>
+        <pre class="code"><code>BLOCK = 32
+
+
+@triton.jit
+def scan_forward(u_ptr, dt_ptr, A_ptr, B_ptr, C_ptr, y_ptr, h_ptr, L, E, N: tl.constexpr, BLOCK: tl.constexpr):
+    b = tl.program_id(0)
+    e = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+    n = tl.arange(0, N)
+    A = tl.load(A_ptr + e[:, None] * N + n[None, :])
+    h = tl.zeros((BLOCK, N), dtype=tl.float32)
+    for t in range(L):
+        row = b * L + t
+        dt = tl.load(dt_ptr + row * E + e)
+        u = tl.load(u_ptr + row * E + e)
+        B = tl.load(B_ptr + row * N + n)
+        C = tl.load(C_ptr + row * N + n)
+        h = tl.exp(dt[:, None] * A) * h + (dt * u)[:, None] * B[None, :]
+        tl.store(h_ptr + (row * E + e)[:, None] * N + n[None, :], h.to(tl.float16))
+        tl.store(y_ptr + row * E + e, tl.sum(h * C[None, :], axis=1))</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>b = tl.program_id(0)</code></td><td>which sequence of the batch this program handles</td><td class="shape">number</td></tr>
+            <tr><td><code>e = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)</code></td><td>the 32 channel numbers this program handles. Program 0 gets channels 0–31, program 1 gets 32–63, and so on.</td><td class="shape">(32,)</td></tr>
+            <tr><td><code>n = tl.arange(0, N)</code></td><td>the 16 state slots</td><td class="shape">(16,)</td></tr>
+            <tr><td><code>A = tl.load(A_ptr + e[:, None] * N + n[None, :])</code></td><td>A has shape (E, N), so element [e, n] is at offset e·N + n. Loaded once, because A does not change with time.</td><td class="shape">(32, 16)</td></tr>
+            <tr><td><code>h = tl.zeros((BLOCK, N), dtype=tl.float32)</code></td><td>the state, starting at zero: 16 slots for each of the 32 channels. It lives in registers for the whole loop.</td><td class="shape">(32, 16)</td></tr>
+            <tr><td><code>for t in range(L):</code></td><td>the loop over time, now inside the GPU</td><td class="shape">–</td></tr>
+            <tr><td><code>row = b * L + t</code></td><td>the flat index of (sequence b, time t)</td><td class="shape">number</td></tr>
+            <tr><td><code>dt = tl.load(dt_ptr + row * E + e)</code></td><td>Δ for these 32 channels at this time step. <code>dt</code> has shape (B, L, E).</td><td class="shape">(32,)</td></tr>
+            <tr><td><code>u = tl.load(u_ptr + row * E + e)</code></td><td>the input for these 32 channels</td><td class="shape">(32,)</td></tr>
+            <tr><td><code>B = tl.load(B_ptr + row * N + n)</code></td><td>B has shape (B, L, N): 16 numbers per time step, shared by all channels</td><td class="shape">(16,)</td></tr>
+            <tr><td><code>C = tl.load(C_ptr + row * N + n)</code></td><td>the same for C</td><td class="shape">(16,)</td></tr>
+            <tr><td><code>h = tl.exp(dt[:, None] * A) * h + (dt * u)[:, None] * B[None, :]</code></td><td>the recurrence of §3.4 in one line: h = exp(ΔA)·h + Δ·u·B</td><td class="shape">(32, 16)</td></tr>
+            <tr><td><code>tl.store(h_ptr + (row * E + e)[:, None] * N + n[None, :], h.to(tl.float16))</code></td><td>save this step's state into a (B, L, E, N) tensor, as 16-bit floats. The backward pass will need it.</td><td class="shape">(32, 16)</td></tr>
+            <tr><td><code>tl.store(y_ptr + row * E + e, tl.sum(h * C[None, :], axis=1))</code></td><td>the output y = C·h, summed over the 16 slots, written to <code>y[b, t, e]</code></td><td class="shape">(32,)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          <strong>Why the states are stored.</strong> The gradient formulas derived below use the state
+          <code>h_t</code> and the state before it, <code>h_(t−1)</code>, at every time step. The backward pass runs
+          long after the forward pass has finished, so the forward kernel must leave those states somewhere.
+        </p>
+        <p>
+          <strong>Why fp16.</strong> That tensor is large. With B = 256, L = 64, E = 512 and N = 16 it holds
+          256 × 64 × 512 × 16 ≈ 134 million numbers for <em>one</em> Mamba block. At 4 bytes each (fp32) that is
+          about 0.54 GB per block and 4.3 GB for the 8 blocks. At 2 bytes each (fp16, "half precision") it is half
+          of that. Note what is and is not rounded: the running <code>h</code> inside the loop stays in fp32, and
+          the output <code>y</code> is computed from it, so the forward result is unchanged. Only the saved copy is
+          rounded, and it is used only for gradients. Compared with storing the states in fp32, the gradients
+          differ by about 0.02%.
+        </p>
+
+        <p><strong>Deriving the backward pass.</strong> Take one channel and write <code>a_t = exp(Δ_t · A)</code>. The forward pass is:</p>
+        <pre class="code"><code>h_t = a_t · h_(t−1) + Δ_t · u_t · B_t          one number per slot n
+y_t = Σ_n C_t[n] · h_t[n]</code></pre>
+        <p>
+          Write <code>gX</code> for "the gradient of the loss with respect to X": how much the loss changes when X
+          is nudged. PyTorch hands the backward kernel <code>gy_t</code> for every time step. The kernel must
+          return <code>gu</code>, <code>gΔ</code>, <code>gA</code>, <code>gB</code> and <code>gC</code>.
+        </p>
+        <p>
+          <strong>Step 1: the gradient of the state.</strong> The state <code>h_t</code> affects the loss in two
+          ways. It is read out into <code>y_t</code>, multiplied by <code>C_t</code>. And it is carried into the
+          next state <code>h_(t+1)</code>, multiplied by <code>a_(t+1)</code>. Add the two:
+        </p>
+        <pre class="code"><code>gh_t = gy_t · C_t  +  a_(t+1) · gh_(t+1)</code></pre>
+        <p>
+          <code>gh_t</code> needs <code>gh_(t+1)</code>, so the loop has to run <strong>backwards in time</strong>,
+          from the last step to the first. After the last step there is no future, so the carried part starts at
+          zero.
+        </p>
+        <p>
+          <strong>Step 2: from <code>gh_t</code> to each input.</strong> One rule does all the work: if a number is
+          used in several places, its gradient is the sum over all those places.
+        </p>
+        <table class="tbl">
+          <thead><tr><th>gradient</th><th>formula</th><th>why</th></tr></thead>
+          <tbody>
+            <tr><td><code>gC_t[n]</code></td><td><code>Σ_e gy_t[e] · h_t[e, n]</code></td><td>y = C·h, so C's gradient is gy times h. C_t is shared by every channel, so sum over channels e.</td></tr>
+            <tr><td><code>gB_t[n]</code></td><td><code>Σ_e gh_t[e, n] · Δ_t[e] · u_t[e]</code></td><td>B enters h multiplied by Δ·u. Also shared by all channels, so sum over e.</td></tr>
+            <tr><td><code>gu_t[e]</code></td><td><code>Δ_t[e] · Σ_n gh_t[e, n] · B_t[n]</code></td><td>u enters every slot n of its channel, multiplied by Δ·B[n]. Sum over the slots.</td></tr>
+            <tr><td><code>gΔ_t[e]</code></td><td><code>Σ_n gh_t[e, n] · (A · a_t · h_(t−1) + u_t · B_t[n])</code></td><td>Δ appears twice. Inside the exponential: the derivative of exp(Δ·A) with respect to Δ is A·exp(Δ·A) = A·a_t, and it multiplies h_(t−1). And in the write term Δ·u·B, whose derivative is u·B.</td></tr>
+            <tr><td><code>gA[e, n]</code></td><td><code>Σ_t gh_t · Δ_t · a_t · h_(t−1)</code></td><td>the derivative of exp(Δ·A) with respect to A is Δ·a_t, and it multiplies h_(t−1). The same A is used at every time step, so sum over t.</td></tr>
+          </tbody>
+        </table>
+        <p>These formulas use <code>h_t</code> (for gC) and <code>h_(t−1)</code> (for gΔ and gA). That is exactly what the forward kernel saved.</p>
+
+        <p><strong>The backward kernel</strong> is those formulas, with the same grid and the same pointer arithmetic as the forward kernel.</p>
+        <pre class="code"><code>@triton.jit
+def scan_backward(gy_ptr, u_ptr, dt_ptr, A_ptr, B_ptr, C_ptr, h_ptr, gu_ptr, gdt_ptr, gA_ptr, gB_ptr, gC_ptr, L, E, N: tl.constexpr, BLOCK: tl.constexpr):
+    b = tl.program_id(0)
+    e = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+    n = tl.arange(0, N)
+    A = tl.load(A_ptr + e[:, None] * N + n[None, :])
+    gh = tl.zeros((BLOCK, N), dtype=tl.float32)
+    gA = tl.zeros((BLOCK, N), dtype=tl.float32)
+    for i in range(L):
+        t = L - 1 - i
+        row = b * L + t
+        dt = tl.load(dt_ptr + row * E + e)
+        u = tl.load(u_ptr + row * E + e)
+        gy = tl.load(gy_ptr + row * E + e)
+        B = tl.load(B_ptr + row * N + n)
+        C = tl.load(C_ptr + row * N + n)
+        h = tl.load(h_ptr + (row * E + e)[:, None] * N + n[None, :]).to(tl.float32)
+        h_prev = tl.load(h_ptr + ((row - 1) * E + e)[:, None] * N + n[None, :], mask=t &gt; 0, other=0.0).to(tl.float32)
+        dA = tl.exp(dt[:, None] * A)
+        gh = gh + gy[:, None] * C[None, :]
+        tl.atomic_add(gC_ptr + row * N + n, tl.sum(gy[:, None] * h, axis=0))
+        tl.atomic_add(gB_ptr + row * N + n, tl.sum(gh * (dt * u)[:, None], axis=0))
+        tl.store(gu_ptr + row * E + e, dt * tl.sum(gh * B[None, :], axis=1))
+        tl.store(gdt_ptr + row * E + e, tl.sum(gh * (A * dA * h_prev + u[:, None] * B[None, :]), axis=1))
+        gA += gh * dt[:, None] * dA * h_prev
+        gh = gh * dA
+    tl.atomic_add(gA_ptr + e[:, None] * N + n[None, :], gA)</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>gh = tl.zeros((BLOCK, N), dtype=tl.float32)</code></td><td>the part of the state's gradient carried back from the future. Zero at the start, because the loop begins at the last time step.</td></tr>
+            <tr><td><code>gA = tl.zeros((BLOCK, N), dtype=tl.float32)</code></td><td>a running total for A's gradient, kept in registers and written out once at the end</td></tr>
+            <tr><td><code>t = L - 1 - i</code></td><td>count time backwards: i = 0 is the last step, t = L − 1</td></tr>
+            <tr><td><code>dt</code>, <code>u</code>, <code>gy</code>, <code>B</code>, <code>C</code> loads</td><td>this step's inputs, and the gradient of this step's output from PyTorch</td></tr>
+            <tr><td><code>h = tl.load(h_ptr + …).to(tl.float32)</code></td><td>the saved state h_t, converted back from fp16 to fp32</td></tr>
+            <tr><td><code>h_prev = tl.load(h_ptr + ((row - 1) * E + e)…, mask=t &gt; 0, other=0.0)</code></td><td>the saved state one step earlier, h_(t−1). At t = 0 there is no earlier step. <code>mask=t &gt; 0</code> skips the read there and <code>other=0.0</code> supplies zero, which is the initial state.</td></tr>
+            <tr><td><code>dA = tl.exp(dt[:, None] * A)</code></td><td>a_t, computed again from Δ and A</td></tr>
+            <tr><td><code>gh = gh + gy[:, None] * C[None, :]</code></td><td>step 1: add the read-out part gy_t·C_t to the carried part. <code>gh</code> is now the full gh_t.</td></tr>
+            <tr><td><code>tl.atomic_add(gC_ptr + row * N + n, tl.sum(gy[:, None] * h, axis=0))</code></td><td>gC_t, summed over this program's 32 channels (axis 0)</td></tr>
+            <tr><td><code>tl.atomic_add(gB_ptr + row * N + n, tl.sum(gh * (dt * u)[:, None], axis=0))</code></td><td>gB_t, summed over this program's 32 channels</td></tr>
+            <tr><td><code>tl.store(gu_ptr + row * E + e, dt * tl.sum(gh * B[None, :], axis=1))</code></td><td>gu_t, summed over the 16 slots (axis 1)</td></tr>
+            <tr><td><code>tl.store(gdt_ptr + row * E + e, tl.sum(gh * (A * dA * h_prev + u[:, None] * B[None, :]), axis=1))</code></td><td>gΔ_t: the exponential part plus the write part</td></tr>
+            <tr><td><code>gA += gh * dt[:, None] * dA * h_prev</code></td><td>this time step's share of gA, added to the running total</td></tr>
+            <tr><td><code>gh = gh * dA</code></td><td>prepare the carried part for the step before: a_t·gh_t is what flows from h_t back into h_(t−1)</td></tr>
+            <tr><td><code>tl.atomic_add(gA_ptr + e[:, None] * N + n[None, :], gA)</code></td><td>after the loop, add this sequence's total into the shared gA</td></tr>
+          </tbody>
+        </table>
+        <div class="callout gotcha">
+          <div class="callout-label">why <code>atomic_add</code> for gB, gC and gA, but plain <code>store</code> for gu and gΔ</div>
+          <p>Ask of each output: <strong>how many programs write to the same address?</strong></p>
+          <p><code>gu[b, t, e]</code> and <code>gdt[b, t, e]</code> belong to one sequence and one channel. Exactly one
+            program owns that pair, so a plain <code>tl.store</code> is safe.</p>
+          <p><code>gB[b, t, n]</code> and <code>gC[b, t, n]</code> have no channel index, because B and C are shared by
+            all 512 channels. The 16 programs that handle the 16 channel blocks of the same sequence each hold one
+            part of the sum, and all of them add into the same address.</p>
+          <p><code>gA[e, n]</code> has no batch index, because A is a parameter shared by every sequence. All the
+            programs for different sequences add into the same address.</p>
+          <p>Adding to memory is three actions: read the old value, add, write the result. If two programs do
+            this at the same moment with an ordinary write, both read the same old value and one addition is lost.
+            <code>tl.atomic_add</code> makes the three actions happen as one, so no addition is lost. It is also
+            why the wrapper creates <code>gA</code>, <code>gB</code> and <code>gC</code> with <code>zeros_like</code>
+            (a sum must start from zero) and <code>gu</code>, <code>gdt</code> with <code>empty_like</code> (every
+            entry is overwritten exactly once).</p>
+        </div>
+
+        <p><strong>The wrapper.</strong> <code>torch.autograd.Function</code> is how you give PyTorch an operation with your own backward pass.</p>
+        <pre class="code"><code>class TritonScan(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, u, dt, A, B, C):
+        b, l, e = u.shape
+        n = A.shape[1]
+        y = torch.empty_like(u)
+        h = torch.empty(b, l, e, n, device=u.device, dtype=torch.float16)
+        scan_forward[(b, e // BLOCK)](u, dt, A, B, C, y, h, l, e, n, BLOCK)
+        ctx.save_for_backward(u, dt, A, B, C, h)
+        return y
+
+    @staticmethod
+    def backward(ctx, gy):
+        u, dt, A, B, C, h = ctx.saved_tensors
+        b, l, e = u.shape
+        n = A.shape[1]
+        gu, gdt = torch.empty_like(u), torch.empty_like(dt)
+        gA, gB, gC = torch.zeros_like(A), torch.zeros_like(B), torch.zeros_like(C)
+        scan_backward[(b, e // BLOCK)](gy.contiguous(), u, dt, A, B, C, h, gu, gdt, gA, gB, gC, l, e, n, BLOCK)
+        return gu, gdt, gA, gB, gC
+
+
+def triton_scan(u, dt, A, B, C):
+    return TritonScan.apply(u.contiguous(), dt.contiguous(), A.contiguous(), B.contiguous(), C.contiguous())</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>def forward(ctx, u, dt, A, B, C)</code></td><td>what runs in the forward pass. <code>ctx</code> is a small object PyTorch provides for passing things from forward to backward.</td></tr>
+            <tr><td><code>y = torch.empty_like(u)</code></td><td>room for the output (B, L, E). The kernel fills in every entry.</td></tr>
+            <tr><td><code>h = torch.empty(b, l, e, n, device=u.device, dtype=torch.float16)</code></td><td>room for the saved states (B, L, E, N), in fp16</td></tr>
+            <tr><td><code>scan_forward[(b, e // BLOCK)](u, dt, A, B, C, y, h, l, e, n, BLOCK)</code></td><td>launch the forward kernel on a grid of B × 16 programs. Tensors are passed as they are, and the kernel receives them as pointers.</td></tr>
+            <tr><td><code>ctx.save_for_backward(u, dt, A, B, C, h)</code></td><td>keep the inputs and the states until the backward pass</td></tr>
+            <tr><td><code>def backward(ctx, gy)</code></td><td>PyTorch calls this during <code>loss.backward()</code> and passes in the gradient of the output</td></tr>
+            <tr><td><code>u, dt, A, B, C, h = ctx.saved_tensors</code></td><td>get back what forward saved</td></tr>
+            <tr><td><code>scan_backward[(b, e // BLOCK)](gy.contiguous(), …)</code></td><td>launch the backward kernel on the same grid. <code>gy.contiguous()</code> makes sure the incoming gradient is laid out flat in memory, as the pointer arithmetic assumes.</td></tr>
+            <tr><td><code>return gu, gdt, gA, gB, gC</code></td><td>one gradient per input of <code>forward</code>, in the same order. PyTorch carries on from here with ordinary autograd.</td></tr>
+            <tr><td><code>return TritonScan.apply(u.contiguous(), …)</code></td><td>the function the model calls. A <code>Function</code> is used through <code>.apply</code>. Every input is made contiguous first.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The skip term <code>u * self.D</code> is added in <code>mamba.py</code>, outside the kernel, so ordinary
+          autograd handles it.
+        </p>
+
+        <h3 id="code-delta-triton">§6.8 · <code>delta_triton.py</code>: the DeltaNet kernel</h3>
+        <p><strong>The forward kernel.</strong> The grid is <code>(b * h,)</code>: one program for each (sequence, head) pair.
+          Each program keeps one 64 × 64 memory <code>S</code> and loops over time.</p>
+        <pre class="code"><code>@triton.jit
+def delta_forward(q_ptr, k_ptr, v_ptr, beta_ptr, o_ptr, w_ptr, S_ptr, L, D: tl.constexpr):
+    head = tl.program_id(0)
+    i = tl.arange(0, D)
+    S = tl.zeros((D, D), dtype=tl.float32)
+    for t in range(L):
+        row = head * L + t
+        q = tl.load(q_ptr + row * D + i)
+        k = tl.load(k_ptr + row * D + i)
+        v = tl.load(v_ptr + row * D + i)
+        beta = tl.load(beta_ptr + row)
+        w = beta * (v - tl.sum(S * k[:, None], axis=0))
+        S += k[:, None] * w[None, :]
+        tl.store(w_ptr + row * D + i, w)
+        tl.store(o_ptr + row * D + i, tl.sum(S * q[:, None], axis=0))
+    tl.store(S_ptr + head * D * D + i[:, None] * D + i[None, :], S)</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th><th class="shape">Shape</th></tr></thead>
+          <tbody>
+            <tr><td><code>head = tl.program_id(0)</code></td><td>which (sequence, head) pair this program handles, as one number from 0 to B·H − 1. <code>q</code> has shape (B, H, L, d), and the first two axes are treated as one.</td><td class="shape">number</td></tr>
+            <tr><td><code>i = tl.arange(0, D)</code></td><td>0 … 63. Here <code>D</code> is the head size d = 64.</td><td class="shape">(64,)</td></tr>
+            <tr><td><code>S = tl.zeros((D, D), dtype=tl.float32)</code></td><td>the memory, empty at the start. <code>S[i, j]</code>: first index is the key direction, second the value direction, as in the Python loop.</td><td class="shape">(64, 64)</td></tr>
+            <tr><td><code>row = head * L + t</code></td><td>the flat index of (sequence, head, time)</td><td class="shape">number</td></tr>
+            <tr><td><code>q</code>, <code>k</code>, <code>v</code> loads</td><td>this step's query, key and value, at offset <code>row * D + i</code></td><td class="shape">(64,) each</td></tr>
+            <tr><td><code>beta = tl.load(beta_ptr + row)</code></td><td>this step's write strength. <code>beta</code> has shape (B, H, L), one number per step.</td><td class="shape">number</td></tr>
+            <tr><td><code>w = beta * (v - tl.sum(S * k[:, None], axis=0))</code></td><td><code>tl.sum(S * k[:, None], axis=0)</code> is the read v_old: multiply row i of S by k[i] and add the rows up. <code>w</code> is the correction β·(v − v_old).</td><td class="shape">(64,)</td></tr>
+            <tr><td><code>S += k[:, None] * w[None, :]</code></td><td>the write: add the outer product k ⊗ w, so S[i, j] grows by k[i]·w[j]</td><td class="shape">(64, 64)</td></tr>
+            <tr><td><code>tl.store(w_ptr + row * D + i, w)</code></td><td>save the correction for the backward pass</td><td class="shape">(64,)</td></tr>
+            <tr><td><code>tl.store(o_ptr + row * D + i, tl.sum(S * q[:, None], axis=0))</code></td><td>the output: read the updated memory with the query</td><td class="shape">(64,)</td></tr>
+            <tr><td><code>tl.store(S_ptr + head * D * D + i[:, None] * D + i[None, :], S)</code></td><td>after the loop, save the <strong>final</strong> memory. Each head's memory takes D·D numbers, so this head's starts at <code>head * D * D</code>.</td><td class="shape">(64, 64)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          These are the same three lines as <code>delta_rule</code> in §6.5: read with the key, write the correction,
+          read with the query.
+        </p>
+
+        <p><strong>Deriving the backward pass.</strong> Write <code>read(S, k)</code> for "multiply row i of S by k[i] and add up the rows". One forward step is four lines:</p>
+        <pre class="code"><code>(1)  v_old = read(S_prev, k)          v_old[j] = Σ_i S_prev[i, j] · k[i]
+(2)  w     = β · (v − v_old)
+(3)  S     = S_prev + k ⊗ w           S[i, j]  = S_prev[i, j] + k[i] · w[j]
+(4)  o     = read(S, q)               o[j]     = Σ_i S[i, j] · q[i]</code></pre>
+        <p>
+          The backward pass walks time backwards and, inside each step, undoes the four lines in the order 4, 3, 2,
+          1. It carries one matrix, <code>gS</code>: the gradient of the loss with respect to the memory, collected
+          from all later steps. PyTorch supplies <code>go</code>, the gradient of each output.
+        </p>
+        <table class="tbl">
+          <thead><tr><th>undoing line</th><th>gradients it gives</th><th>why</th></tr></thead>
+          <tbody>
+            <tr><td>(4) <code>o = read(S, q)</code></td><td><code>gS[i, j] += q[i] · go[j]</code><br><code>gq[i] = Σ_j S[i, j] · go[j]</code></td><td>o[j] is a sum of products S[i, j]·q[i]. The gradient of a product with respect to one factor is the other factor, times go[j].</td></tr>
+            <tr><td>(3) <code>S = S_prev + k ⊗ w</code></td><td><code>gw[j] = Σ_i gS[i, j] · k[i]</code><br><code>gk[i] = Σ_j gS[i, j] · w[j]</code> (first part)</td><td>S[i, j] contains k[i]·w[j]. Again the other factor, times gS. And S_prev is added in unchanged, so gS carries over to S_prev as it is.</td></tr>
+            <tr><td>(2) <code>w = β · (v − v_old)</code></td><td><code>gβ = Σ_j gw[j] · (v[j] − v_old[j])</code><br><code>gv = β · gw</code><br><code>gv_old = −β · gw</code></td><td>β multiplies (v − v_old). v enters with a plus sign and v_old with a minus sign.</td></tr>
+            <tr><td>(1) <code>v_old = read(S_prev, k)</code></td><td><code>gk[i] += Σ_j S_prev[i, j] · gv_old[j]</code> (second part)<br><code>gS[i, j] += k[i] · gv_old[j]</code></td><td>the same pattern as line (4), with k in place of q and gv_old in place of go</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The key <code>k</code> is used twice in the forward step, in lines (1) and (3), so its gradient has two
+          parts that are added. Putting <code>gv_old = −β · gw</code> into line (1) gives the two expressions in the
+          code: <code>gk = (first part) − β · Σ_j S_prev[i, j] · gw[j]</code> and
+          <code>gS −= β · k ⊗ gw</code>.
+        </p>
+        <div class="callout aha">
+          <div class="callout-label">the trick: rebuild the earlier memories instead of storing them</div>
+          <p>The formulas need the memory <strong>after</strong> the step (S, for gq) and <strong>before</strong>
+            the step (S_prev, for v_old and gk), at every time step. Storing every memory would take 64 × 64 = 4,096
+            numbers per step, for every head of every sequence.</p>
+          <p>But line (3) is a plain addition, and an addition can be reversed exactly by a subtraction:
+            <code>S_prev = S − k ⊗ w</code>. So the forward kernel stores only the <strong>final</strong> memory and
+            the correction <code>w_t</code> of each step, which is 64 numbers per step instead of 4,096. The backward
+            kernel starts from the final memory and, at each step going backwards, subtracts that step's update to
+            get the memory before it. For one head over 64 steps that is 64 × 64 + 4,096 = 8,192 stored numbers
+            instead of 64 × 4,096 = 262,144.</p>
+          <p>Mamba cannot use the same trick. Its update multiplies the old state by exp(Δ·A). To go backwards you
+            would have to divide by that number, and it can be almost zero (§3.2). So the Mamba kernel stores its
+            states, and saves memory with fp16 instead.</p>
+        </div>
+
+        <p><strong>The backward kernel.</strong></p>
+        <pre class="code"><code>@triton.jit
+def delta_backward(go_ptr, q_ptr, k_ptr, v_ptr, beta_ptr, w_ptr, S_ptr, gq_ptr, gk_ptr, gv_ptr, gbeta_ptr, L, D: tl.constexpr):
+    head = tl.program_id(0)
+    i = tl.arange(0, D)
+    S = tl.load(S_ptr + head * D * D + i[:, None] * D + i[None, :])
+    gS = tl.zeros((D, D), dtype=tl.float32)
+    for j in range(L):
+        row = head * L + L - 1 - j
+        q = tl.load(q_ptr + row * D + i)
+        k = tl.load(k_ptr + row * D + i)
+        v = tl.load(v_ptr + row * D + i)
+        w = tl.load(w_ptr + row * D + i)
+        go = tl.load(go_ptr + row * D + i)
+        beta = tl.load(beta_ptr + row)
+        gS += q[:, None] * go[None, :]
+        tl.store(gq_ptr + row * D + i, tl.sum(S * go[None, :], axis=1))
+        gw = tl.sum(gS * k[:, None], axis=0)
+        gk = tl.sum(gS * w[None, :], axis=1)
+        S -= k[:, None] * w[None, :]
+        v_old = tl.sum(S * k[:, None], axis=0)
+        tl.store(gbeta_ptr + row, tl.sum(gw * (v - v_old)))
+        tl.store(gv_ptr + row * D + i, beta * gw)
+        tl.store(gk_ptr + row * D + i, gk - beta * tl.sum(S * gw[None, :], axis=1))
+        gS -= beta * k[:, None] * gw[None, :]</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>S = tl.load(S_ptr + head * D * D + i[:, None] * D + i[None, :])</code></td><td>start from the final memory that the forward kernel saved</td></tr>
+            <tr><td><code>gS = tl.zeros((D, D), dtype=tl.float32)</code></td><td>the memory's gradient. Zero at the start: nothing comes after the last step.</td></tr>
+            <tr><td><code>row = head * L + L - 1 - j</code></td><td>walk time backwards: j = 0 is the last step, t = L − 1</td></tr>
+            <tr><td><code>q</code>, <code>k</code>, <code>v</code>, <code>w</code>, <code>go</code>, <code>beta</code> loads</td><td>this step's inputs, its saved correction <code>w</code>, and the gradient of its output from PyTorch</td></tr>
+            <tr><td><code>gS += q[:, None] * go[None, :]</code></td><td>undo line (4): the output's share of the memory's gradient</td></tr>
+            <tr><td><code>tl.store(gq_ptr + row * D + i, tl.sum(S * go[None, :], axis=1))</code></td><td>undo line (4): gq. <code>S</code> is still the memory <em>after</em> this step, which is the one the query read.</td></tr>
+            <tr><td><code>gw = tl.sum(gS * k[:, None], axis=0)</code></td><td>undo line (3): the gradient of the correction</td></tr>
+            <tr><td><code>gk = tl.sum(gS * w[None, :], axis=1)</code></td><td>undo line (3): the first part of the key's gradient</td></tr>
+            <tr><td><code>S -= k[:, None] * w[None, :]</code></td><td><strong>the rebuild.</strong> Subtract this step's update. <code>S</code> is now the memory <em>before</em> this step.</td></tr>
+            <tr><td><code>v_old = tl.sum(S * k[:, None], axis=0)</code></td><td>recompute what the key read in the forward pass</td></tr>
+            <tr><td><code>tl.store(gbeta_ptr + row, tl.sum(gw * (v - v_old)))</code></td><td>undo line (2): gβ, one number</td></tr>
+            <tr><td><code>tl.store(gv_ptr + row * D + i, beta * gw)</code></td><td>undo line (2): gv</td></tr>
+            <tr><td><code>tl.store(gk_ptr + row * D + i, gk - beta * tl.sum(S * gw[None, :], axis=1))</code></td><td>undo line (1): add the second part of the key's gradient and write the total</td></tr>
+            <tr><td><code>gS -= beta * k[:, None] * gw[None, :]</code></td><td>undo line (1): the key's read also touched the memory. <code>gS</code> is now the gradient of the memory before this step, ready for the next round of the loop.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          There is no <code>atomic_add</code> in this file. Every output (<code>gq</code>, <code>gk</code>,
+          <code>gv</code>, <code>gbeta</code>) has a sequence, a head and a time index, so each address is written by
+          exactly one program. The inputs q, k, v and β are not shared between programs the way Mamba's A, B and C
+          are.
+        </p>
+        <p><strong>The wrapper</strong> has the same form as Mamba's.</p>
+        <pre class="code"><code>class TritonDelta(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, q, k, v, beta):
+        b, h, l, d = q.shape
+        o, w = torch.empty_like(q), torch.empty_like(q)
+        S = torch.empty(b, h, d, d, device=q.device)
+        delta_forward[(b * h,)](q, k, v, beta, o, w, S, l, d)
+        ctx.save_for_backward(q, k, v, beta, w, S)
+        return o
+
+    @staticmethod
+    def backward(ctx, go):
+        q, k, v, beta, w, S = ctx.saved_tensors
+        b, h, l, d = q.shape
+        gq, gk, gv, gbeta = torch.empty_like(q), torch.empty_like(q), torch.empty_like(q), torch.empty_like(beta)
+        delta_backward[(b * h,)](go.contiguous(), q, k, v, beta, w, S, gq, gk, gv, gbeta, l, d)
+        return gq, gk, gv, gbeta
+
+
+def triton_delta(q, k, v, beta):
+    return TritonDelta.apply(q.contiguous(), k.contiguous(), v.contiguous(), beta.contiguous())</code></pre>
+        <ul>
+          <li><code>o</code> and <code>w</code> have the shape of <code>q</code>, (B, H, L, d). <code>S</code> is (B, H, d, d): one final
+            memory per head.</li>
+          <li><code>delta_forward[(b * h,)]</code> launches B·H programs. <code>l</code> is passed as the run-time length and
+            <code>d</code> as the compile-time constant <code>D</code>.</li>
+          <li><code>ctx.save_for_backward(q, k, v, beta, w, S)</code> keeps the inputs, the corrections and the final memories.</li>
+          <li>All four gradient tensors are made with <code>empty_like</code>, because the kernel writes every entry exactly once.</li>
+          <li><code>return gq, gk, gv, gbeta</code>: one gradient per input, in the order of the inputs.</li>
+        </ul>
+
+        <h3 id="code-hybrid">§6.9 · <code>hybrid.py</code> and <code>model.py</code></h3>
         <pre class="code"><code>def hybrid_blocks(d_model, n_heads, n_pairs):
     blocks = []
     for _ in range(n_pairs):                       # 3 pairs
@@ -669,44 +1430,201 @@ class TransformerBlock:  mlp(attn(x))                        # both sub-layers a
         blocks.append(DeltaNetBlock(d_model, n_heads))   # associative memory + MLP
     return blocks</code></pre>
         <p>
-          The hybrid is only a list of existing blocks in the order DESIGN.md fixed. It lives in its own file, written
-          after DESIGN.md was pushed. <code>model.py</code> wraps any list of blocks the same way:
+          The hybrid is only a list of existing blocks in the order DESIGN.md fixed. It lives in its own file.
+          (The <code>#</code> notes above are added here for reading. The source has no comments.)
+          <code>model.py</code> wraps any list of blocks the same way:
         </p>
-        <pre class="code"><code>h = embed(x)                                   # (B, L) ints → (B, L, D)
-if pos: h = h + pos(arange(L))                 # Transformer only: learned positions
-for block in blocks: h = block(h)              # (B, L, D) all the way
-return head(norm(h))                           # (B, L, 27) logits, one score per class per position</code></pre>
+        <pre class="code"><code>class Decryptor(nn.Module):
+    def __init__(self, blocks, d_model):
+        super().__init__()
+        self.embed = nn.Embedding(CIPHER_VOCAB, d_model)
+        self.fast = nn.Embedding(63, d_model)
+        self.middle = nn.Embedding(63, d_model)
+        self.slow = nn.Embedding(16, d_model)
+        self.blocks = nn.ModuleList(blocks)
+        self.norm = nn.RMSNorm(d_model)
+        self.head = nn.Linear(d_model, NUM_CLASSES)
+
+    def forward(self, x, pos):
+        wheel = pos - 762
+        h = self.embed(x) + self.fast(wheel % 63) + self.middle(wheel // 63 % 63) + self.slow((wheel // 3969 + 1).clamp(max=15))
+        for block in self.blocks:
+            h = block(h)
+        return self.head(self.norm(h))</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>self.embed = nn.Embedding(CIPHER_VOCAB, d_model)</code></td><td>one learned vector of 256 numbers for each of the 63 unchained symbols</td></tr>
+            <tr><td><code>self.fast = nn.Embedding(63, d_model)</code></td><td>one vector for each of the 63 settings of the fast wheel</td></tr>
+            <tr><td><code>self.middle = nn.Embedding(63, d_model)</code></td><td>one vector for each of the 63 settings of the middle wheel</td></tr>
+            <tr><td><code>self.slow = nn.Embedding(16, d_model)</code></td><td>16 vectors for the slow wheel, rows 0 to 15</td></tr>
+            <tr><td><code>def forward(self, x, pos)</code></td><td><code>x</code> (B, L): the symbols. <code>pos</code> (B, L): each symbol's true position in its own text.</td></tr>
+            <tr><td><code>wheel = pos - 762</code></td><td>the <code>j = i − 762</code> of §1.4: shift the position so that the three wheels turn over at the right places</td></tr>
+            <tr><td><code>self.fast(wheel % 63)</code></td><td>the fast-wheel setting <code>j mod 63</code>, looked up in its table</td></tr>
+            <tr><td><code>self.middle(wheel // 63 % 63)</code></td><td>the middle-wheel setting <code>(j div 63) mod 63</code></td></tr>
+            <tr><td><code>self.slow((wheel // 3969 + 1).clamp(max=15))</code></td><td>the slow-wheel setting <code>j div 3969</code>, plus 1, capped at 15. See below.</td></tr>
+            <tr><td><code>h = self.embed(x) + … + …</code></td><td>the four vectors are <strong>added</strong> into one input vector per character: (B, L, D)</td></tr>
+            <tr><td><code>for block in self.blocks: h = block(h)</code></td><td>(B, L, D) all the way through</td></tr>
+            <tr><td><code>return self.head(self.norm(h))</code></td><td>(B, L, 27) logits: one score per class per position</td></tr>
+          </tbody>
+        </table>
+        <p><strong>Why three embeddings and not one per position.</strong> One embedding per position would need a
+          row for every position a text can have, and a row would only be trained by characters at exactly that
+          position. Deep positions are rare in the training data, so their rows would hardly be trained. With three
+          wheel embeddings, position 763 and position 4,732 share their fast and middle vectors and differ only in
+          the slow one. What the model learns about a wheel setting at early positions carries over to deep ones.</p>
+        <p><strong>Why −762.</strong> Without the offset the model would compute <code>pos % 63</code>, which turns
+          over at positions 63, 126, …. The cipher's wheels turn over at 762 + 63, 762 + 126, …, and the slow wheel
+          at 4,731 and 8,700. The embeddings would then change at the wrong places, and two positions with the
+          same embedding would not share a table. Measured on the Transformer, test accuracy at positions 7,000–8,700
+          was 69% without the offset and 92% with it (§7.2).</p>
+        <p><strong>Why +1 and <code>clamp(max=15)</code>.</strong> Positions 0 to 761 have a negative <code>wheel</code>,
+          and <code>wheel // 3969</code> is −1 for them (<code>//</code> rounds down). An embedding table cannot be
+          indexed with −1, so 1 is added:</p>
+        <table class="tbl">
+          <thead><tr><th>positions</th><th><code>wheel // 3969</code></th><th>row of <code>slow</code></th></tr></thead>
+          <tbody>
+            <tr><td>0 – 761</td><td>−1</td><td>0</td></tr>
+            <tr><td>762 – 4,730</td><td>0</td><td>1</td></tr>
+            <tr><td>4,731 – 8,699</td><td>1</td><td>2</td></tr>
+            <tr><td>8,700 – 12,668</td><td>2</td><td>3</td></tr>
+            <tr><td>… and so on, up to</td><td>14 or more</td><td>15 (capped)</td></tr>
+          </tbody>
+        </table>
         <p>
-          Mamba and DeltaNet need no positional embedding: they read the sequence in order, so position is built into
-          the recurrence. Attention is order-blind, so the Transformer needs one. <code>build_model(cfg)</code> just picks the
-          block list from the YAML <code>arch</code> field.
+          The table has 16 rows. <code>.clamp(max=15)</code> sends any position deeper than the table covers to the
+          last row, so an unusually long text cannot crash the model with an out-of-range index. Row 15 starts at
+          position 762 + 14 × 3,969 = 56,328. The <code>%</code> on a negative number is safe too: in PyTorch, as in
+          Python, <code>-762 % 63</code> is 57, a valid row.
+        </p>
+        <p>
+          All four models get this same position input. Mamba and DeltaNet read a window in order, but a window can
+          start anywhere in a text (§6.2), so reading order alone does not tell them the true position. The
+          Transformer's attention is order-blind and needs positions in any case. <code>build_model(cfg)</code>
+          picks the block list from the YAML <code>arch</code> field: 4 Transformer blocks, 8 Mamba blocks,
+          4 DeltaNet blocks, or 3 hybrid pairs.
         </p>
 
-        <h3 id="code-train">§6.6 · <code>train.py</code></h3>
+        <h3 id="code-train">§6.10 · <code>train.py</code></h3>
+        <p>
+          The loop is counted in <strong>steps</strong>, not epochs. One step is one batch of 256 windows, and every
+          model gets 20,000 steps. The settings come from <code>config/part1/&lt;arch&gt;.yaml</code>:
+          <code>max_len: 64</code>, <code>batch_size: 256</code>, <code>lr: 0.001</code>, <code>steps: 20000</code>,
+          <code>eval_every: 1000</code>, <code>seed: 0</code>.
+        </p>
+        <p><strong>Data and sampling.</strong></p>
+        <pre class="code"><code>train_set = CipherDataset("data/part1/train", cfg["max_len"])
+val_set = CipherDataset("data/part1/validation", cfg["max_len"])
+starts = train_set.pos[:: cfg["max_len"]][: len(train_set)]
+weights = 10.0 ** ((starts - 762) // 3969).clamp(0, 2)
+sampler = WeightedRandomSampler(weights, cfg["steps"] * cfg["batch_size"])
+train_loader = DataLoader(train_set, cfg["batch_size"], sampler=sampler)
+val_loader = DataLoader(val_set, cfg["batch_size"])</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>starts = train_set.pos[:: cfg["max_len"]][: len(train_set)]</code></td><td>take every 64th entry of <code>pos</code>: the position, inside its text, of the <strong>first character of each window</strong>. The second slice trims the list to the number of full windows.</td></tr>
+            <tr><td><code>(starts - 762) // 3969</code></td><td>the slow-wheel number <code>j div 3969</code> of each window's first character: −1, 0, 1, 2, 3, …</td></tr>
+            <tr><td><code>.clamp(0, 2)</code></td><td>squeeze it into 0, 1 or 2: anything below 0 becomes 0, anything above 2 becomes 2</td></tr>
+            <tr><td><code>weights = 10.0 ** (…)</code></td><td>10 to that power: a weight of <strong>1, 10 or 100</strong> per window</td></tr>
+            <tr><td><code>sampler = WeightedRandomSampler(weights, cfg["steps"] * cfg["batch_size"])</code></td><td>draws 20,000 × 256 = 5,120,000 window numbers at random. A window's chance of being drawn is proportional to its weight. Windows can be drawn more than once.</td></tr>
+            <tr><td><code>train_loader = DataLoader(train_set, cfg["batch_size"], sampler=sampler)</code></td><td>groups the drawn windows into batches of 256: <code>x</code>, <code>pos</code>, <code>y</code>, each (256, 64). The sampler hands out exactly enough windows for 20,000 batches.</td></tr>
+            <tr><td><code>val_loader = DataLoader(val_set, cfg["batch_size"])</code></td><td>validation has no sampler: every validation window, once, in order</td></tr>
+          </tbody>
+        </table>
+        <table class="tbl">
+          <thead><tr><th>window starts at position</th><th>slow wheel</th><th>weight</th></tr></thead>
+          <tbody>
+            <tr><td>0 – 4,730</td><td>first setting (and the stretch before 762)</td><td>1</td></tr>
+            <tr><td>4,731 – 8,699</td><td>second setting</td><td>10</td></tr>
+            <tr><td>8,700 and beyond</td><td>third setting and later</td><td>100</td></tr>
+          </tbody>
+        </table>
+        <div class="callout aha">
+          <div class="callout-label">why weighted sampling</div>
+          <p>Most texts are short, so deep positions are rare. Only 3% of the training windows lie beyond position
+            4,731 and only 0.2% beyond 8,700. But each slow-wheel setting has its own part of the substitution table,
+            and the model has to learn it from those few windows. Sampled uniformly, a batch of 256 would hold on
+            average half a window from beyond 8,700, and the models decoded only about 20% of the test characters
+            there.</p>
+          <p>With weights 1, 10 and 100, about a third of each batch comes from deep text, and Transformer test
+            accuracy beyond 8,700 rose to about 97%. <strong>The cost:</strong> the same few deep windows are shown
+            many times and the early positions get a smaller share of each batch, which gives a few more errors at
+            early positions.</p>
+        </div>
+        <p><strong>The rest of the script.</strong></p>
         <ol>
-          <li>Reads the YAML config, loads <code>.env</code> (W&amp;B key), and seeds torch.</li>
-          <li>Builds the train set (first 40k samples) and the full validation set, each with a DataLoader.</li>
-          <li><strong>AdamW</strong> (lr 1e-3, weight decay 0.01) with <strong>OneCycleLR</strong>: a 5% linear warm-up, then cosine decay to almost 0.</li>
-          <li>Each step: <code>logits (B,L,27)</code> → <code>.transpose(1,2)</code> to <code>(B,27,L)</code>, because <code>cross_entropy</code> wants the class axis
-            second → loss averaged over non-padding positions → backward → clip gradient norm at 1 → step.</li>
-          <li>Every 500 steps: validation loss and per-character accuracy (padding masked out). If accuracy improved, save
-            <code>model.pt</code>.</li>
-          <li>With <code>--push</code>, upload <code>models/part1/&lt;arch&gt;/</code> (weights + config) to <code>Arihant25/anlp-a3-&lt;arch&gt;</code>.</li>
+          <li>Reads the YAML config, loads <code>.env</code> (W&amp;B and Hugging Face keys), seeds torch, and picks <code>cuda</code> if available.</li>
+          <li><code>torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=0.01)</code> with
+            <code>OneCycleLR(optimizer, cfg["lr"], total_steps=steps, pct_start=0.05)</code>: the learning rate warms up over the first 5% of the steps to 1e-3, then decays to almost 0. Everything runs in fp32.</li>
+          <li>Each step: <code>loss = F.cross_entropy(model(x, pos).transpose(1, 2), y)</code>. The model returns logits
+            <code>(B, L, 27)</code>. <code>.transpose(1, 2)</code> makes them <code>(B, 27, L)</code>, because <code>cross_entropy</code> wants the class axis
+            second. Then <code>optimizer.zero_grad()</code> → <code>loss.backward()</code> → <code>clip_grad_norm_(model.parameters(), 1.0)</code> →
+            <code>optimizer.step()</code> → <code>scheduler.step()</code>.</li>
+          <li><code>if step % cfg["eval_every"] == 0 or step == steps:</code> every 1,000 steps, <code>evaluate</code> runs the model over
+            the whole validation set and returns the mean loss per character and the character accuracy
+            (<code>logits.argmax(-1) == y</code>, counted over all validation characters). If the accuracy is the best so
+            far, <code>torch.save(model.state_dict(), f"{out_dir}/model.pt")</code>.</li>
+          <li>The loop is <code>while step &lt; steps:</code> around <code>for x, pos, y in train_loader:</code>, with a
+            <code>break</code> when <code>step == steps</code>, so it stops after exactly 20,000 steps.</li>
+          <li>With <code>--push</code>, upload <code>models/part1/&lt;arch&gt;/</code> (weights + config) to the <code>hf_repo</code> named in the config, <code>Arihant25/anlp-a3-&lt;arch&gt;</code>.</li>
         </ol>
 
-        <h3 id="code-decrypt">§6.7 · <code>decrypt.py</code> and <code>metrics.py</code></h3>
+        <h3 id="code-decrypt">§6.11 · <code>decrypt.py</code> and <code>metrics.py</code></h3>
         <ul>
           <li><code>load_model</code>: by default calls <code>snapshot_download</code>, which fetches the whole HF repo (<code>model.pt</code> and <code>config.yaml</code>)
             and returns its local folder (the TAs' setting). <code>--local</code> reads <code>models/part1/</code> instead.</li>
-          <li><code>decrypt</code>: encodes each text, splits it into 256-character chunks, and runs all chunks in batches of 64.
-            Takes <code>argmax</code> over the 27 classes, keeps only the real (non-pad) positions, and appends each chunk's
-            prediction back onto its row. The output length always equals the number of non-null cipher characters.</li>
-          <li><code>count_flops</code>: <code>FlopCounterMode</code> records every matmul and conv in one forward pass of 256 characters, stored as <code>"flops"</code>.</li>
+        </ul>
+        <p><strong><code>decrypt</code></strong> decodes every character of every text with the model. Nothing is cut off.</p>
+        <pre class="code"><code>def decrypt(model, texts, max_len, batch_size, device):
+    rows = [encode_cipher(text) for text in texts]
+    x, pos = flatten(rows)
+    fill = -len(x) % max_len
+    x = F.pad(x.long(), (0, fill)).view(-1, max_len)
+    pos = F.pad(pos.long(), (0, fill)).view(-1, max_len)
+    ids = []
+    with torch.no_grad():
+        for i in range(0, len(x), batch_size):
+            logits = model(x[i : i + batch_size].to(device), pos[i : i + batch_size].to(device))
+            ids += logits.argmax(-1).flatten().tolist()
+    preds, start = [], 0
+    for row in rows:
+        preds.append(decode_plain(ids[start : start + len(row)]))
+        start += len(row)
+    return preds</code></pre>
+        <table class="tbl lines">
+          <thead><tr><th>Line</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>rows = [encode_cipher(text) for text in texts]</code></td><td>the same preprocessing as training: drop nulls, unchain</td></tr>
+            <tr><td><code>x, pos = flatten(rows)</code></td><td>one long array of symbols and their positions, exactly as in the training set</td></tr>
+            <tr><td><code>fill = -len(x) % max_len</code></td><td>how many extra entries are needed to reach a multiple of 64. For 150 symbols, <code>-150 % 64</code> is 42, and 150 + 42 = 192 = 3 × 64.</td></tr>
+            <tr><td><code>x = F.pad(x.long(), (0, fill)).view(-1, max_len)</code></td><td>add that many zeros at the end and cut the array into rows of 64: (number of windows, 64)</td></tr>
+            <tr><td><code>pos = F.pad(pos.long(), (0, fill)).view(-1, max_len)</code></td><td>the same for the positions</td></tr>
+            <tr><td><code>for i in range(0, len(x), batch_size):</code></td><td>run the windows through the model 64 at a time (<code>--batch_size</code>, default 64), inside <code>torch.no_grad()</code></td></tr>
+            <tr><td><code>ids += logits.argmax(-1).flatten().tolist()</code></td><td>the highest-scoring class at each position, appended to one long list in the original order</td></tr>
+            <tr><td><code>preds.append(decode_plain(ids[start : start + len(row)]))</code></td><td>cut the long list back into texts, using each text's length, and turn class numbers into characters</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The predictions for the zeros added at the end sit after the last text and are never read. The output for
+          each text has exactly as many characters as the ciphertext has non-null symbols, so the length is always
+          right. As in training, a window can hold the end of one text and the start of the next.
+        </p>
+        <ul>
+          <li><code>main</code> writes one JSON line <code>{"id": …, "text": …}</code> per text. If the split has a
+            <code>cleaned.jsonl</code> and <code>--results</code> is given, it also computes the metrics, the parameter count and the
+            FLOPs.</li>
+          <li><code>count_flops</code>: <code>FlopCounterMode</code> records every matmul and conv in one forward pass of one window of 64
+            characters, stored as <code>"flops"</code>. It is called as
+            <code>count_flops(model.cpu(), cfg["max_len"], "cpu")</code>. The model is moved to the <strong>CPU</strong> first on purpose:
+            there the Python loops run, and the counter can see their operations. It cannot see inside a Triton kernel.</li>
           <li>Metrics: <strong>character accuracy</strong> compares position by position. <strong>Word accuracy</strong> does the same on
             whitespace-split words. <strong>Precision / recall / F1</strong> use word overlap
-            (<code>Counter(pred) &amp; Counter(ref)</code>, the SQuAD-style bag-of-words match), because position-wise precision would equal accuracy
+            (<code>Counter(pred_words) &amp; Counter(ref_words)</code>, the SQuAD-style bag-of-words match), because position-wise precision would equal accuracy
             when the lengths match. <strong>Levenshtein</strong> is the minimum number of single-character inserts, deletes and
             substitutions turning the prediction into the reference.</li>
+          <li><code>scripts/part1/test_assn.sh</code> runs <code>decrypt.py</code> for all four models on the test split, or with
+            <code>--heldout</code> for the one model named in <code>BEST</code> on the held-out file.</li>
         </ul>
       </section>
 
@@ -714,103 +1632,162 @@ return head(norm(h))                           # (B, L, 27) logits, one score pe
       <section id="results-a">
         <h2><span class="num">§7</span>Part A results and what they mean</h2>
         <p class="section-intro">
-          All four models were trained the same way: the first 40,000 training samples, one epoch, 2,500 steps of
-          batch 16, on an RTX 2070 (8 GB). The test numbers come from <code>bash scripts/part1/test_assn.sh</code>, which
-          downloads each model from Hugging Face and decrypts the 1,318 test texts in full.
+          All four models were trained the same way: 20,000 steps of batch 256 on 64-character windows, AdamW with
+          learning rate 1e-3, on an RTX 2070. The test numbers come from <code>bash scripts/part1/test_assn.sh</code>,
+          which downloads each model from Hugging Face and decrypts the 1,318 test texts in full: 1,171,834
+          characters.
         </p>
 
         <h3 id="ra-table">§7.1 · The numbers</h3>
         <table class="tbl">
           <thead><tr><th>model</th><th>char acc</th><th>word acc</th><th>precision</th><th>recall</th><th>F1</th><th>Levenshtein</th><th>norm.</th></tr></thead>
           <tbody>
-            <tr><td>Transformer</td><td>0.1679</td><td>0.0023</td><td>0.442</td><td>0.025</td><td>0.047</td><td>736.6</td><td>0.828</td></tr>
-            <tr><td>Mamba</td><td>0.1681</td><td>0.0018</td><td>0.654</td><td>0.019</td><td>0.037</td><td>737.2</td><td>0.829</td></tr>
-            <tr><td>DeltaNet</td><td>0.1680</td><td>0.0010</td><td>0.210</td><td>0.011</td><td>0.021</td><td>737.0</td><td>0.829</td></tr>
-            <tr><td>Hybrid</td><td>0.1679</td><td>0.0022</td><td>0.427</td><td>0.024</td><td>0.045</td><td>736.6</td><td>0.829</td></tr>
+            <tr><td>Transformer</td><td><strong>0.99951</strong></td><td>0.9900</td><td>0.9973</td><td>0.9974</td><td>0.9974</td><td>0.44</td><td>0.00049</td></tr>
+            <tr><td>Mamba</td><td>0.99911</td><td>0.9804</td><td>0.9954</td><td>0.9955</td><td>0.9954</td><td>0.80</td><td>0.00089</td></tr>
+            <tr><td>DeltaNet</td><td>0.99928</td><td>0.9928</td><td>0.9970</td><td>0.9970</td><td>0.9970</td><td>0.64</td><td>0.00072</td></tr>
+            <tr><td>Hybrid</td><td>0.99941</td><td>0.9893</td><td>0.9972</td><td>0.9972</td><td>0.9972</td><td>0.53</td><td>0.00059</td></tr>
           </tbody>
         </table>
         <p>
           These are test-set scores on whole texts. Precision, recall and F1 are computed over words. Levenshtein is
           the mean edit distance per text, and the normalised value (norm.) divides the total distance by the total reference
-          length.
+          length. In characters, the models get 574 (Transformer), 694 (Hybrid), 846 (DeltaNet) and 1,048 (Mamba)
+          wrong out of 1,171,834. The mean accuracy per text is 0.9999 for all four.
         </p>
         <table class="tbl">
-          <thead><tr><th>model</th><th>parameters</th><th>GFLOPs per 256 chars</th><th>training time</th><th>best val char accuracy</th></tr></thead>
+          <thead><tr><th>model</th><th>parameters</th><th>GFLOPs per 64 chars</th><th>training time</th><th>best val char accuracy</th><th>final val loss</th></tr></thead>
           <tbody>
-            <tr><td>Transformer</td><td>3.25M</td><td>1.88</td><td>1.5 min</td><td>0.1661</td></tr>
-            <tr><td>Mamba</td><td>3.53M</td><td>1.76</td><td>149 min</td><td>0.1661</td></tr>
-            <tr><td>DeltaNet</td><td>3.20M</td><td>1.69</td><td>73 min</td><td>0.1661</td></tr>
-            <tr><td>Hybrid</td><td>3.72M</td><td>1.93</td><td>116 min</td><td>0.1661</td></tr>
+            <tr><td>Transformer</td><td>3,216,667</td><td>0.42</td><td>51 min</td><td>0.99969</td><td>0.0014</td></tr>
+            <tr><td>Mamba</td><td>3,563,803</td><td>0.44</td><td>115 min</td><td>0.99941</td><td>0.0021</td></tr>
+            <tr><td>DeltaNet</td><td>3,232,283</td><td>0.42</td><td>82 min</td><td>0.99972</td><td>0.0012</td></tr>
+            <tr><td>Hybrid</td><td>3,753,179</td><td>0.48</td><td>118 min</td><td>0.99971</td><td>0.0011</td></tr>
           </tbody>
         </table>
         <p>
-          Validation accuracy is measured during training on the first 256 characters of each validation text, which
-          is why it differs slightly from the test accuracy.
+          Validation accuracy is measured during training over all validation characters, about 1.04 million. The
+          checkpoint with the best validation accuracy is the one that was uploaded and tested.
         </p>
 
-        <h3 id="ra-output">§7.2 · What the models actually output</h3>
-        <pre class="code"><code>reference:    "robert boulter"
-transformer:  "the e         "
-mamba:        "the           "
-deltanet:     "tee e         "</code></pre>
+        <h3 id="ra-stages">§7.2 · How the accuracy was reached, stage by stage</h3>
         <p>
-          About 98% of every model's output is the space character, with a few <code>e</code>, <code>t</code> and <code>h</code>,
-          as in the first test text above. Three numbers show that this is the best a model can do here:
+          The final number is the result of three changes, each made for a reason found in the data. The table
+          follows the Transformer's test accuracy through them. The last two columns look only at deep positions,
+          where the slow wheel has moved on (§1.4).
         </p>
+        <table class="tbl">
+          <thead><tr><th>stage</th><th>all positions</th><th>positions 7,000–8,700</th><th>beyond 8,700</th></tr></thead>
+          <tbody>
+            <tr><td>raw symbols, trained on the first 64 characters only</td><td>0.1870</td><td>–</td><td>–</td></tr>
+            <tr><td>+ shift undone in preprocessing (<code>unchain</code>)</td><td>0.9919</td><td>0.69</td><td>0.20</td></tr>
+            <tr><td>+ position embeddings aligned to the wheels (the −762)</td><td>0.9928</td><td>0.92</td><td>0.18</td></tr>
+            <tr><td>+ weighted sampling of deep windows</td><td><strong>0.9995</strong></td><td>0.996</td><td>0.975</td></tr>
+          </tbody>
+        </table>
         <ul>
-          <li><strong>The loss equals the entropy of the plaintext.</strong> Every model's validation loss settles at 2.860
-            nats per character. Divided by ln 2, that is 4.126 bits, the same H(P) measured in §1.3 before any model
-            was built. Cross-entropy can only go below H(P) if the input says something about the output. It
-            never does, so the models have learned how often each letter occurs and little else.</li>
-          <li><strong>The accuracy equals the frequency of the space.</strong> The space is the most common character,
-            16.87% of the test set. A program that prints only spaces scores 16.87%. The models score 16.79–16.81%, a
-            touch lower because they sometimes guess a letter.</li>
-          <li><strong>The curves are flat from the first evaluation.</strong> Validation accuracy is 0.166 at step 500 and
-            0.166 at step 2,500 for all four models. More data or more steps would not move it.</li>
+          <li><strong>Undoing the shift does almost everything</strong>: from 18.7% to 99.2%. The network could not learn
+            the chained mod-63 sums from examples (§1.9). A short function removes them exactly.</li>
+          <li><strong>Aligning the embeddings fixes the middle depths.</strong> With the −762 offset the model's wheel
+            settings change where the cipher's do, so what it learned early carries over. Positions 7,000–8,700 go
+            from 69% to 92%. Beyond 8,700 nothing improves, because that is a new slow-wheel setting the model has
+            hardly seen.</li>
+          <li><strong>Weighted sampling fixes the deepest positions.</strong> Only 0.2% of the training windows lie
+            beyond 8,700. Drawing them 100 times as often takes accuracy there from about 20% to 97.5%. The overall
+            number moves less, because few test characters are that deep.</li>
         </ul>
 
-        <h3 id="ra-metrics">§7.3 · Reading the other metrics</h3>
+        <h3 id="ra-errors">§7.3 · Where the remaining errors are</h3>
+        <p>The final Transformer's 574 errors, by position in the text:</p>
+        <table class="tbl">
+          <thead><tr><th>positions</th><th>wrong</th><th>out of</th><th>error rate</th></tr></thead>
+          <tbody>
+            <tr><td>0 – 4,000</td><td>182</td><td>1,082,054</td><td>0.02%</td></tr>
+            <tr><td>4,000 – 5,400</td><td>93</td><td>50,915</td><td>0.18%</td></tr>
+            <tr><td>5,400 – 7,000</td><td>37</td><td>21,711</td><td>0.17%</td></tr>
+            <tr><td>7,000 – 8,700</td><td>33</td><td>7,772</td><td>0.42%</td></tr>
+            <tr><td>beyond 8,700</td><td>229</td><td>9,382</td><td>2.44%</td></tr>
+          </tbody>
+        </table>
+        <p>
+          The error rate rises with depth. The characters beyond 8,700 are 0.8% of the test set and hold 40% of
+          the errors (229 of 574). This matches the training data: only 3% of the training windows lie beyond
+          position 4,731 and 0.2% beyond 8,700. The less often the model has seen a slow-wheel setting, the worse
+          it knows that part of the table. Weighted sampling shrinks this gap and does not close it.
+        </p>
+
+        <h3 id="ra-metrics">§7.4 · Reading the other metrics</h3>
         <ul>
-          <li><strong>Word accuracy is about 0.2%.</strong> A word counts only if the whole word at that position is
-            right, and the models output almost no words.</li>
-          <li><strong>Precision is far higher than recall.</strong> Since most of the output is spaces, the models
-            produce very few words. The few they do produce are common ones that often appear somewhere in the
-            reference, so precision is 0.2–0.65. Recall is the share of reference words that were produced, and that
-            is 1–2.5%.</li>
-          <li><strong>Normalised Levenshtein is 0.83.</strong> To turn a prediction into its reference you would have to
-            change 83% of the characters. The other 17% are the spaces that happened to line up.</li>
-          <li>The differences between models in these columns are noise. They come down to which few letters a
-            model happens to guess, such as "the" or "tee".</li>
+          <li><strong>Word accuracy (0.980–0.993) is lower than character accuracy (0.999).</strong> Words are
+            compared by position: the 5th predicted word against the 5th reference word. Suppose one space is
+            predicted as a letter. Two words merge into one, and every later word in that text moves up one place.
+            All of them are now compared with the wrong partner and count as wrong, although their letters are
+            right. The same happens when a letter is predicted as a space and a word splits in two. So one wrong
+            character can cost many words.</li>
+          <li><strong>This is also why the two rankings differ.</strong> DeltaNet has the best word accuracy (0.9928)
+            but only the third-best character accuracy. Word accuracy depends on how many errors involve a space and
+            how early in a text they fall, and not only on how many errors there are.</li>
+          <li><strong>Precision, recall and F1 are about 0.997.</strong> They treat each text as a bag of words and
+            ignore order, so a shift does not hurt them. A wrong character spoils only the word it is in. They sit
+            between the other two: below character accuracy, because one wrong letter makes a whole word wrong, and
+            above word accuracy, because there is no shifting.</li>
+          <li><strong>Mean Levenshtein is 0.44 to 0.80.</strong> On average less than one character per text has to be
+            changed to make the prediction equal to the reference. The normalised value is the share of characters
+            that are wrong, 0.05% to 0.09%. It equals 1 − character accuracy, because the lengths always match and
+            every error is one wrong character in place.</li>
         </ul>
 
-        <h3 id="ra-hyp">§7.4 · The hypothesis, and what can still be compared</h3>
+        <h3 id="ra-hyp">§7.5 · The hypotheses, read honestly</h3>
         <p>
-          <strong>H2 held:</strong> all four models reach the same prior-level accuracy, as predicted for a one-time pad.
-          That means <strong>H1 cannot be tested on accuracy</strong>. The hybrid ties with the pure models because every
-          model ties. What is left to compare is cost:
+          <strong>H2 held.</strong> It predicted that all four models would reach high and similar accuracy, because
+          after preprocessing each letter is fixed by its symbol and position. All four are between 0.99911 and
+          0.99951 on test.
+        </p>
+        <p>
+          <strong>H1 is not contradicted, and it is not established either.</strong> H1 said the hybrid would reach
+          validation loss and character accuracy at least as good as the better of pure Mamba and pure DeltaNet.
         </p>
         <ul>
-          <li><strong>Parameters and FLOPs are close by design.</strong> The models have 3.2–3.7M parameters and need
-            1.7–1.9 GFLOPs for 256 characters. The hybrid is the largest on both, since each pair holds a Mamba block
+          <li>On <strong>validation loss</strong> the hybrid is lowest of all four (0.0011, against 0.0012 for DeltaNet and
+            0.0021 for Mamba).</li>
+          <li>On <strong>validation accuracy</strong> it is level with DeltaNet (0.99971 against 0.99972) and above Mamba
+            (0.99941).</li>
+          <li>On <strong>test accuracy</strong> it is above both (0.99941 against 0.99928 and 0.99911).</li>
+        </ul>
+        <p>
+          That is what H1 predicts. But the gaps are tiny. The Transformer, DeltaNet and the hybrid are within about
+          30 characters of each other on 1.04 million validation characters, and each model was trained once, with
+          one seed. Differences of that size cannot be told apart from noise. H2 said in advance what follows in
+          that case: H1 cannot be separated from the alternative on accuracy. And the Transformer, which is neither
+          Mamba nor DeltaNet, does as well as the hybrid, so the task does not need the combination. The per-position
+          breakdown of §7.3 was made for the Transformer only, so nothing can be said about whether the hybrid is
+          better at deep positions.
+        </p>
+        <p>What is left to compare is cost:</p>
+        <ul>
+          <li><strong>Parameters and FLOPs are close by design.</strong> The models have 3.2–3.8M parameters and need
+            0.42–0.48 GFLOPs for 64 characters. The hybrid is the largest on both, since each pair holds a Mamba block
             and a full DeltaNet block with its MLP.</li>
-          <li><strong>Wall-clock time is very different.</strong> The Transformer trains in 1.5 minutes. Mamba takes 149,
-            DeltaNet 73 and the hybrid 116. The hybrid lands between the two pure models because it is made of three
-            blocks of each.</li>
+          <li><strong>Training time differs more.</strong> The Transformer trains in 51 minutes, DeltaNet in 82, Mamba
+            in 115 and the hybrid in 118. So the hybrid costs the most on every measure and buys no accuracy that
+            can be shown.</li>
         </ul>
         <div class="callout gotcha">
           <div class="callout-label">FLOPs and seconds measure different things</div>
-          <p>Mamba needs fewer FLOPs than the Transformer and still trains about 100 times slower. Attention is a few
-            large matrix products that the GPU runs in parallel. Our scans are Python loops of 256 steps, and each step
-            sends several tiny operations to the GPU, which sits about 90% idle waiting for the next one. The slowness
-            comes from the simple loop, and the architectures themselves are fast: the Mamba paper uses a parallel
-            scan written in CUDA, and the DeltaNet paper a chunkwise algorithm. We kept the loop so that every line can be
-            explained.</p>
+          <p>Mamba needs about the same FLOPs as the Transformer (0.44 against 0.42 GFLOPs) and takes more than twice
+            as long to train. Two things are behind this. First, the FLOP counter counts matrix products and
+            convolutions only. The elementwise arithmetic inside Mamba's scan is not counted at all. Second,
+            attention over 64 positions is a few large matrix products that the GPU runs for all positions at once,
+            while a recurrence has to go through the 64 time steps one after another, forwards and then backwards,
+            even inside a Triton kernel. Without the kernels the gap would be far larger: the Python loops took about
+            1.5 seconds per training step (§6.6).</p>
         </div>
         <div class="callout link">
-          <div class="callout-label">where the weights are</div>
+          <div class="callout-label">where the weights are, and the held-out model</div>
           <p>The four checkpoints are public on Hugging Face as <code>Arihant25/anlp-a3-transformer</code>, <code>-mamba</code>,
-            <code>-deltanet</code> and <code>-hybrid</code>. <code>bash scripts/part1/test_assn.sh --heldout</code> uses the Transformer,
-            which has the highest validation accuracy by a hair and is by far the fastest.</p>
+            <code>-deltanet</code> and <code>-hybrid</code>. <code>bash scripts/part1/test_assn.sh --heldout</code> uses the
+            <strong>Transformer</strong> (<code>BEST=transformer</code> in the script). The best validation accuracies of the
+            Transformer, DeltaNet and the hybrid are too close to rank. Among those three the Transformer was picked
+            for two reasons: it has the best test accuracy (0.99951), and it runs without the Triton kernels, so
+            its inference depends on nothing but PyTorch.</p>
         </div>
       </section>
 
@@ -1028,18 +2005,154 @@ return scatter_sum(alpha[:, :, None] * h[src], dst, n).reshape(n, -1) + self.bia
         <h2><span class="num">§11</span>Viva questions, answered out loud</h2>
         <p class="section-intro">Short answers you can say without notes. Each one points back to the section with the details.</p>
         <ol class="qa">
-          <li><details><summary>Why are your Part A accuracies so low?</summary><div class="a">
-            <p>"Because the cipher can't be broken. Once the punctuation nulls are removed, every cipher symbol lines up with
-              one plaintext letter, but the cipher symbol carries zero information about that letter. Over 172 million positions,
-              H(plain | cipher) equals H(plain), 4.126 bits. The same word gets a different ciphertext in every
-              sample. That's a one-time pad. The only thing leaked is the length, so the best possible model predicts the most
-              common character at each position, which is about 17% character accuracy. All four of my models
-              converge there, and their loss equals the plaintext entropy." (§1, §7)</p></div></details></li>
+          <li><details><summary>Your accuracy is above 99.9%. Is the preprocessing cheating? What does the model actually learn?</summary><div class="a">
+            <p>"No. The preprocessing does two things: it deletes the punctuation nulls, and it undoes the chained shift with a
+              fixed function, <code>unchain</code>. That function uses only the ciphertext and constants fitted on the training
+              split. It never sees the plaintext of the text it is decrypting. The TA confirmed on Moodle that data-derived
+              preprocessing around the network is allowed. What is left after it is still a cipher: a substitution whose table is
+              different at every position. The model learns that table, the map from (unchained symbol, position) to one of 27
+              letters. I'm open about the split: the preprocessing removes the arithmetic a network is bad at, and the network
+              does the rest." (§1.6, §1.8)</p></div></details></li>
+          <li><details><summary>How did you find the rule?</summary><div class="a">
+            <p>"From the training data only, in steps. First, removing the 18 punctuation symbols leaves a string exactly as long as
+              the plaintext in every sample, so they're nulls. Second, the same plaintext always gives the same remaining string,
+              and two texts that start the same have ciphertexts that start the same. So the cipher is deterministic and each
+              symbol depends only on the text so far. Then the rule itself: a substitution that changes with position, followed by a
+              shift that is a weighted sum of the earlier substituted symbols mod 63, with windows that cycle through six lengths.
+              The windows, weights and offsets were fitted on the training split. The check is that after undoing the shift, every
+              (position, symbol) pair maps to exactly one plaintext letter, with 0 contradictions over 490 million symbols. A
+              wrong rule would not give that." (§1.2–§1.8)</p></div></details></li>
+          <li><details><summary>Why couldn't a network learn the whole cipher by itself?</summary><div class="a">
+            <p>"I tried that first. A Transformer on the raw symbols of the first 64 characters reached 57.7% validation accuracy
+              there and 18.7% on full test texts. It decoded only about the first 15 positions. To undo the shift at one position
+              the network has to add up as many as 49 earlier symbols, each times its own weight, and keep the remainder mod 63,
+              and it has to discover that from examples. It managed where the windows are short and not further in. A short Python
+              function does it exactly, so that part went into preprocessing." (§1.9)</p></div></details></li>
           <li><details><summary>Why drop the punctuation symbols?</summary><div class="a">
-            <p>"After deleting them, the ciphertext length equals the plaintext length in 100% of training samples, and their
-              positions are independent of word boundaries: they sit next to a space 16.97% of the time against a base rate of
-              16.95%. So they're nulls. Dropping them gives a 1:1 alignment, which turns decryption into per-character
-              classification, with no decoder and no length problem." (§1.2)</p></div></details></li>
+            <p>"After deleting them, the ciphertext length equals the plaintext length in every training sample. And when the same
+              plaintext is encrypted twice, the other 63 symbols come out identical while the punctuation lands in different
+              places. So the punctuation carries no message. They're nulls. Dropping them gives a 1:1 alignment, which turns
+              decryption into per-character classification, with no decoder and no length problem." (§1.2)</p></div></details></li>
+          <li><details><summary>Walk me through <code>unchain</code>.</summary><div class="a">
+            <p>"It goes left to right over one text and keeps three things: the recovered symbols <code>x</code>, a running total of
+              weight times symbol called <code>prefix</code>, and a dictionary <code>follow</code> that remembers which symbol came after
+              each symbol last time. The first symbol is copied as it is. For every later position I take the window length from
+              <code>WINDOWS[i % 6]</code>, get the weighted sum over the window as a difference of two running totals, add the
+              follow lookup for the oldest window symbol, with 1 if there is none, and subtract the offset for this position. That
+              is the shift. The recovered symbol is the cipher symbol minus the shift, mod 63. Then I update <code>follow</code> and
+              the running total. It works from the ciphertext alone because the shift only ever uses symbols I've already
+              recovered." (§1.6, §6.1)</p></div></details></li>
+          <li><details><summary>Why three position embeddings, and why 762?</summary><div class="a">
+            <p>"The substitution table changes with position like a three-wheel machine, or a car's odometer with 63 settings per
+              wheel. With j = position − 762, one part of the table repeats with j mod 63, one with (j div 63) mod 63, and one
+              changes every 3,969 positions. I give the model one learned embedding per wheel and add the three. Positions that
+              share a wheel setting share an embedding, so what the model learns at early positions carries over to deep ones. One
+              embedding per position couldn't do that, and deep positions are rare in training. The 762 is the wheels' starting
+              setting, found from the data. Without it the embeddings change at the wrong places. On the Transformer, accuracy
+              at positions 7,000 to 8,700 was 69% without the offset and 92% with it." (§1.4, §6.9)</p></div></details></li>
+          <li><details><summary>Mamba and DeltaNet read in order. Why do they get position embeddings too?</summary><div class="a">
+            <p>"Because a training window is 64 characters cut from anywhere in a text. Reading order tells a recurrent model it is at
+              step 10 of the window. It doesn't tell it that this is position 5,000 of the text, and the table depends on the
+              true position. So all four models get the same position input, which also keeps the comparison fair." (§6.9)</p></div></details></li>
+          <li><details><summary>Why windows of 64, and why may they cross from one text into the next?</summary><div class="a">
+            <p>"After preprocessing, a letter is fixed by its symbol and its own position, so the model doesn't need long context.
+              A short window keeps every step cheap: attention grows with L², and the Mamba kernel stores a state for every time
+              step. I store all the unchained text as one long array and cut it every 64 characters. A window may then hold the
+              end of one text and the start of the next. That's fine because every character carries its true position inside
+              its own text, so its input is correct whichever text its neighbours come from. In return there is no padding, no
+              character is thrown away, and inference cuts the test texts the same way, so every character is decoded by the
+              model." (§6.2, §6.11)</p></div></details></li>
+          <li><details><summary>Why weighted sampling, and what does it cost?</summary><div class="a">
+            <p>"Deep positions are rare. Only 3% of training windows lie beyond position 4,731, where the slow wheel has its second
+              setting, and 0.2% beyond 8,700. Each setting has its own part of the table. Sampled uniformly, the models decoded
+              only about 20% of test characters beyond 8,700. So I draw a window with weight 1, 10 or 100 depending on its
+              slow-wheel setting, using <code>WeightedRandomSampler</code>. About a third of each batch is then deep text, and
+              accuracy beyond 8,700 rose to about 97% on the Transformer. The cost is a few more errors at early positions,
+              because they get a smaller share of every batch." (§6.10, §7.2)</p></div></details></li>
+          <li><details><summary>What happens at positions deeper than anything seen in training?</summary><div class="a">
+            <p>"The fast and middle wheel embeddings are shared by all positions, so those are trained. The weak point is the slow
+              wheel: each of its settings has its own embedding row and its own part of the table, and a setting that never
+              appeared in training has an untrained row. I'd expect accuracy to drop there, and I can already see the trend:
+              the error rate is 0.02% in the first 4,000 positions and 2.4% beyond 8,700, where training data is thin. The
+              <code>clamp(max=15)</code> only makes sure a very long text can't crash the model with an out-of-range index. It
+              doesn't make the predictions there right." (§6.9, §7.3)</p></div></details></li>
+          <li><details><summary>Why does the Transformer win, and why does it train fastest?</summary><div class="a">
+            <p>"On accuracy it barely wins. It has the best test accuracy, 0.99951, but DeltaNet and the hybrid are a hair higher on
+              validation, and the differences are a few hundred characters in 1.17 million, from one seed each. After
+              preprocessing each letter depends only on its symbol and position, so the task doesn't reward a particular kind of
+              memory and all four models do it. On speed the gap is real: 51 minutes against 82 to 118. Attention over 64
+              positions is a few large matrix products that the GPU runs for all positions at once. Mamba and DeltaNet have to
+              step through the 64 positions one after another, forwards and backwards, even inside the Triton kernels, and Mamba
+              has 8 blocks." (§7.1, §7.5)</p></div></details></li>
+          <li><details><summary>What is Triton, and why did you need it?</summary><div class="a">
+            <p>"Triton is a Python library for writing GPU kernels. My two recurrences are loops over time. As Python loops, every
+              small operation in every time step is its own kernel launch, so the GPU mostly waits, and a training step took about
+              1.5 seconds. A Triton kernel is one program that is launched once and loops over time inside the GPU, with the state
+              kept in registers. At batch 64 the Mamba scan went from 403 ms to 36 ms per call and the delta rule from 310 ms
+              to 13 ms. On CUDA the models call the kernels. On CPU they call the Python loops, which I kept as the reference."
+              (§6.6)</p></div></details></li>
+          <li><details><summary>What does the Mamba scan kernel do?</summary><div class="a">
+            <p>"The launch grid is batch size by 16. One program handles one sequence and one block of 32 channels.
+              <code>tl.program_id</code> tells it which. It loads A once, sets the state h to zero, a 32 by 16 block in registers,
+              and loops over time. At each step it loads Δ, u, B and C with pointer arithmetic, computes
+              h = exp(ΔA)·h + Δ·u·B, stores h in fp16 for the backward pass, and stores the output y = C·h. N and the block size
+              are <code>tl.constexpr</code> because they set the shapes inside the kernel." (§6.7)</p></div></details></li>
+          <li><details><summary>Derive the backward pass of the scan.</summary><div class="a">
+            <p>"Forward: h_t = a_t h_{t−1} + Δ_t u_t B_t with a_t = exp(Δ_t A), and y_t = C_t · h_t. The state h_t reaches the loss
+              through y_t and through h_{t+1}, so gh_t = gy_t C_t + a_{t+1} gh_{t+1}. That needs the future, so I loop backwards in
+              time and carry gh. Then each input: gC_t is gy_t times h_t, summed over channels. gB_t is gh_t times Δ_t u_t,
+              summed over channels. gu_t is Δ_t times the sum over slots of gh_t B_t. gΔ_t is the sum over slots of
+              gh_t times (A a_t h_{t−1} + u_t B_t), because Δ sits both in the exponential and in the write term. gA is
+              gh_t Δ_t a_t h_{t−1}, summed over time. These need h_t and h_{t−1}, which is why the forward kernel stores the
+              states." (§6.7)</p></div></details></li>
+          <li><details><summary>Why are the states stored in fp16?</summary><div class="a">
+            <p>"The backward pass needs the state at every time step, and that tensor is batch × length × 512 channels × 16 slots.
+              At batch 256 and length 64 that is about 134 million numbers per Mamba block, and there are 8 blocks. Half
+              precision halves that memory. The running state inside the loop stays fp32 and the output is computed from it, so
+              the forward result doesn't change. Only the saved copy is rounded, and it is used only for gradients. Against
+              fp32 storage the gradients differ by about 0.02%." (§6.7)</p></div></details></li>
+          <li><details><summary>Why <code>atomic_add</code> for gB, gC and gA?</summary><div class="a">
+            <p>"Because several programs add into the same memory address. B and C are shared by all 512 channels, so the 16
+              programs that handle the channel blocks of one sequence all add their part into the same gB and gC entries. A is
+              shared by every sequence in the batch, so all sequences' programs add into the same gA. With a plain read-add-write,
+              two programs could read the same old value and one addition would be lost. An atomic add does the three actions as
+              one. gu and gΔ have a batch and a channel index, so only one program writes each entry and a plain store is
+              enough. That's also why gA, gB and gC start as zeros and gu and gΔ as empty tensors." (§6.7)</p></div></details></li>
+          <li><details><summary>What does the DeltaNet kernel do, and how does its backward avoid storing every state?</summary><div class="a">
+            <p>"One program per sequence and head. It keeps the 64 × 64 memory S in registers and at each step reads v_old with the
+              key, computes the correction w = β(v − v_old), adds the outer product k ⊗ w to S, and reads the output with the
+              query. It stores w for every step and S only once, at the end. The backward pass needs the memory before and after
+              each step. The update is a plain addition, so it can be reversed exactly: S_{t−1} = S_t − k_t ⊗ w_t. The backward
+              kernel starts from the final S and subtracts the updates in reverse. That is 64 numbers stored per step instead of
+              4,096. Going backwards it undoes the four forward lines in reverse order and carries gS, the gradient of the
+              memory. The key is used twice, in the read and in the write, so its gradient has two parts. There is no
+              atomic_add, because every output entry belongs to one program." (§6.8)</p></div></details></li>
+          <li><details><summary>Why can't Mamba rebuild its states the same way?</summary><div class="a">
+            <p>"Its update multiplies the old state by exp(ΔA). To go back I'd have to divide by that, and it can be almost zero,
+              for example the fast slots at a large Δ. Dividing by a number near zero loses the old state. DeltaNet's update only
+              adds, and subtraction reverses that exactly. So Mamba stores its states, in fp16 to save memory." (§6.8)</p></div></details></li>
+          <li><details><summary>How do you know the hand-written backward passes are right?</summary><div class="a">
+            <p>"The Python loops <code>selective_scan</code> and <code>delta_rule</code> are still in the code. Autograd differentiates
+              them automatically, so they give reference outputs and reference gradients. I checked both kernels against them,
+              outputs and gradients. The wrapper is a <code>torch.autograd.Function</code>: <code>forward</code> launches the forward
+              kernel and saves what backward needs, and <code>backward</code> launches the backward kernel and returns one gradient
+              per input." (§6.6–§6.8)</p></div></details></li>
+          <li><details><summary>Why did you pick the Transformer for the held-out set?</summary><div class="a">
+            <p>"Best validation accuracy is 0.99969 for the Transformer, 0.99972 for DeltaNet, 0.99971 for the hybrid and 0.99941 for
+              Mamba. The top three are within about 30 characters of each other on 1.04 million validation characters, which is too
+              close to rank. Among those three I picked the Transformer because it has the best test accuracy, 0.99951, and
+              because it runs without the Triton kernels, so its inference depends on nothing but PyTorch." (§7.5)</p></div></details></li>
+          <li><details><summary>Was the hypothesis written before the results?</summary><div class="a">
+            <p>"Partly, and I'd rather say exactly how. The first DESIGN.md, with the arrangement and H1, was pushed before any
+              hybrid code was written. Then the course replaced the dataset. H1 and the arrangement stayed as they were. H2 was
+              rewritten for the new dataset before the hybrid was trained on it, but after I already knew the Transformer's
+              result on the new data. So H2's prediction that all models would reach high, similar accuracy was informed by one
+              model's result. It was not written blind." (§5)</p></div></details></li>
+          <li><details><summary>Why is word accuracy lower than character accuracy?</summary><div class="a">
+            <p>"Word accuracy compares words by position: the fifth predicted word against the fifth reference word. If one space is
+              predicted as a letter, two words merge, and every later word in that text moves up one place and is compared with the
+              wrong partner. So one wrong character can cost many words. Precision, recall and F1 treat the text as a bag of
+              words and aren't hurt by the shift, which is why they are about 0.997 while word accuracy is 0.98 to 0.99." (§7.4)</p></div></details></li>
           <li><details><summary>Write the Mamba recurrence and explain Δ.</summary><div class="a">
             <p>"h_t = exp(Δ_t A) h_{t−1} + Δ_t B_t x_t, y_t = C_t h_t + D x_t. A is diagonal and negative, initialised to −1…−16.
               Δ_t = softplus(Linear(x_t)) is the step size. A small Δ keeps the state and ignores the input, and a large Δ resets the
@@ -1063,20 +2176,21 @@ return scatter_sum(alpha[:, :, None] * h[src], dst, n).reshape(n, -1) + self.bia
           <li><details><summary>Why is your Mamba 8 layers but the others 4?</summary><div class="a">
             <p>"A Mamba block has no MLP. Its gated expand-and-project plays that role, so one block has about half the
               parameters of a Transformer layer. The Mamba paper matches sizes by using two Mamba blocks per Transformer layer.
-              With 8 blocks, all models land between 3.2M and 3.7M parameters."</p></div></details></li>
+              With 8 blocks, all models land between 3.2M and 3.8M parameters."</p></div></details></li>
           <li><details><summary>Explain your hybrid and whether the hypothesis held.</summary><div class="a">
             <p>"Three pairs of Mamba followed by DeltaNet+MLP. Mamba builds local context, and DeltaNet uses it to form keys for its
-              associative memory. Interleaving lets each read be refined by the next Mamba layer. H1 said it would match or beat both
-              pure models. H2 said that if the cipher is a one-time pad, all models tie at the prior. The results match H2,
-              so accuracy can't test H1. What the results do show is the hybrid's cost relative to the pure models." (§5, §7)</p></div></details></li>
+              associative memory. Interleaving lets each read be refined by the next Mamba layer. H2 said all four models would
+              reach high, similar accuracy, and they did: 0.99911 to 0.99951 on test. H1 said the hybrid would be at least as
+              good as the better pure model. It has the lowest validation loss, 0.0011, ties DeltaNet on validation accuracy and
+              is above both on test, so H1 isn't contradicted. But the gaps are within noise for a single seed, and the
+              Transformer does just as well, so I can't claim the combination is what helped. What the results do show is its
+              cost: the most parameters, the most FLOPs and the longest training." (§5, §7.5)</p></div></details></li>
           <li><details><summary>How did you count FLOPs, and what does it miss?</summary><div class="a">
-            <p>"<code>torch.utils.flop_counter.FlopCounterMode</code> on one forward pass of 256 characters. It counts matmuls and
-              convolutions, at 2 FLOPs per multiply-add. Mamba's scan is elementwise, so it isn't counted. DeltaNet's state update is an
-              einsum, so it is. Attention's L² cost shows up in the two batched matmuls."</p></div></details></li>
-          <li><details><summary>Why per-chunk inference instead of the full sequence?</summary><div class="a">
-            <p>"Training saw at most 256 characters, and the Transformer's learned positions only go up to 256. Splitting the test
-              texts the same way keeps train and test identical and caps memory, even for 24k-character inputs. Here it costs
-              nothing, because there is no information that crosses positions anyway."</p></div></details></li>
+            <p>"<code>torch.utils.flop_counter.FlopCounterMode</code> on one forward pass of one 64-character window. I run it on the
+              CPU on purpose, so the Python loops are used. The counter can't see inside a Triton kernel. It counts matmuls and
+              convolutions. Mamba's scan is elementwise, so it isn't counted. DeltaNet's state update is an einsum, so it is.
+              Attention's L² cost shows up in the two batched matmuls. That's one reason FLOPs don't predict training time
+              here." (§6.11, §7.5)</p></div></details></li>
           <li><details><summary>Does the propagation graph help? Which model is best?</summary><div class="a">
             <p>"Yes, by a lot: about 74% F1 from the article alone against 93–95% with the graph. GAT and GCN are tied at 94.8, Bi-GCN is at 94.4
               and GraphSAGE at 92.8. The graphs are shallow stars (77% of users at depth 1), so two layers of any
